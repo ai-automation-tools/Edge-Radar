@@ -245,6 +245,23 @@ Standing rules — do not reverse them without new settled evidence.
   34 of its 435 rows have zero contracts and 5 were phantom losses feeding the very
   sample F3's lambda and S18's model-vs-market pair are computed from. Filled rows are
   unaffected -- the two expressions agree whenever contracts > 0. *CHANGELOG 2026-09-13 (S21).*
+- **A freeze must not block its own exit.** A frozen sport places no orders, so it
+  accrues no settlements, so the evidence that would lift the freeze never arrives.
+  NFL only escaped this by accident: 19 positions were already in flight when S1
+  landed, and they settle into S1b. NCAAF was frozen holding nothing, pinning it at
+  11 settled against `nfl_week1_review.MIN_SETTLEMENTS` (20) -- a review armed on that
+  pattern returns branch C forever. **Before arming any freeze review, check the
+  sport has an evidence stream that survives the freeze.** Where it does not, run
+  `scripts/backtest/shadow_book.py`: a Brier head-to-head needs only (model
+  probability, market price, outcome) and **never needed a filled order**. It taps
+  `scan_all_markets()`, which applies only the GLOBAL min-edge -- never the per-sport
+  `min_edge_for()` -- so it records what the model said while the gates stay under
+  judgement. Do **not** read `last_scan.json` for this: it is written POST-gate and
+  holds nothing at a 1.0 floor. Its `review` prints the S18 Brier pair plus a
+  margin-stdev sweep, which is the only way to fit a parameter `_MIN_CALIB_SAMPLES`
+  will never reach on live bets. It measures CALIBRATION, not tradeability (no
+  slippage, no queue position), and deliberately never writes `.env`.
+  *CHANGELOG 2026-09-13 (S21b).*
 - **Cumulative exposure is measured in dollars, against equity, at two scopes.** Gate 2b is the
   first gate in the chain that measures a **standing total** rather than one order, one event, or
   one batch: `MAX_OPEN_POSITIONS` counts rows, `MAX_PER_EVENT` binds one game, and `MAX_BET_RATIO`
