@@ -2,6 +2,79 @@
 
 ---
 
+## 2026-09-13 (S21b) -- the freeze that could never end
+
+Follow-on to S21, found while arming an NCAAF review on the NFL pattern.
+
+**It would never have fired.** `nfl_week1_review` needs `MIN_SETTLEMENTS` (20)
+settled rows. S1b works because **19 NFL positions were already in flight** when
+the S1 freeze landed; they settle across Week 1 and become the evidence.
+Projection for the 09-15 run: 5 settled now + 19 open = 24 settled, 21 usable --
+clearing the bar by exactly one row.
+
+NCAAF was frozen holding **nothing**. Yesterday's book settled out and the last
+two resting orders were cancelled, so the freeze stops every future order, which
+stops every future settlement, which pins the count at 11 settled / 14 usable --
+permanently under 20. `decide()` returns branch C on every run, forever. A task
+that looks armed and healthy and can never change anything: the same
+"fresh, green, and wrong" shape as the 2026-09-10 entry, and the same shape as
+`_MIN_CALIB_SAMPLES` never being reachable for the very sport whose stdev is
+wrong.
+
+**A freeze that blocks its own exit is not a pause, it is a deletion.**
+
+### The fix: score the sport without betting it
+
+A Brier head-to-head needs only (model probability, market price, outcome). It
+**never needed a filled order**. `scripts/backtest/shadow_book.py`:
+
+    shadow_book.py collect --filter ncaafb    # log what the model says
+    shadow_book.py settle                     # outcomes from Kalshi, read-only
+    shadow_book.py review --sport ncaaf       # Brier pair + stdev sweep
+
+**Where it taps is the whole design.** `data/cache/last_scan.json` is written
+POST-risk-gate, so at NCAAF's 1.0 floor it holds nothing -- reading it would let
+the freeze suppress exactly the rows under test. `scan_all_markets()` applies
+only the GLOBAL `min_edge_threshold`, never the per-sport `min_edge_for()`
+(that is Gate 3, in the executor), so collecting upstream records what the MODEL
+said while the gates remain the thing being judged. Verified, not assumed: a
+live run collected **96 rows in one scan**, 79 of them sweep-ready.
+
+**The sweep is the point.** S21 found the entire NCAAF edge was one uncalibrated
+parameter, and `_MIN_CALIB_SAMPLES` (20/sport/category/30d) meant real bets could
+never fit it. `review` re-projects each row's stored consensus across stdevs 7-18
+and reports which minimises MODEL Brier -- a direct read on the parameter, from
+rows that cost nothing. The devigged implied probability is recovered from the
+stored (line, inferred mean, stdev) triple rather than from `raw_median_implied`,
+which is PRE-devig and would silently reintroduce the overround the model removes.
+
+**The shadow book immediately contradicted a loose reading of S21.** The 96 rows
+split **58 NO / 38 YES**. The 11-of-11 YES pattern was the *placed* book -- part
+stdev bias, part Gate 3 selection effect. The shadow book sees both sides, which
+is what makes the sweep a measurement rather than a restatement.
+
+### Deliberately not a decision
+
+Nothing in `shadow_book.py` writes `.env` or lifts a freeze, unlike
+`nfl_week1_review.py`. Shadow rows are not fills: no slippage, no queue position,
+different survivorship. This measures **calibration**, which is what a freeze
+waits on; it does not measure tradeability. `MIN_SWEEP_ROWS` (25) flags a
+too-small sweep as a shape rather than a number, so a 6-row "optimum" is never
+read as a result.
+
+### Verified end to end
+
+`--self-check` pins the reprojection (a row re-projected at its own stdev must
+reproduce its own probability; a tighter stdev must pull an uncovered strike
+down; NO is the complement of YES; junk details return `None`, never a
+plausible number). The settle path was checked against two real finalized
+markets, one `yes` and one `no`. `Shadow-Book-NCAAF` ran once on registration:
+exit 0, and the second run added only 7 of 96 rows, confirming the
+first-sighting dedup. After it: **0 resting orders, trade log unchanged at 216
+rows, freeze intact.**
+
+---
+
 ## 2026-09-13 (S21) -- NCAAF was betting one parameter, 11 times
 
 Reported as "I thought we lost quite a few college football bets yesterday."
