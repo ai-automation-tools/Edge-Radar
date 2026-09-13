@@ -239,6 +239,28 @@ class TestSettlementAccounting:
         assert pnl["revenue"] == 0.0
         assert pnl["cost"] == 0.0
         assert pnl["net_pnl"] == 0.0
+        # ...but `won` tracks the PREDICTION, not the payout. A zero-fill row
+        # used to report `0 > 0` = False and land in the calibration sample as
+        # a phantom loss even when the bet side called the result correctly.
+        assert pnl["won"] is True
+
+    def test_pnl_zero_fill_wrong_call_is_a_loss(self):
+        """The zero-fill `won` flag still tracks the result, both ways."""
+        from kalshi_settler import calculate_pnl
+
+        trade = {
+            "side": "no",
+            "filled_contracts": 0,
+            "filled_cost": 0.0,
+            "contracts": 0,
+            "cost_dollars": 0.0,
+            "taker_fees": "0",
+            "maker_fees": "0",
+        }
+        pnl = calculate_pnl(trade, {"market_result": "yes", "revenue": 0})
+
+        assert pnl["net_pnl"] == 0.0
+        assert pnl["won"] is False
 
 
 # ── Per-trade revenue attribution (review #8: no double-count) ─────────────────

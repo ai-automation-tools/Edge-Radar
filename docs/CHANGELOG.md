@@ -2,6 +2,86 @@
 
 ---
 
+## 2026-09-13 (S21) -- NCAAF was betting one parameter, 11 times
+
+Reported as "I thought we lost quite a few college football bets yesterday."
+We did: **1 win / 8 losses, -$5.51 on $10.86 staked (-51% ROI)**. Everything
+that settled on 09-12 was college football. But the losses are not the finding
+-- 2 wins against 2.1 market-expected across 11 bets is squarely inside noise
+on 12-28c longshots.
+
+### The finding
+
+**All 11 NCAAF bets ever placed are YES on "team covers a big alternate
+spread." 11 out of 11.** An edge signal that fires in one direction every
+single time is not a signal.
+
+The pipeline itself is sound -- re-running `consensus_spread_prob` against the
+live odds cache reproduces each book's own line to within 0.9 points,
+symmetrically on both sides; the two-way devig is applied; `_match_team_outcome`
+correctly separates Michigan from Central Michigan. Nothing is broken.
+
+The edge comes entirely from the **margin standard deviation**. Solving, per
+bet, for the stdev that would reconcile the model with Kalshi:
+
+```
+code uses              15.0
+Kalshi prices as if  =   9.5   (median across all 11 bets)
+```
+
+That ratio *is* the claimed edge. Oklahoma >4.5 prices at 23.2c under stdev
+15.0 and 18.0c under 12.0 -- the market price, exactly. The derivation is
+strike-independent (`stdev* = 15 * ppf(1-fv) / ppf(1-px)`; the strike cancels),
+so this is one disagreement restated eleven times, not eleven edges. A fat
+stdev inflates P(big cover) uniformly, which is why the model finds value on
+every YES and never once on the NO side.
+
+**And 15.0 was never fitted.** `data/cache/calibration_stdevs.json` carries the
+`edge_detector.py` fallback byte-for-byte. It cannot be fitted either:
+`model_calibration._MIN_CALIB_SAMPLES` is 20 per (sport, category) inside 30
+days, and NCAAF has 11 settles in total. Scorecard, reported as the S18 pair:
+**market Brier 0.1538, model Brier 0.1744** -- the market is ahead, consistent
+with F3.
+
+This is the S1 shape exactly: a cold-start sport priced off a hardcoded prior,
+live, with no freeze. NCAAF fell through to the global `MIN_EDGE_THRESHOLD=0.03`.
+
+### Fixed
+
+- **`MIN_EDGE_THRESHOLD_NCAAF=1.0`** in the live `.env` -- the same unreachable-
+  floor idiom as the NFL freeze and World Cup. Verified end to end rather than
+  assumed: `_detect_sport()` returns `ncaaf` for all three prefixes
+  (`KXNCAAFSPREAD/TOTAL/GAME`), `min_edge_for()` returns 1.0000 for NCAAF spread
+  and total, MLB/NCAAB stay 0.0412 and NBA 0.0512, and `doctor.py` now prints
+  `sports OFF (floor >= 100%, unreachable): ncaaf, nfl`. **Temporary**, like
+  S1 -- the durable rule is cold_start -> pilot mode when S10 ships.
+- **Two resting NCAAF orders cancelled** (Sep-19 TEMTOL and PURUCLA, placed
+  09-13 18:01). The freeze blocks new orders; it does not retract live ones.
+  Both carried a **fractional partial fill** -- `fill_count_fp` 0.01 of 2.00 --
+  which is worth noting on its own: `cancel_stale_resting_orders` tests
+  `int(float(fill_count_fp)) != 0`, so a sub-1.0 fractional fill truncates to 0
+  and the janitor treats a partially-filled order as untouched, against its own
+  docstring's promise to leave partial fills alone. Not fixed here; recorded.
+
+### Also fixed: unfilled orders were logged as losses
+
+`calculate_pnl` returned `"won": revenue_dollars > cost`, a **profit** test worn
+as a **prediction** test. On a zero-fill row both sides are 0, so `0 > 0` is
+False and every resting order that settled entered the log as a loss regardless
+of the outcome. `won_bet` was already sitting correctly computed two lines
+above; `won` now returns it.
+
+It matters because `calibration_study.load_rows` does **not** filter on fills --
+34 of its 435 rows have zero contracts, and 5 of those are phantom losses whose
+bet side actually called the result. That sample is the one F3's lambda and
+S18's model-vs-market pair are computed from. For any filled row the two
+expressions agree, so nothing about settled P&L moves.
+
+The 5 existing rows in `kalshi_settlements.json` are **left as-is** -- a
+backfill rewrites historical records and is the operator's call.
+
+---
+
 ## 2026-09-10 (final) -- Two dated reviews never ran, and nothing said so
 
 Routine health check, not a reported bug. `doctor.py` was all-pass, quota
