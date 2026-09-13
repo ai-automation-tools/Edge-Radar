@@ -130,7 +130,14 @@ def calculate_pnl(trade: dict, settlement: dict) -> dict:
     net_pnl = revenue_dollars - cost - fees
 
     return {
-        "won": revenue_dollars > cost,
+        # `won` is whether the PREDICTION was right, not whether the row turned a
+        # profit -- win rate and Brier both want the former, and net_pnl already
+        # carries the latter. The old `revenue_dollars > cost` conflated them and
+        # collapsed to `0 > 0` on a zero-fill row, so every resting order that
+        # settled was logged as a loss regardless of outcome. calibration_study's
+        # `load_rows` does not filter on fills, so those phantom losses fed
+        # straight into the model-vs-market Brier that F3 and S18 rest on.
+        "won": won_bet,
         "revenue": round(revenue_dollars, 4),
         "cost": round(cost, 4),
         "fees": round(fees, 4),

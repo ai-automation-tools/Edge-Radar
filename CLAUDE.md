@@ -18,7 +18,7 @@
 
 | Domain | Coverage | Data Sources |
 |:-------|:---------|:-------------|
-| **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup is OFF** (F3) | The Odds API, ESPN, NHL/MLB Stats, NWS |
+| **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup (F3) and NCAAF (S21) are OFF** | The Odds API, ESPN, NHL/MLB Stats, NWS |
 | **Prediction markets** | Crypto (BTC, ETH, XRP, DOGE, SOL), weather (13 cities), S&P 500 | CoinGecko, Yahoo Finance, NWS |
 | **Championship futures** | NFL, NBA, NHL, MLB, PGA | Sportsbook futures odds |
 | **Execution pipeline** | Unified scan → risk-check → size → execute | Kalshi API (RSA-signed), Polymarket US (Ed25519) |
@@ -224,6 +224,27 @@ Standing rules — do not reverse them without new settled evidence.
   5-20c-wide book pays exactly the illiquidity penalty Gate 3.6 exists to avoid. Exit a ticker
   only if its spread is <= 5c *and* the exit price beats hold-to-settlement EV.
   *CHANGELOG 2026-08-26 (S1).*
+- **An edge that fires in one direction every time is a parameter, not a signal.** All
+  11 NCAAF bets ever placed were YES on "team covers a big alternate spread", and the
+  whole claimed edge was the margin stdev: solving per bet for the value that reconciles
+  model with market gives a median of **9.5 against the 15.0 the code uses**, and the
+  derivation is strike-independent (`stdev* = 15 * ppf(1-fv) / ppf(1-px)`), so it is one
+  disagreement restated eleven times. A fat stdev inflates P(big cover) uniformly, which
+  is exactly why the YES side was the only side ever taken. **A 100% one-sided book is
+  the diagnostic** -- check it before reading a losing streak as variance. And 15.0 was
+  never fitted: `calibration_stdevs.json` carries the `edge_detector.py` fallback
+  byte-for-byte, and `_MIN_CALIB_SAMPLES` (20 per sport/category/30d) means 11 total
+  settles never could fit it. Market Brier 0.1538 vs model 0.1744, per the S18 pair.
+  NCAAF is frozen in the live `.env` (`MIN_EDGE_THRESHOLD_NCAAF=1.0`) as of 2026-09-13,
+  on the same cold-start reasoning as S1 and with the same expiry: it comes out when
+  `strategy_state.json` (S10) ships. *CHANGELOG 2026-09-13 (S21).*
+- **`won` is whether the PREDICTION was right, never whether the row profited.**
+  `calculate_pnl` returned `revenue > cost`, which collapses to `0 > 0` on a zero-fill
+  row, so every resting order that settled was logged as a loss whatever the outcome.
+  This is not cosmetic: `calibration_study.load_rows` does **not** filter on fills, so
+  34 of its 435 rows have zero contracts and 5 were phantom losses feeding the very
+  sample F3's lambda and S18's model-vs-market pair are computed from. Filled rows are
+  unaffected -- the two expressions agree whenever contracts > 0. *CHANGELOG 2026-09-13 (S21).*
 - **Cumulative exposure is measured in dollars, against equity, at two scopes.** Gate 2b is the
   first gate in the chain that measures a **standing total** rather than one order, one event, or
   one batch: `MAX_OPEN_POSITIONS` counts rows, `MAX_PER_EVENT` binds one game, and `MAX_BET_RATIO`
@@ -382,6 +403,11 @@ MIN_EDGE_THRESHOLD_NFL=<unset>  # S1: FREEZE, live-only, code default unset. NFL
                                 #   since 2026-08-26 — 24 open live positions, 31% of bankroll,
                                 #   and ZERO settled history. **Temporary**: remove it when S10
                                 #   (`strategy_state.json`) ships. See Sizing rules below.
+MIN_EDGE_THRESHOLD_NCAAF=<unset> # S21: FREEZE, live-only, code default unset. NCAAF is off in `.env`
+                                #   since 2026-09-13 -- 11 settled bets, ALL of them YES on "covers a big
+                                #   alternate spread", priced off an unfitted margin_stdev of 15.0 that
+                                #   Kalshi disagrees with at ~9.5. Same cold-start shape as the NFL
+                                #   freeze; **temporary**, remove it when S10 ships. See Sizing rules.
 MIN_MARKET_PRICE=0.12           # R7 lottery-ticket floor; 0 disables. Pure reject threshold,
                                 #   independent of sizing. The live 0.10 is an OPEN EXPERIMENT
                                 #   re-opening the longshot lane — recheck after ~30 more settles.
