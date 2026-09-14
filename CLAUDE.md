@@ -184,6 +184,7 @@ Every gate runs before any trade executes:
 | 4.8 | In-progress games (`is_game_started`) off unless `ALLOW_LIVE_BETS=true` (L1) | Reject |
 | 5 | Not already holding this market | Reject |
 | 6 | Per-event cap not exceeded (`MAX_PER_EVENT`; futures use `MAX_PER_EVENT_FUTURES`, P1) | Reject |
+| 6b | No **opposing side** already held or resting on this game (S22). Futures exempt | Reject |
 | 7 | Matchup not bet within `SERIES_DEDUP_HOURS` (per-sport overrides apply) | Reject |
 | 8 | Bet size <= `MAX_BET_SIZE` | Cap |
 | 9 | Single bet <= `MAX_BET_RATIO` x batch median cost | Cap |
@@ -258,6 +259,28 @@ Standing rules — do not reverse them without new settled evidence.
   34 of its 435 rows have zero contracts and 5 were phantom losses feeding the very
   sample F3's lambda and S18's model-vs-market pair are computed from. Filled rows are
   unaffected -- the two expressions agree whenever contracts > 0. *CHANGELOG 2026-09-13 (S21).*
+- **Never hold both sides of one game.** Gate 6b (S22) rejects a bet that is
+  *arithmetically unable* to win alongside something already held or resting.
+  Found in the book, not in review: 3 contracts of "Los Angeles R win" (63c,
+  06-01) sat against 6 of "San Francisco wins by over 7.5" (11c, 08-10) on one
+  game, and a World Cup pair took Egypt by 2+ *and* Iran by 2+. **Every existing
+  gate passed**, and each for its own reason: 5 compares tickers; **6 is
+  series-scoped, because `_event_key` keeps the series prefix — so
+  `KXNFLGAME-…SFLAR` and `KXNFLSPREAD-…SFLAR` are different "events" and
+  `MAX_PER_EVENT=2` really means 2 per series per game** (one real game has held
+  **6** positions); and 7 is game-scoped but a 48h window over the trade log,
+  against legs **70 days** apart. Nothing compared DIRECTION. A moneyline is
+  treated as the margin-0 case of a spread, which is what lets one comparison
+  cover the moneyline-vs-spread pair that actually occurred. It rejects only the
+  impossible, never the merely correlated: YES-by->4 alongside NO-by->10 is the
+  legitimate "wins by 5–10" band trade and still passes, as do spread+total and
+  two NO legs on different teams. **It reads resting orders too** — half the
+  real cases had an unfilled leg, and `position_fp` is 0 until a fill, so the
+  positions feed alone would have caught one of two. Sides come from the trade
+  log joined on `order_id`, **never from the venue payload**: v2 reports every
+  order from the YES perspective, so a NO buy returns as an `ask` and reading it
+  raw inverts the side — the same trap `resting_exposure` documents. Fails
+  **open** on a side it cannot name. *CHANGELOG 2026-09-13 (S22).*
 - **A freeze must not block its own exit.** A frozen sport places no orders, so it
   accrues no settlements, so the evidence that would lift the freeze never arrives.
   NFL only escaped this by accident: 19 positions were already in flight when S1

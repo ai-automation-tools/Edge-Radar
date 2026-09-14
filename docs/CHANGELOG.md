@@ -2,6 +2,105 @@
 
 ---
 
+## 2026-09-13 (S22) -- Gate 6b: never hold both sides of one game
+
+Operator spotted it by eye: "multiple bets in the same game, but bets for the
+opposing sides." Confirmed, twice, in 216 placed bets.
+
+```
+KXNFLGAME-26SEP10SFLAR-LAR    yes  3 @ 63c  06-01   "Los Angeles R win?"
+KXNFLSPREAD-26SEP10SFLAR-SF8  yes  6 @ 11c  08-10   "San Francisco wins by over 7.5?"
+
+KXWCSPREAD-26JUN26EGYIRI-EGY2 yes      resting 06-20   Egypt by 2+
+KXWCSPREAD-26JUN26EGYIRI-IRI2 yes 13 @  8c  06-22   Iran by 2+
+```
+
+At most one leg of each pair can ever pay. The NFL pair went +$3.35 on luck;
+the WC pair lost $1.04.
+
+### Why every existing gate passed
+
+Not one bug -- three independent blind spots that happened to line up:
+
+| gate | why it missed |
+|:--|:--|
+| 5 duplicate ticker | different tickers |
+| 6 per-event cap | **`_event_key` keeps the series prefix**, so `KXNFLGAME-...SFLAR` and `KXNFLSPREAD-...SFLAR` are different "events" |
+| 7 series dedup | game-scoped and *would* have matched -- but it is a 48h window over the trade log, and the legs were **70 days** apart |
+
+The middle row is the one worth keeping: **`MAX_PER_EVENT=2` actually means "2
+per series per game."** Measured across the settled book, one real game has held
+**6** positions and 13 games have held more than 2. The cap has been reading as
+tighter than it is since it shipped.
+
+And beneath all three: **nothing anywhere compared direction.** Every gate
+counted tickers, positions, events or matchups.
+
+### The gate
+
+`opposing_position()` rejects only what is arithmetically unable to win
+together. A moneyline is normalised as the margin-0 case of a spread, which is
+what lets a single comparison cover the moneyline-vs-spread pair that actually
+occurred:
+
+    KXNFLGAME-26SEP10SFLAR-LAR    yes -> ('26SEP10SFLAR', 'LAR', 'yes', 0)
+    KXNFLSPREAD-26SEP10SFLAR-SF8  yes -> ('26SEP10SFLAR', 'SF',  'yes', 8)
+
+Two rules: different teams both YES; or same team, YES at margin `a` against a
+held NO at margin `b` with `a >= b`. Everything else passes, deliberately --
+YES-by->4 with NO-by->10 is the legitimate "wins by 5-10" band trade, and
+spread+total, moneyline+spread on one team, and two NO legs on different teams
+are all jointly satisfiable. **Totals never enter**: they say nothing about who
+wins. **Futures are exempt**, for the reason Gate 6's own docstring already
+gives -- their outcomes partition an event rather than contradict each other.
+
+The game key is the ticker's date+teams segment verbatim, *not* `matchup_key`:
+that one is deliberately date-invariant so Gate 7 can see a series across days,
+and here two different games between the same teams must never collide. Keeping
+the embedded start time also keeps MLB doubleheaders distinct.
+
+### Resting orders count
+
+Half the real cases had a leg that never filled, and a zero-fill order has
+`position_fp == 0`, so the positions feed shows nothing -- the same blind spot
+S21 closed for Gate 2b. `resting_sides()` adds them.
+
+**Sides come from our own trade log, joined on `order_id`, never from the venue
+payload.** v2 expresses every order from the YES perspective, so a NO buy comes
+back as an `ask`; reading `side` raw inverts it. This is the identical trap
+`resting_exposure` documents for price, and it is worth stating twice because
+the payload looks perfectly readable when it is wrong.
+
+Fails **open** on a side it cannot name -- omitted and logged at WARNING, the
+same posture as 3.6/3.7 on unreadable data. Over-blocking on a guessed side
+would reject coherent bets.
+
+### Within-batch too
+
+`open_sides` accumulates across the slate, or both sides of one game approved in
+a single run walk through together -- the within-batch hole S4 had to close for
+exposure. The R26 replay path re-checks 6b alongside 5/6/7 for the same reason.
+
+### Verification
+
+Replayed all **216** placed bets through the gate in entry order: **2 blocked,
+both of them the real pairs, zero false positives.** 46 tests
+(`tests/test_opposing_side_gate.py`), full suite 1221 passed, and flake8 on the
+executor is unchanged at 42 (none introduced).
+
+Live confirmation the same evening, on the NFL slate this was written for:
+
+```
+KXNFLSPREAD-26SEP13DALNYG-NYG3 -> REJECTED: opposing_side
+                                  (already holding KXNFLSPREAD-26SEP13DALNYG-DAL15)
+```
+
+A scan preview that night offered **both** "New York G wins by over 2.5" and
+"Dallas wins by over 4.5" on one game, hours after NFL went back on the board
+at the 0.08 pilot floor. The gate was not hypothetical by the time it landed.
+
+---
+
 ## 2026-09-13 (S1b-early) -- NFL to the pilot floor, by hand, two days early
 
 `MIN_EDGE_THRESHOLD_NFL` 1.0 -> **0.08**. Operator decision, taken knowingly
