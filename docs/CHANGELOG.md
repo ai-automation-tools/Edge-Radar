@@ -2,6 +2,199 @@
 
 ---
 
+## 2026-09-13 (S22) -- Gate 6b: never hold both sides of one game
+
+Operator spotted it by eye: "multiple bets in the same game, but bets for the
+opposing sides." Confirmed, twice, in 216 placed bets.
+
+```
+KXNFLGAME-26SEP10SFLAR-LAR    yes  3 @ 63c  06-01   "Los Angeles R win?"
+KXNFLSPREAD-26SEP10SFLAR-SF8  yes  6 @ 11c  08-10   "San Francisco wins by over 7.5?"
+
+KXWCSPREAD-26JUN26EGYIRI-EGY2 yes      resting 06-20   Egypt by 2+
+KXWCSPREAD-26JUN26EGYIRI-IRI2 yes 13 @  8c  06-22   Iran by 2+
+```
+
+At most one leg of each pair can ever pay. The NFL pair went +$3.35 on luck;
+the WC pair lost $1.04.
+
+### Why every existing gate passed
+
+Not one bug -- three independent blind spots that happened to line up:
+
+| gate | why it missed |
+|:--|:--|
+| 5 duplicate ticker | different tickers |
+| 6 per-event cap | **`_event_key` keeps the series prefix**, so `KXNFLGAME-...SFLAR` and `KXNFLSPREAD-...SFLAR` are different "events" |
+| 7 series dedup | game-scoped and *would* have matched -- but it is a 48h window over the trade log, and the legs were **70 days** apart |
+
+The middle row is the one worth keeping: **`MAX_PER_EVENT=2` actually means "2
+per series per game."** Measured across the settled book, one real game has held
+**6** positions and 13 games have held more than 2. The cap has been reading as
+tighter than it is since it shipped.
+
+And beneath all three: **nothing anywhere compared direction.** Every gate
+counted tickers, positions, events or matchups.
+
+### The gate
+
+`opposing_position()` rejects only what is arithmetically unable to win
+together. A moneyline is normalised as the margin-0 case of a spread, which is
+what lets a single comparison cover the moneyline-vs-spread pair that actually
+occurred:
+
+    KXNFLGAME-26SEP10SFLAR-LAR    yes -> ('26SEP10SFLAR', 'LAR', 'yes', 0)
+    KXNFLSPREAD-26SEP10SFLAR-SF8  yes -> ('26SEP10SFLAR', 'SF',  'yes', 8)
+
+Two rules: different teams both YES; or same team, YES at margin `a` against a
+held NO at margin `b` with `a >= b`. Everything else passes, deliberately --
+YES-by->4 with NO-by->10 is the legitimate "wins by 5-10" band trade, and
+spread+total, moneyline+spread on one team, and two NO legs on different teams
+are all jointly satisfiable. **Totals never enter**: they say nothing about who
+wins. **Futures are exempt**, for the reason Gate 6's own docstring already
+gives -- their outcomes partition an event rather than contradict each other.
+
+The game key is the ticker's date+teams segment verbatim, *not* `matchup_key`:
+that one is deliberately date-invariant so Gate 7 can see a series across days,
+and here two different games between the same teams must never collide. Keeping
+the embedded start time also keeps MLB doubleheaders distinct.
+
+### Resting orders count
+
+Half the real cases had a leg that never filled, and a zero-fill order has
+`position_fp == 0`, so the positions feed shows nothing -- the same blind spot
+S21 closed for Gate 2b. `resting_sides()` adds them.
+
+**Sides come from our own trade log, joined on `order_id`, never from the venue
+payload.** v2 expresses every order from the YES perspective, so a NO buy comes
+back as an `ask`; reading `side` raw inverts it. This is the identical trap
+`resting_exposure` documents for price, and it is worth stating twice because
+the payload looks perfectly readable when it is wrong.
+
+Fails **open** on a side it cannot name -- omitted and logged at WARNING, the
+same posture as 3.6/3.7 on unreadable data. Over-blocking on a guessed side
+would reject coherent bets.
+
+### Within-batch too
+
+`open_sides` accumulates across the slate, or both sides of one game approved in
+a single run walk through together -- the within-batch hole S4 had to close for
+exposure. The R26 replay path re-checks 6b alongside 5/6/7 for the same reason.
+
+### Verification
+
+Replayed all **216** placed bets through the gate in entry order: **2 blocked,
+both of them the real pairs, zero false positives.** 46 tests
+(`tests/test_opposing_side_gate.py`), full suite 1221 passed, and flake8 on the
+executor is unchanged at 42 (none introduced).
+
+Live confirmation the same evening, on the NFL slate this was written for:
+
+```
+KXNFLSPREAD-26SEP13DALNYG-NYG3 -> REJECTED: opposing_side
+                                  (already holding KXNFLSPREAD-26SEP13DALNYG-DAL15)
+```
+
+A scan preview that night offered **both** "New York G wins by over 2.5" and
+"Dallas wins by over 4.5" on one game, hours after NFL went back on the board
+at the 0.08 pilot floor. The gate was not hypothetical by the time it landed.
+
+---
+
+## 2026-09-13 (S1b-early) -- NFL to the pilot floor, by hand, two days early
+
+`MIN_EDGE_THRESHOLD_NFL` 1.0 -> **0.08**. Operator decision, taken knowingly
+ahead of the pre-declared 2026-09-15 review date.
+
+**The review did not fire. It returned BRANCH C**, twice, on the same day:
+
+```
+17:32   only 12 usable settled NFL bets, need 20   (15 settled, 3 dropped)
+17:5x   only 18 usable settled NFL bets, need 20   (21 settled, 3 dropped)
+```
+
+Week 1 was still settling while this was decided -- 11 NFL rows remained open,
+including Monday's DEN@KC. S1b was written on 2026-08-26 "precisely so a hot or
+cold Week 1 could not argue with it", and the thing it guards against is
+deciding on a Sunday evening with the sample still moving. Recording that
+plainly matters more than the floor itself: **"the script unfroze NFL" and
+"the operator unfroze NFL early" collapse into the same memory within a month**,
+and only one of them is evidence. This was the second.
+
+**What the evidence did say**, on the 18 usable rows at the time:
+
+```
+n=18   model Brier 0.1318   market Brier 0.1399   diff -0.0081   95% CI [-0.0417, +0.0311]
+       spread  n=8   model 0.1814  market 0.1959
+       total   n=10  model 0.0922  market 0.0951
+       mean model prob 0.630 | realised 0.611 | over-claim +0.019  (bar 0.15)
+```
+
+Model ahead in both categories, and an over-claim of +0.019 against a 0.15 bar
+-- genuinely the healthiest calibration any segment here has shown, and nothing
+like NCAAF's. It is branch-A *shaped*. It was two rows short of being branch A.
+The CI straddling zero is the whole reason branch A caps to a pilot rather than
+unfreezing outright, so the cap is doing its job either way.
+
+**Action on 09-15: re-run `nfl_week1_review.py` on the full Week 1 sample.** If
+it returns C, the floor goes back to 1.0.
+
+### The open risk this surfaced: NFL spreads carry the S21 signature
+
+Ran S21's own one-sidedness diagnostic against the NFL book, since the review
+predates S21 and does not check for it:
+
+```
+n=8 settled NFL spreads, side mix {yes: 8}
+  NESEA-NE5    px 0.22  fv 0.28   stdev* 10.36
+  SFLAR-SF8    px 0.11  fv 0.20   stdev*  9.26
+  ATLPIT-ATL11 px 0.10  fv 0.15   stdev* 10.81
+  CHICAR-CHI11 px 0.22  fv 0.28   stdev* 10.17
+  GBMIN-GB8    px 0.23  fv 0.28   stdev* 10.40
+  MIALV-MIA7   px 0.16  fv 0.22   stdev* 10.41
+  NODET-NO5    px 0.14  fv 0.20   stdev* 10.65
+  TBCIN-TB11   px 0.10  fv 0.16   stdev* 10.65
+
+  median reconciling stdev 10.40 vs the hardcoded 13.50   ratio 0.77
+  (NCAAF, which this froze this morning: 9.5 vs 15.0, ratio 0.63)
+```
+
+8 of 8 YES on a big alternate cover, and the reconciling stdev sits in a
+1.5-point band. That is the same parameter disagreement S21 describes, milder,
+and `margin_stdev: 13.5` is a hardcoded prior exactly as 15.0 was. **If NFL
+spreads start losing one-sidedly, suspect the stdev before variance.** The
+counter-evidence is real though, and is why this is a flag and not a second
+freeze: NFL spreads currently *beat* the market on Brier (0.1814 vs 0.1959),
+where NCAAF's lost it.
+
+### Settlement-log audit (run before setting the floor)
+
+| check | result |
+|:--|:--|
+| `won` vs `side == result` | **5 rows wrong -> backfilled** (see below) |
+| S18 invariant `fv - px == edge` | 0 violations / 466 rows |
+| `cost == contracts x price` | 0 violations |
+| duplicate `trade_id` | none |
+| rows missing `fair_value` | 15, **all** `edge_source=reconstructed_from_kalshi_position` -- correctly dropped, not a defect |
+| S21 `won` fix in production | confirmed: today's zero-fill resting NFL row scored `won=True`, not a phantom loss |
+
+**Backfilled the 5 phantom losses S21 identified** -- all MLB totals settled
+2026-09-12, all zero-fill NO rows where the result was NO, all logged as losses
+by the pre-fix `revenue > cost` expression. Each now carries
+`won_backfilled` naming its previous value. Global pair moves to model 0.2151 /
+market 0.1942 over 451 rows (F3's baseline: 0.2270 / 0.2037 over 390). **The
+five were MLB, so none of them touched the NFL decision above** -- they were
+fixed because the audit was the gate on making it.
+
+Known and *not* fixed: 6 `(ticker, side, date)` pairs settle twice, one of them
+NFL (`KXNFLTOTAL-26SEP13GBMIN-67`). These are genuinely two orders on one market
+-- a resting one at 0.87 that never filled and a filled one at 0.80, distinct
+`trade_id`s, both scored correctly. Not corruption, but it double-counts one
+game outcome in a Brier sample, so it is a mild independence violation worth
+knowing about at n=18.
+
+---
+
 ## 2026-09-13 (S21b) -- the freeze that could never end
 
 Follow-on to S21, found while arming an NCAAF review on the NFL pattern.

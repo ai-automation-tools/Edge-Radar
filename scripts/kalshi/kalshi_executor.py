@@ -774,6 +774,105 @@ def matchup_key(ticker: str) -> tuple[str, str] | None:
     return (sport, teams)
 
 
+# S22: a bet only says something about WHO WINS if it names a team and a margin
+# threshold. Moneylines are the margin-0 case of a spread, which is what lets
+# one comparison cover both.
+_SPREAD_STRIKE_RE = re.compile(r"^(?P<team>.*?)(?P<pts>\d+)$")
+
+
+def directional_claim(ticker: str, side: str) -> tuple[str, str, str, int] | None:
+    """The claim a bet makes about one team winning: ``(game, team, side, margin)``.
+
+    S22. Returns ``None`` for every bet that says nothing about the winner --
+    totals, futures, prediction markets, malformed tickers. Those are excluded
+    on purpose: a total and a spread on one game are a legitimate pair, and a
+    futures book *partitions* its event by design (Gate 6's own docstring).
+
+    A moneyline is the ``margin == 0`` case of a spread ("wins by more than 0"),
+    so both normalise into the same tuple and one comparison covers the
+    moneyline-vs-spread pair that actually occurred:
+
+        KXNFLGAME-26SEP10SFLAR-LAR     yes -> ('26SEP10SFLAR', 'LAR', 'yes',  0)
+        KXNFLSPREAD-26SEP10SFLAR-SF8   yes -> ('26SEP10SFLAR', 'SF',  'yes',  8)
+
+    The game key is the ticker's date+teams segment verbatim, NOT
+    `matchup_key` -- that one is deliberately date-invariant so Gate 7 can see a
+    series across days, and here two different games between the same teams must
+    never collide. It keeps the embedded start time (MLB
+    ``26SEP101610TEXSEA``), so doubleheaders stay distinct.
+    """
+    if not side:
+        return None
+    side = side.strip().lower()
+    if side not in ("yes", "no"):
+        return None
+    parts = ticker.split("-")
+    if len(parts) < 3:
+        return None
+    series, game, strike = parts[0], parts[1], "-".join(parts[2:])
+    if not game or not strike:
+        return None
+    if series.endswith("GAME"):
+        return (game, strike, side, 0)
+    if series.endswith("SPREAD"):
+        m = _SPREAD_STRIKE_RE.match(strike)
+        if not m or not m.group("team"):
+            return None
+        return (game, m.group("team"), side, int(m.group("pts")))
+    return None
+
+
+def opposing_position(ticker: str, side: str,
+                      held: dict[str, str] | None) -> str | None:
+    """Gate 6b (S22): a held position this bet CONTRADICTS, or ``None``.
+
+    Found 2026-09-13 from a real pair: 3 contracts of "Los Angeles R win"
+    (63c, 06-01) held alongside 6 of "San Francisco wins by over 7.5" (11c,
+    08-10), on the same game. At most one could ever pay. It cleared every
+    gate -- 5 (different tickers), 6 (`_event_key` keeps the series prefix, so
+    ``KXNFLGAME-...SFLAR`` and ``KXNFLSPREAD-...SFLAR`` are different "events"
+    and neither reached the cap) and 7 (game-scoped, but a 48h window over the
+    trade log, and the legs were **70 days** apart). No gate anywhere compared
+    DIRECTION, which is why a 2-position cap allowed 6 positions on one game.
+
+    Two rules, both exact -- this rejects only bets that are arithmetically
+    unable to win together, never merely correlated ones:
+
+    1. Different teams, both YES. Both winning is impossible.
+    2. Same team, YES at margin ``a`` against a held NO at margin ``b``, when
+       ``a >= b``: winning by more than ``a`` implies winning by more than
+       ``b``, so the NO leg is already lost. The reverse (YES 4, NO 10) is the
+       legitimate "wins by 5-10" band trade and stays allowed.
+
+    Not covered on purpose: two NO legs on different teams are jointly
+    satisfiable (neither covers), and totals never enter at all.
+    """
+    if not held:
+        return None
+    claim = directional_claim(ticker, side)
+    if claim is None:
+        return None
+    game, team, my_side, my_pts = claim
+    for other_ticker, other_side in held.items():
+        if other_ticker == ticker:
+            continue          # Gate 5 owns the same-market case
+        other = directional_claim(other_ticker, other_side)
+        if other is None:
+            continue
+        o_game, o_team, o_side, o_pts = other
+        if o_game != game:
+            continue
+        if team != o_team:
+            if my_side == "yes" and o_side == "yes":
+                return other_ticker
+            continue
+        if my_side == "yes" and o_side == "no" and my_pts >= o_pts:
+            return other_ticker
+        if my_side == "no" and o_side == "yes" and o_pts >= my_pts:
+            return other_ticker
+    return None
+
+
 def recent_matchups_from_log(
     trade_log: list[dict],
     hours: int | None = None,
@@ -1004,7 +1103,8 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
                recent_matchups: set[tuple[str, str]] | None = None,
                open_exposure: float = 0.0,
                segment_exposure: float = 0.0,
-               equity: float | None = None) -> SizedOrder:
+               equity: float | None = None,
+               open_sides: dict[str, str] | None = None) -> SizedOrder:
     """
     Apply all risk checks and size the order.
 
@@ -1026,6 +1126,7 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
         4.7  Prediction-market safety gate (R25)          (reject)
         5.   Duplicate ticker (already holding this market) (reject)
         6.   Per-event cap (max positions on same game)   (reject)
+        6b.  Opposing side already held on this game (S22) (reject)
         3.6  Bid/ask spread + 24h volume floor           (reject)
         3.7  Days-to-event cap on game markets          (reject)
         7.   Series dedup (same matchup within last Nh)   (reject)
@@ -1177,6 +1278,19 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
         cap = max_per_event_futures if opp.category == "futures" else max_per_event
         if event_counts.get(evt, 0) >= cap:
             rejection = f"per_event_cap ({event_counts[evt]}/{cap} on {evt[:30]})"
+
+    # ── Risk Gate 6b: Opposing side already held on this game (S22)
+    #
+    # Gate 6 counts positions; this one compares DIRECTION, which nothing did
+    # before. Runs after 6 rather than inside it because they answer different
+    # questions -- 6 is about concentration, 6b is about coherence, and a book
+    # can be under the position cap and still hold both sides of one game.
+    # Futures are exempt for the same reason Gate 6 gives them their own cap:
+    # their outcomes partition an event instead of contradicting each other.
+    if rejection is None and open_sides and opp.category != "futures":
+        clash = opposing_position(opp.ticker, opp.side, open_sides)
+        if clash:
+            rejection = f"opposing_side (already holding {clash})"
 
     # ── Risk Gate 7: Series dedup (C5 + R9) -- same matchup bet in last
     # SERIES_DEDUP_HOURS, with per-sport overrides (R9: MLB/NHL series cycles
@@ -1364,6 +1478,56 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
 
 # ── Trade Logging ─────────────────────────────────────────────────────────────
 # load_trade_log, append_trades, get_today_pnl imported from scripts.shared.trade_log
+
+
+def resting_sides(client, trade_rows: list[dict] | None = None) -> dict[str, str]:
+    """Bet-side of every open resting order, for Gate 6b (S22).
+
+    A resting order is an intent to hold, and it contradicts exactly like a
+    position does. Half the contradictions ever placed here involved one:
+    `KXWCSPREAD-26JUN26EGYIRI-EGY2` was ordered 06-20 and never filled, and two
+    days later the pipeline bought `IRI2` -- Egypt by 2+ *and* Iran by 2+ --
+    because a zero-fill order has `position_fp == 0` and is invisible to the
+    positions feed. Same blind spot S21 had to close for Gate 2b.
+
+    **Side comes from our own trade log, not the venue**, for the reason
+    `resting_exposure` spells out: v2 expresses every order from the YES
+    perspective, so a NO buy comes back as an `ask` and reading `side` off the
+    payload inverts it. The venue stays authoritative for *which* orders rest;
+    the log is authoritative for what they are.
+
+    Fails **open** -- an order the log cannot identify is omitted and logged,
+    matching how 3.6/3.7 treat unreadable data. Over-blocking on a side we
+    cannot name would reject coherent bets on a guess.
+    """
+    try:
+        resp = client.get_orders(status="resting", limit=100)
+    except Exception as e:                      # noqa: BLE001 - never block a batch
+        log.warning("Resting-order sides unavailable (%s); Gate 6b will not see "
+                    "any open resting order", e)
+        return {}
+
+    orders = resp.get("orders", []) if isinstance(resp, dict) else []
+    by_order = {r["order_id"]: r for r in (trade_rows or []) if r.get("order_id")}
+    sides: dict[str, str] = {}
+    unknown = 0
+    for o in orders:
+        remaining = int(float(_order_field(o, "remaining_count",
+                                           "remaining_count_fp") or "0"))
+        if remaining <= 0:
+            continue
+        ticker = o.get("ticker", "")
+        logged = by_order.get(o.get("order_id"))
+        side = str((logged or {}).get("side") or "").strip().lower()
+        if side not in ("yes", "no") or not ticker:
+            unknown += 1
+            continue
+        sides[ticker] = side
+    if unknown:
+        log.warning("Gate 6b: %d resting order(s) have no bet-side in the trade "
+                    "log (hand-placed, or a log gap) and are not checked for "
+                    "opposing sides", unknown)
+    return sides
 
 
 def _order_field(order: dict, *keys: str, default: str = "0") -> str:
@@ -2051,6 +2215,27 @@ def execute_pipeline(
 
     # Build open ticker set and per-event counts for risk gates
     open_tickers = {p.get("ticker", "") for p in market_positions}
+    # S22 / Gate 6b: the same positions keyed by side. Kalshi signs `position_fp`
+    # -- positive is long YES, negative long NO -- and it arrives as a *string*,
+    # so it is coerced the same way `exposure_from_positions` coerces its own
+    # field. A row that will not parse is simply omitted: Gate 6b then cannot
+    # see it, which matches how 3.6/3.7 fail open on unreadable data.
+    open_sides: dict[str, str] = {}
+    for p in market_positions:
+        try:
+            qty = float(p.get("position_fp") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty:
+            open_sides[p.get("ticker", "")] = "yes" if qty > 0 else "no"
+    # ...and the resting orders, which a positions feed cannot see (`position_fp`
+    # is 0 until a fill). One of the two contradictions ever placed here was a
+    # resting leg, so positions alone would have caught half of them. Kalshi-only
+    # for the same reason `resting_exposure` is: PM US answers 501 on order
+    # listing, so asking could only ever fail open and log noise.
+    if venue == "kalshi":
+        for _tkr, _sd in resting_sides(client, load_trade_log()).items():
+            open_sides.setdefault(_tkr, _sd)
     event_counts: dict[str, int] = {}
     for t in open_tickers:
         evt = _event_key(t)
@@ -2114,6 +2299,13 @@ def execute_pipeline(
                     (tkr, "matchup bet within series-dedup window (gate 7)")
                 )
                 continue
+            if s.opportunity.category != "futures":
+                clash = opposing_position(tkr, s.opportunity.side, open_sides)
+                if clash:
+                    replay_dropped.append(
+                        (tkr, f"opposing side held on this game: {clash} (gate 6b)")
+                    )
+                    continue
             # S4: exposure is portfolio state too, so it re-checks here for the
             # same reason gates 5/6/7 do -- the cache TTL is long enough to have
             # filled a ceiling since the preview. Sizing stays locked (that is
@@ -2129,6 +2321,8 @@ def execute_pipeline(
             # Track within this batch so two cached rows on the same event/matchup
             # don't both slip through.
             open_tickers.add(tkr)
+            if s.opportunity.side:
+                open_sides[tkr] = s.opportunity.side.strip().lower()
             event_counts[evt] = event_counts.get(evt, 0) + 1
             open_exposure += s.cost_dollars
             segment_exposure[seg] = segment_exposure.get(seg, 0.0) + s.cost_dollars
@@ -2174,6 +2368,7 @@ def execute_pipeline(
                 opp, bankroll, open_count + len([s for s in sized_orders if s.risk_approval.startswith("APPROVED")]),
                 daily_pnl, unit_size, open_tickers, event_counts, MAX_PER_EVENT,
                 MAX_PER_EVENT_FUTURES,
+                open_sides=open_sides,
                 batch_size=batch_sz,
                 recent_matchups=recent_matchups,
                 open_exposure=open_exposure,
@@ -2184,6 +2379,12 @@ def execute_pipeline(
             # Track newly approved positions for subsequent gate checks
             if sized.risk_approval.startswith("APPROVED"):
                 open_tickers.add(opp.ticker)
+                # S22: without this the whole slate is gated against the book as
+                # it stood BEFORE the batch, and both sides of one game approved
+                # in a single run would walk through together -- the same
+                # within-batch blind spot S4 had to close for exposure.
+                if opp.side:
+                    open_sides[opp.ticker] = opp.side.strip().lower()
                 evt = _event_key(opp.ticker)
                 event_counts[evt] = event_counts.get(evt, 0) + 1
                 # S4: accumulate within the batch. Without this the whole slate
