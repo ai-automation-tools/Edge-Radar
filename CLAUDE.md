@@ -63,7 +63,7 @@ EDGE_RADAR_PROFILE=longshot python scripts/doctor.py    # non-scan entry points
   exchange-enforced separate wallet under one login (Advanced API tier).
   Bankroll isolation is an **account**-level fact, so it never justified a fork.
 - **Only what the overlay names differs; everything else is inherited** —
-  risk gates, fee model, calibration, per-sport floors, the NFL freeze, and
+  risk gates, fee model, calibration, per-sport floors, the NFL pilot floor, and
   every future fix, in lockstep across both books. This is the point. The
   forked repo it replaced ran `MAX_OPEN_EXPOSURE_PCT=0`,
   `MAX_SEGMENT_EXPOSURE_PCT=0`, `MAX_DAYS_TO_EVENT_FOR_GAME_MARKETS=0`,
@@ -212,8 +212,10 @@ Standing rules — do not reverse them without new settled evidence.
   The 35-50c pocket is the one profitable NO band (+5.3%, n=55) and is deliberately left alone.
   **Damped, not gated** — that population is +4.8% Mar-May vs -16.0% Jun-Aug, too uneven for a hard
   reject, and halving keeps it generating data. *CHANGELOG 2026-08-25 (F4).*
-- **A sport with no settled history does not get live money.** NFL is frozen in the live `.env`
-  (`MIN_EDGE_THRESHOLD_NFL=1.0`) as of 2026-08-26: 24 open live positions, **$28.50 = 31% of a
+- **A sport with no settled history does not get live money.** NFL was frozen in the live `.env`
+  (`MIN_EDGE_THRESHOLD_NFL=1.0`) on 2026-08-26 and moved to the **S1b pilot floor of 0.08 on
+  2026-09-13** (see the S1b entry below — that move was an operator override, not the script
+  firing). At the freeze: 24 open live positions, **$28.50 = 31% of a
   ~$92 bankroll**, entries back to 2026-05-23, and **zero** NFL rows in the settlement log. Its
   `margin_stdev: 13.5` is a hardcoded prior, not a fit. No existing gate measures *total capital
   deployed* — `MAX_OPEN_POSITIONS` and `MAX_PER_EVENT` both passed the whole way, and
@@ -224,6 +226,17 @@ Standing rules — do not reverse them without new settled evidence.
   5-20c-wide book pays exactly the illiquidity penalty Gate 3.6 exists to avoid. Exit a ticker
   only if its spread is <= 5c *and* the exit price beats hold-to-settlement EV.
   *CHANGELOG 2026-08-26 (S1).*
+- **A pilot floor set by hand is not the same fact as a review that fired.**
+  `MIN_EDGE_THRESHOLD_NFL` went 1.0 -> **0.08 on 2026-09-13 by operator override**, two days
+  before S1b's pre-declared date and with `nfl_week1_review.py` still returning **BRANCH C**
+  (18 usable rows against its bar of 20). The evidence at the time pointed the right way —
+  model Brier **0.1318 vs market 0.1399**, model ahead in *both* spread and total, over-claim
+  **+0.019** against the 0.15 bar — but the bootstrap CI **[-0.042, +0.031]** still straddled
+  zero, and that is exactly the uncertainty the pilot cap exists to answer. **Re-run the review
+  once MNF settles**; if it returns C on the full sample, the floor goes back to 1.0. Record
+  which one set a floor, because "the script unfroze NFL" and "the operator unfroze NFL early"
+  decay into the same sentence within a month, and only one of them is evidence.
+  *CHANGELOG 2026-09-13 (S1b).*
 - **An edge that fires in one direction every time is a parameter, not a signal.** All
   11 NCAAF bets ever placed were YES on "team covers a big alternate spread", and the
   whole claimed edge was the margin stdev: solving per bet for the value that reconciles
@@ -382,7 +395,7 @@ Standing rules — do not reverse them without new settled evidence.
 
 ## Risk Limits
 
-Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=1.0` (S1 freeze, not in the code defaults)**.
+Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.08` (S1b pilot since 2026-09-13; was the 1.0 S1 freeze — neither is in the code defaults)**.
 
 ```env
 UNIT_SIZE=1.00                  # Kelly floor per bet — the longshot knob (binds below ~30c)
@@ -416,10 +429,13 @@ MIN_EDGE_THRESHOLD_WORLDCUP=1.0 # F3: World Cup OFF. A floor >= 1.0 can never be
                                 #   reports `sport_disabled`, the scan preview shows `off`.
                                 #   Sport names must match ticker_display._detect_sport().
                                 #   `doctor.py` prints every such sport on its own WARN line.
-MIN_EDGE_THRESHOLD_NFL=<unset>  # S1: FREEZE, live-only, code default unset. NFL is off in `.env`
-                                #   since 2026-08-26 — 24 open live positions, 31% of bankroll,
-                                #   and ZERO settled history. **Temporary**: remove it when S10
-                                #   (`strategy_state.json`) ships. See Sizing rules below.
+MIN_EDGE_THRESHOLD_NFL=<unset>  # S1/S1b: live-only, code default unset. FROZEN at 1.0 on
+                                #   2026-08-26 (24 open positions, 31% of bankroll, ZERO settled
+                                #   history); live `.env` now sets **0.08**, the S1b PILOT floor,
+                                #   since 2026-09-13. That was an operator override — the review
+                                #   still returned BRANCH C. ~2.7x the global floor, so only strong
+                                #   NFL rows clear Gate 3; Gate 2b still caps NFL at 33% of equity.
+                                #   **Temporary either way**: remove when S10 ships.
 MIN_EDGE_THRESHOLD_NCAAF=<unset> # S21: FREEZE, live-only, code default unset. NCAAF is off in `.env`
                                 #   since 2026-09-13 -- 11 settled bets, ALL of them YES on "covers a big
                                 #   alternate spread", priced off an unfitted margin_stdev of 15.0 that
