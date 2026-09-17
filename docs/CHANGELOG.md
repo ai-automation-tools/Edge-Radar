@@ -2,6 +2,122 @@
 
 ---
 
+## 2026-09-16 (S21c) -- NCAAF to a 0.08 pilot floor, and S21's mechanism does not replicate
+
+Operator asked to re-enable college football. Checks first. The freeze came off
+to a **0.08 pilot floor by operator override** -- the same shape as S1b, and
+recorded as such, because the S21b shadow book had **zero settled rows** at the
+time of the change.
+
+### The evidence the freeze is waiting on had not arrived
+
+```
+$ python scripts/backtest/shadow_book.py review --sport ncaaf
+  No settled shadow rows for NCAAF.
+
+354 rows collected 09-13 -> 09-16, game dates:
+  26SEP17   6
+  26SEP18  14
+  26SEP19 332   <- settles into the 09-20 06:00 pass
+  26SEP26   2
+```
+
+The daily `Shadow-Book-NCAAF` task is healthy (09-16 pass: scanned 142, added
+56). It simply started four days ago and college football plays on Saturdays.
+**Re-run `review --sport ncaaf --save` on 09-21** -- the Brier pair and the
+stdev sweep land on a ~350-row sample, 30x the 11 live bets, at zero risk.
+
+### S21's margin-stdev finding was a selection artifact
+
+S21 froze NCAAF on the reading that `margin_stdev` 15.0 is an unfitted prior
+the market disagrees with at ~9.5, and that 11 straight YES bets were one
+disagreement restated eleven times. Solving the same strike-independent
+expression `stdev* = 15 * ppf(1-fv) / ppf(1-px)` reproduces that exactly -- and
+then fails to reproduce it anywhere else:
+
+| population | n | median implied `margin_stdev` |
+|:--|--:|--:|
+| 10 filled live spread bets (S21's sample) | 10 | **9.44** |
+| fresh PRE-GATE shadow spread rows, tail strikes only | 94 | **17.04** (IQR 14.2-20.6) |
+
+15.0 sits inside the fresh IQR. The reason is mechanical: **edge on a YES
+big-cover bet is monotone decreasing in market-implied stdev**, so the gate
+harvests the lowest-implied-stdev rows in the book by construction. The
+"eleven restatements of one disagreement" is real, but it is the *selection
+rule* restating itself, not a miscalibrated parameter.
+
+The direction inverts too. If 15.0 were too fat, the model would sit *above*
+the market on big covers. Signed to the YES event, on fresh pre-gate rows:
+
+| YES-event price | n | mean(model - market) | model higher |
+|:--|--:|--:|--:|
+| <=0.30 (big-cover longshots) | 49 | **-0.018** | 29% |
+| 0.30-0.70 | 107 | -0.004 | 50% |
+| >=0.70 | 45 | **+0.031** | 76% |
+
+**Do not refit `margin_stdev` down to 9.5.** It would under-price every tail in
+the sport to chase an artifact of the selection rule.
+
+### Why 0.08 and not the global 0.03
+
+The rows that clear at 0.03 are not the population that got frozen. Simulating
+gates 3-4.6b at live `.env` values over the 354 shadow rows:
+
+| floor | rows clearing | of those, px >= 0.51 |
+|:--|--:|--:|
+| 0.03 (global) | 26 | **20** |
+| 0.05 | 14 | 12 |
+| **0.08 (shipped)** | **4** | 4 |
+| 0.10 | 0 | 0 |
+
+Last week's 11 NCAAF bets were all 12-32c and went 2-9, **-20% ROI on $12.82**.
+This week's clearing rows are 52-75c -- **F3's inversion band**, where the
+high-edge half wins 10.8pts *less*. Unfreezing to 0.03 would not resume the
+frozen experiment; it would start a new one in the band the model is on record
+as worst in. At 0.08 the band exposure is capped by count, not avoided, and
+Gate 2b still holds NCAAF to 33% of equity.
+
+Live check after the change: `doctor.py` reports `ncaaf=8.0%`, NCAAF is off the
+sports-OFF line (only `worldcup` remains), the scanner fetches 4620 NCAAF
+markets again, and **all 20 preview rows still show gate verdict `edge`** --
+today's best NCAAF edge is 8.4% against a 0.08 floor plus a 2c fee. The pilot
+is binding on day one, which is the point.
+
+### Found while verifying: `--filter ncaaf` silently matched nothing
+
+`scan.py sports --filter ncaaf` returned **0 markets**. The canonical shortcut
+keys are `ncaafb`/`ncaamb`, but an unknown shortcut falls through to a literal
+uppercase prefix -- `ncaaf` -> `NCAAF` -- which no Kalshi series carries. The
+scan then reports "No opportunities found above edge threshold", which is
+indistinguishable from a quiet day.
+
+`longshot_scan.bat` passes `--filter ...,ncaab,ncaaf,...`. **Neither is a key,
+so the longshot profile scanned zero college football and zero college
+basketball from its 09-10 migration until today** -- the same failure the
+retired Edge-Radar-Longshot fork hit on a stale `KXNCAAFBGAME` prefix, which
+rode across with the `.bat`. Three fixes:
+
+- `ncaaf` and `ncaab` added to `FILTER_SHORTCUTS` as aliases. Fixed in code
+  rather than in the `.bat`, because the schedulers are gitignored and a
+  `.bat`-only fix does not survive a clone.
+- The raw-prefix fallback now prints a yellow NOTE naming the unrecognised
+  token. It stays a feature (`--filter KXNHLGOAL` is legitimate), but it no
+  longer fails quietly.
+- `TestCollegeFilterAliases` asserts every shortcut maps to a `KX*` series and
+  that every sport with a `MIN_EDGE_THRESHOLD_<SPORT>` floor is reachable by a
+  filter of the same name -- a floor only binds rows a filter can fetch.
+
+### Also settled: the NFL S1b review fired
+
+`NFL-Week1-Review` ran 09-15 07:00 and returned **branch A** (model Brier
+0.1216 vs market 0.1333, n=22, model error -0.4% against a 15% bar),
+independently ratifying the 0.08 NFL floor the operator had set by hand on
+09-13. `applied: false` -- the key was already at the value the script would
+have written. CLAUDE.md's "re-run the review once MNF settles" is now
+satisfied; the end state is correct and the path bypassed the gate.
+
+---
+
 ## 2026-09-13 (S22) -- Gate 6b: never hold both sides of one game
 
 Operator spotted it by eye: "multiple bets in the same game, but bets for the
