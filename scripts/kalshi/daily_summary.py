@@ -14,15 +14,13 @@ Empty-day behavior: the report is still produced (proof-of-life pattern).
 
 Usage:
     python scripts/kalshi/daily_summary.py                       # to stdout
-    python scripts/kalshi/daily_summary.py --save                # reports/Performance/daily_summary_YYYY-MM-DD.md
-    python scripts/kalshi/daily_summary.py --hours 24            # window for "yesterday" (default 24h)
+    python scripts/kalshi/daily_summary.py --save          # reports/Performance/daily_summary_*.md
+    python scripts/kalshi/daily_summary.py --hours 24      # "yesterday" window (default 24h)
     python scripts/kalshi/daily_summary.py --no-bankroll         # skip live Kalshi balance fetch
 """
 
 from __future__ import annotations
 
-import re
-import json
 import argparse
 import statistics
 import sys
@@ -33,7 +31,12 @@ from pathlib import Path
 
 import paths  # noqa: F401 -- path setup
 from dotenv import load_dotenv
-from ticker_display import bet_type_from_ticker, parse_game_datetime, parse_matchup, sport_from_ticker
+from ticker_display import (
+    bet_type_from_ticker,
+    parse_game_datetime,
+    parse_matchup,
+    sport_from_ticker,
+)
 from trade_log import get_filled_cost, load_settlement_log, load_trade_log
 
 load_dotenv()
@@ -45,6 +48,7 @@ DEFAULT_OUT_DIR = Path("reports/Performance")
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _parse_iso(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -91,6 +95,7 @@ def _is_today_in_pst(ticker: str, now: datetime) -> bool:
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
+
 
 def load_recent_settlements(
     rows: list[dict] | None,
@@ -145,6 +150,7 @@ def load_open_positions(rows: list[dict] | None) -> list[dict]:
 
 # ── Aggregations ─────────────────────────────────────────────────────────────
 
+
 @dataclass
 class YesterdaySlice:
     n: int
@@ -167,7 +173,9 @@ class ExposureSlice:
     cost: float
 
 
-def aggregate_yesterday(settlements: list[dict]) -> tuple[YesterdaySlice, dict[str, YesterdaySlice]]:
+def aggregate_yesterday(
+    settlements: list[dict],
+) -> tuple[YesterdaySlice, dict[str, YesterdaySlice]]:
     overall = YesterdaySlice(0, 0, 0.0, 0.0)
     by_sport: dict[str, YesterdaySlice] = defaultdict(lambda: YesterdaySlice(0, 0, 0.0, 0.0))
     for s in settlements:
@@ -265,6 +273,7 @@ def rolling_7d_context(rows: list[dict], now: datetime) -> dict | None:
 
 # ── Rendering ────────────────────────────────────────────────────────────────
 
+
 def _format_today_pst(now: datetime) -> str:
     pst = now.astimezone(timezone(timedelta(hours=-8)))
     return pst.strftime("%Y-%m-%d")
@@ -312,7 +321,69 @@ def _error_reason(trade: dict) -> str:
     reason a two-minute fix took six days to find.
     """
     from venue_eligibility import actionable_reason
+
     return actionable_reason(trade.get("error") or "")
+
+
+def load_post_kickoff_orders(rows: list[dict] | None, hours: int, now: datetime) -> list[dict]:
+    """Live-money orders placed AFTER their event had already started.
+
+    Gate 4.8 rejects these, but it **fails open** when neither
+    `details["event_start_time"]` nor the ticker yields a dateable start, so a
+    market whose start time nothing can name still gets through. That is the
+    right call at gate time -- an unknown start is a sizing question, not a
+    legality one -- and it is exactly why the condition needs a detector behind
+    it as well as a gate in front of it.
+
+    S23 (2026-09-16) is the case in point: the gate read start times out of the
+    TICKER, which only moneyline series embed, so it never fired on a spread, a
+    total, or any football market, and 10 NCAAF orders went in 26-122 minutes
+    after kickoff on 09-12. Nothing noticed for four days. The book already
+    carried two independent tells and no reader:
+    `timestamp > event_start_time`, and `close_capture_reason: "missed"` on
+    exactly those rows -- the t-minus-5 CLV window cannot be sampled for a game
+    that has started. The first is the measurement; the second is corroboration
+    for rows with no start time recorded, and is reported separately because on
+    its own it has other causes (a capture task that simply did not run).
+
+    Entries are `{"trade": ..., "minutes_late": float | None, "tell": str}`.
+    """
+    if rows is None:
+        rows = load_trade_log()
+    cutoff = now - timedelta(hours=hours)
+    out: list[dict] = []
+    for t in rows:
+        if t.get("dry_run") or t.get("status") == "error":
+            continue
+        try:
+            placed = _parse_iso(t.get("timestamp") or "")
+        except ValueError:
+            continue
+        if placed < cutoff:
+            continue
+
+        start_raw = t.get("event_start_time") or (t.get("details") or {}).get("event_start_time")
+        if start_raw:
+            try:
+                start = _parse_iso(str(start_raw))
+            except ValueError:
+                continue
+            if placed > start:
+                out.append(
+                    {
+                        "trade": t,
+                        "minutes_late": (placed - start).total_seconds() / 60.0,
+                        "tell": "event_start_time",
+                    }
+                )
+            continue
+
+        # No start time on the row: fall back to the corroborating tell. Weaker
+        # -- flagged, never counted as proven -- because a capture task that did
+        # not run produces the same flag.
+        if t.get("close_capture_reason") == "missed":
+            out.append({"trade": t, "minutes_late": None, "tell": "close_capture_reason=missed"})
+    return out
 
 
 def render_report(
@@ -324,6 +395,7 @@ def render_report(
     now: datetime,
     hours: int,
     failed_orders: list[dict] | None = None,
+    post_kickoff: list[dict] | None = None,
 ) -> str:
     today = _format_today_pst(now)
     overall, by_sport = aggregate_yesterday(settlements_yesterday)
@@ -348,6 +420,36 @@ def render_report(
         )
         for reason, count in sorted(reasons.items(), key=lambda kv: -kv[1]):
             lines.append(f"> - {count}x — {reason}")
+        lines.append("")
+
+    # ── Post-kickoff orders ───────────────────────────────────────────────────
+    # Also above everything: with ALLOW_LIVE_BETS=false these should not exist,
+    # and the NCAAF book split on this line ran -36.5% post-kickoff against
+    # +13.6% pre-game. A hit here means Gate 4.8 failed open on a market whose
+    # start time nothing could name.
+    if post_kickoff:
+        proven = [r for r in post_kickoff if r["tell"] == "event_start_time"]
+        suspected = [r for r in post_kickoff if r["tell"] != "event_start_time"]
+        if proven:
+            lines.append(
+                f"> 🚨 **{len(proven)} order(s) placed AFTER kickoff** in this "
+                f"window, with `ALLOW_LIVE_BETS=false`."
+            )
+            for r in sorted(proven, key=lambda r: -(r["minutes_late"] or 0))[:6]:
+                t = r["trade"]
+                lines.append(
+                    f"> - {_matchup_label(t.get('ticker', ''))} "
+                    f"({_sport_label(t.get('ticker', ''))}, "
+                    f"{(t.get('side') or '').upper()}, "
+                    f"{_fmt_money(get_filled_cost(t))}) — "
+                    f"+{r['minutes_late']:.0f} min late"
+                )
+        if suspected:
+            lines.append(
+                f"> ⚠️ {len(suspected)} order(s) carry no `event_start_time` and "
+                f"missed the pre-game CLV capture — possible post-kickoff entry, "
+                f"unproven (the capture task not running looks identical)."
+            )
         lines.append("")
 
     # ── Yesterday ─────────────────────────────────────────────────────────────
@@ -386,11 +488,12 @@ def render_report(
                 f"{_fmt_signed(float(w.get('net_pnl') or 0.0))}"
             )
         if losers and float(losers[0].get("net_pnl") or 0.0) < 0:
-            l = losers[0]
+            worst = losers[0]
             lines.append(
-                f"- **Top loss:** {_matchup_label(l.get('ticker', ''))} "
-                f"({bet_type_from_ticker(l.get('ticker', ''))}, {(l.get('side') or '').upper()}) "
-                f"{_fmt_signed(float(l.get('net_pnl') or 0.0))}"
+                f"- **Top loss:** {_matchup_label(worst.get('ticker', ''))} "
+                f"({bet_type_from_ticker(worst.get('ticker', ''))}, "
+                f"{(worst.get('side') or '').upper()}) "
+                f"{_fmt_signed(float(worst.get('net_pnl') or 0.0))}"
             )
         lines.append("")
 
@@ -467,10 +570,12 @@ def render_report(
 
 # ── Live Kalshi balance fetch (optional, swappable for tests) ────────────────
 
+
 def _fetch_balance() -> float | None:
     """Best-effort live Kalshi balance fetch.  Returns None on any failure."""
     try:
         from kalshi_client import KalshiClient
+
         client = KalshiClient()
         bal = client.get_balance_dollars()
         # Kalshi balance dict has variants — try the common keys, else None
@@ -487,6 +592,7 @@ def _fetch_balance() -> float | None:
 
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
+
 def build_report(
     now: datetime,
     hours: int,
@@ -502,20 +608,32 @@ def build_report(
     pending = filter_pending_today(open_positions, now)
     rolling = rolling_7d_context(all_settlements, now)
     failed = load_failed_orders(all_trades, hours, now)
-    return render_report(yesterday, open_positions, pending, rolling, balance,
-                         now, hours, failed_orders=failed)
+    late = load_post_kickoff_orders(all_trades, hours, now)
+    return render_report(
+        yesterday,
+        open_positions,
+        pending,
+        rolling,
+        balance,
+        now,
+        hours,
+        failed_orders=failed,
+        post_kickoff=late,
+    )
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--hours", type=int, default=24,
-                    help="Rolling-window size for 'yesterday' (default: 24)")
-    ap.add_argument("--save", action="store_true",
-                    help=f"Save to {DEFAULT_OUT_DIR}/daily_summary_YYYY-MM-DD.md")
-    ap.add_argument("--out", type=Path, default=None,
-                    help="Explicit output path (overrides --save default)")
-    ap.add_argument("--no-bankroll", action="store_true",
-                    help="Skip live Kalshi balance fetch")
+    ap.add_argument(
+        "--hours", type=int, default=24, help="Rolling-window size for 'yesterday' (default: 24)"
+    )
+    ap.add_argument(
+        "--save", action="store_true", help=f"Save to {DEFAULT_OUT_DIR}/daily_summary_YYYY-MM-DD.md"
+    )
+    ap.add_argument(
+        "--out", type=Path, default=None, help="Explicit output path (overrides --save default)"
+    )
+    ap.add_argument("--no-bankroll", action="store_true", help="Skip live Kalshi balance fetch")
     return ap.parse_args(argv)
 
 

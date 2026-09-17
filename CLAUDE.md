@@ -201,6 +201,19 @@ Standing rules — do not reverse them without new settled evidence.
   never captured post-trade either (the v2 create-order response carries no `taker_fees_dollars`, so every
   logged trade recorded a fee of 0 and settlement computed `net_pnl = revenue - cost - 0`). `KALSHI_FEE_RATE=0`
   restores the old behaviour. *CHANGELOG 2026-08-25 (F1).*
+- **The fills endpoint calls the fee `fee_cost`, and our orders fill as TAKER.** `fetch_fill_fees`
+  read `fee_dollars or taker_fee_dollars or fee` — three names `/portfolio/fills` has never used —
+  so every fill resolved to 0 while the settler stamped `fee_source: "fills_api"`: a modelled number
+  wearing a measured label. It looked defensible ("Kalshi charges no maker fee, we post limit
+  orders"), and the inference was wrong — **a marketable limit at the ask crosses the spread**, so
+  133 of 138 orders are flagged `is_taker` and 136 carry a nonzero fee. Read **the first key
+  PRESENT, not the first key truthy**: a maker fill reports `"0.000000"`, which is a measured zero,
+  and an unrecognised payload must return `None` so the caller falls back to the model rather than
+  recording a zero. P&L was never wrong (`trade_fees()` falls back on a recorded zero) and the model
+  is **conservative** — $4.82 modelled against $4.10 actually paid over 135 rows, the gap being the
+  per-order `ceil` on 1-3 contract orders, so no floor needs changing. Repair a book behind a fee
+  bug with `python scripts/kalshi/kalshi_settler.py backfill-fees --apply`; settling only ever
+  stamps rows it is settling now. *CHANGELOG 2026-09-16 (S23b).*
 - **Kelly is `edge / (1 - price)`.** The `(1 - price)` divisor was missing until C11; without it favorites are under-sized 2.5x at 60c and 5x at 80c, and the flat floor collapses nearly every bet above ~60c to 1 contract — the single best-performing price band. *CHANGELOG 2026-07-27 (C11).*
 - **Two independent sizing lanes.** Below ~30c the flat floor `round(UNIT_SIZE / price)` binds and Kelly never clears it, so **`UNIT_SIZE` is the longshot knob**. Above ~60c Kelly binds and `UNIT_SIZE` is irrelevant, so **`KELLY_FRACTION` is the favorites knob**. Reach for the right one.
 - **`KELLY_FRACTION` is a portfolio fraction, not per-bet** — `kalshi_executor.py` divides it by `batch_size = min(len(opportunities), --max-bets)`. That divisor doubles as a crude correlation guard, but at 1.0 a fully correlated slate reaches full portfolio Kelly. **Keep it <= 0.5.**
@@ -306,6 +319,16 @@ Standing rules — do not reverse them without new settled evidence.
   neither is dateable. **The limitation was documented in the comments at both call
   sites for three months** — a known gap in a comment is not a tracked risk.
   *CHANGELOG 2026-09-16 (S23).*
+- **A gate that fails open needs a detector behind it.** Gate 4.8 rejects post-kickoff
+  orders and fails open when nothing can name a start time — correct at gate time, and
+  exactly why the daily digest now also *reports* them.
+  `daily_summary.load_post_kickoff_orders()` separates **proven**
+  (`timestamp > event_start_time`, with minutes late) from **suspected** (no start time
+  *and* `close_capture_reason: "missed"`), and never counts the second as proof, because a
+  CLV capture task that simply did not run looks identical. Both tells sat in the trade log
+  from 09-12 with **no reader** while the 10 live NCAAF bets settled at −36.5%. The gate is
+  the control; this is the alarm that says the control failed open.
+  *CHANGELOG 2026-09-16 (S23b).*
 - **Never hold both sides of one game.** Gate 6b (S22) rejects a bet that is
   *arithmetically unable* to win alongside something already held or resting.
   Found in the book, not in review: 3 contracts of "Los Angeles R win" (63c,

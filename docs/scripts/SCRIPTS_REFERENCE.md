@@ -197,6 +197,9 @@ python scripts/kalshi/kalshi_settler.py report --detail --save
 
 # 13. Reconcile local log vs Kalshi API
 python scripts/kalshi/kalshi_settler.py reconcile
+
+# 13b. Repair recorded fees from /portfolio/fills (dry run without --apply)
+python scripts/kalshi/kalshi_settler.py backfill-fees --apply
 ```
 
 ---

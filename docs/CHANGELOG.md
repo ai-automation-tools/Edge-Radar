@@ -2,6 +2,92 @@
 
 ---
 
+## 2026-09-16 (S23b) -- the fills endpoint calls it `fee_cost`, and nothing read the post-kickoff tell
+
+S23 closed with two items it deliberately did not fix. Both are now fixed, and
+the first was not the benign thing it looked like.
+
+### `taker_fees` was 0.00 on all 67 `fills_api` rows because the key is wrong
+
+The defensible reading was: Kalshi charges no maker fee, the executor posts
+limit orders, so passive fills legitimately cost nothing. S23 flagged it for a
+spot-check anyway, on the grounds that 52-of-52 is not a distribution. It is
+not maker fills. Probing `/portfolio/fills` live:
+
+```
+KEYS: action book_side count_fp created_time exchange_index FEE_COST fill_id
+      is_taker market_ticker no_price_dollars order_id outcome_side side
+      subaccount_number ticker trade_id ts yes_price_dollars
+
+fills fetched: 155, distinct orders: 138
+orders with NONZERO fee_cost: 136   total $4.1106
+orders flagged is_taker:      133
+```
+
+`fetch_fill_fees` read `fee_dollars or taker_fee_dollars or fee` -- **three
+names the endpoint has never used**. Every fill resolved to 0, and the settler
+stamped the result as `fee_source: "fills_api"`. A modelled number wearing a
+measured label.
+
+**A marketable limit at the ask crosses the spread, so it fills as taker.**
+"We post limit orders" and "our orders rest on the book" are different facts,
+and the fee model's own docstring says the first while the inference assumed the
+second. 133 of 138 orders were takers.
+
+**P&L was never wrong.** `trade_fees()` falls back to the modelled fee on a
+recorded zero, which is exactly why this survived a month: the arithmetic was
+right, only the provenance lied. The model turns out to be *conservative* --
+over the 135 matched rows it charges $4.82 against $4.10 actually paid, the
+15% gap being the per-order `ceil` on 1-3 contract orders. Gating was never too
+loose, and F1's floor needs no change.
+
+The read now takes **first key PRESENT, not first key truthy** -- a maker fill
+reports `"0.000000"`, which must record as a measured zero rather than falling
+through to the next name -- and an unrecognised payload returns `None`, not 0,
+so the caller omits the order and the model takes over. A rename logs a warning
+instead of silently zeroing the book again.
+
+### Backfill: `kalshi_settler.py backfill-fees [--apply]`
+
+Fixing the reader does not repair the 133 closed rows behind it -- the settler
+only stamps fees on what it is settling now. The new subcommand walks the log
+once. Only `fees` changes; `net_pnl` follows it, and `won`/`revenue`/`cost` are
+untouched (asserted after the run).
+
+```
+Updated 133 trade rows; recorded fees move by $+4.0959
+
+settlement log   fees $14.3519 -> $16.1351      net_pnl $51.8181 -> $50.0349
+  76 rows fees UP   (+$2.2151)  -- pre-F1 settlements recorded fees of 0
+  51 rows fees DOWN ( -$0.4319)  -- modelled ceil overstated the real fee
+```
+
+The book is $1.78 worse than it read, all of it fees genuinely paid before
+2026-08-25 and never recorded.
+
+### `close_capture_reason: "missed"` now has a reader
+
+S23 noted the flag "has been a post-kickoff tell sitting in the trade log since
+09-12". The fix for that is not another gate -- Gate 4.8 already rejects these,
+and **fails open when neither `event_start_time` nor the ticker yields a
+dateable start**, which is the right call at gate time and exactly why the
+condition needs a detector behind it as well.
+
+`daily_summary.load_post_kickoff_orders()` reports, above everything else in the
+digest:
+
+- **proven** -- `timestamp > event_start_time`, with minutes late, and
+- **suspected** -- no start time on the row *and* `close_capture_reason:
+  "missed"`, reported separately and never counted as proof, because a CLV
+  capture task that simply did not run looks identical.
+
+Replayed over the 09-12 window it returns exactly the 10 NCAAF orders S23 found,
++26 to +122 minutes, and nothing in the last 24h. Two independent tells sat in
+the log for four days with no reader; the gate is the control, this is the
+alarm that says the control failed open.
+
+---
+
 ## 2026-09-16 (S23) -- Gate 4.8 had never fired on a spread, a total, or any football market
 
 Operator asked whether the first week of college football had been analysed for

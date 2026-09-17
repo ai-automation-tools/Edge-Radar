@@ -72,3 +72,25 @@ Compares your local trade log against the Kalshi API to find:
 - Quantity mismatches between local and API
 
 No flags. Run periodically to keep your trade log accurate.
+
+---
+
+## `backfill-fees` -- Repair Recorded Fees (S23b)
+
+```bash
+python scripts/kalshi/kalshi_settler.py backfill-fees           # dry run
+python scripts/kalshi/kalshi_settler.py backfill-fees --apply   # write
+```
+
+Re-stamps the real `fee_cost` from `/portfolio/fills` onto every trade row,
+and moves each matching settlement's `net_pnl` by the difference.
+
+Needed because `settle` only stamps fees on rows it is settling *now*, so a
+fee-reading bug leaves the closed book behind it permanently wrong. That is
+what happened: the reader looked for `fee_dollars` / `taker_fee_dollars` /
+`fee`, and the field is **`fee_cost`**, so 133 rows recorded a measured $0.00
+they never paid.
+
+Only `fees` changes. `won`, `revenue`, `cost` and `contracts` are never
+touched, and `roi` is recomputed from the new `net_pnl`. Dry run by default --
+it prints the row count and the total movement before you commit to it.
