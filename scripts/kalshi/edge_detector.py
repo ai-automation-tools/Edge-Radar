@@ -20,15 +20,15 @@ Requires: ODDS_API_KEY in .env for sports edge detection.
 
 import re
 import sys
-import os
+import os  # noqa: F401  -- re-exported for modules importing this one
 import json
 import math
 import time
-import logging
+import logging  # noqa: F401  -- re-exported
 import argparse
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from dataclasses import asdict
+from pathlib import Path  # noqa: F401  -- re-exported
+from dataclasses import asdict  # noqa: F401  -- re-exported
 from scipy.stats import norm
 
 # Shared imports
@@ -55,12 +55,18 @@ load_dotenv()
 log = setup_logging("edge_detector")
 console = Console()
 
-from odds_api import get_current_key, rotate_key, report_remaining, mark_exhausted, redact_secrets
-import odds_cache
+from odds_api import (  # noqa: E402  -- must follow `import paths`
+    get_current_key,
+    rotate_key,
+    report_remaining,
+    mark_exhausted,
+    redact_secrets,
+)
+import odds_cache  # noqa: E402  -- must follow `import paths`
+
 ODDS_API_BASE = "https://api.the-odds-api.com/v4"
 
 MIN_EDGE = get_config().gates.min_edge_threshold
-
 
 
 # ── Market Categorization ────────────────────────────────────────────────────
@@ -68,114 +74,114 @@ MIN_EDGE = get_config().gates.min_edge_threshold
 # Map Kalshi ticker prefixes to categories
 CATEGORY_MAP = {
     # --- Game (moneyline / winner) ---
-    "KXMLBGAME":     "game",
-    "KXNHLGAME":     "game",
-    "KXNBAGAME":     "game",
-    "KXNCAABBGAME":  "game",
-    "KXNCAAMBGAME":  "game",
-    "KXNCAAFGAME":   "game",
-    "KXNCAAWBGAME":  "game",
-    "KXNFLGAME":     "game",
-    "KXMLSGAME":     "game",
-    "KXUCL":         "game",
-    "KXEPL":         "game",
-    "KXLALIGA":      "game",
-    "KXSERIEA":      "game",
-    "KXBUNDESLIGA":  "game",
-    "KXLIGUE1":      "game",
-    "KXWCGAME":      "game",
-    "KXUFCFIGHT":    "game",
-    "KXBOXING":      "game",
-    "KXIPL":         "game",
+    "KXMLBGAME": "game",
+    "KXNHLGAME": "game",
+    "KXNBAGAME": "game",
+    "KXNCAABBGAME": "game",
+    "KXNCAAMBGAME": "game",
+    "KXNCAAFGAME": "game",
+    "KXNCAAWBGAME": "game",
+    "KXNFLGAME": "game",
+    "KXMLSGAME": "game",
+    "KXUCL": "game",
+    "KXEPL": "game",
+    "KXLALIGA": "game",
+    "KXSERIEA": "game",
+    "KXBUNDESLIGA": "game",
+    "KXLIGUE1": "game",
+    "KXWCGAME": "game",
+    "KXUFCFIGHT": "game",
+    "KXBOXING": "game",
+    "KXIPL": "game",
     # --- Tennis (Wimbledon) ---
-    "KXATPMATCH":    "game",
-    "KXWTAMATCH":    "game",
+    "KXATPMATCH": "game",
+    "KXWTAMATCH": "game",
     # --- Spread ---
-    "KXMLBSPREAD":   "spread",
-    "KXNBASPREAD":   "spread",
-    "KXNHLSPREAD":   "spread",
-    "KXNCAAMBSPREAD":"spread",
-    "KXNFLSPREAD":   "spread",
+    "KXMLBSPREAD": "spread",
+    "KXNBASPREAD": "spread",
+    "KXNHLSPREAD": "spread",
+    "KXNCAAMBSPREAD": "spread",
+    "KXNFLSPREAD": "spread",
     "KXNCAAFSPREAD": "spread",
-    "KXMLSSPREAD":   "spread",
-    "KXWCSPREAD":    "spread",
+    "KXMLSSPREAD": "spread",
+    "KXWCSPREAD": "spread",
     # --- Total ---
-    "KXMLBTOTAL":    "total",
-    "KXNHLTOTAL":    "total",
-    "KXNBATOTAL":    "total",
+    "KXMLBTOTAL": "total",
+    "KXNHLTOTAL": "total",
+    "KXNBATOTAL": "total",
     "KXNCAAMBTOTAL": "total",
-    "KXNFLTOTAL":    "total",
-    "KXNCAAFTOTAL":  "total",
-    "KXMLSTOTAL":    "total",
-    "KXWCTOTAL":     "total",
+    "KXNFLTOTAL": "total",
+    "KXNCAAFTOTAL": "total",
+    "KXMLSTOTAL": "total",
+    "KXWCTOTAL": "total",
     # --- Player props ---
-    "KXNHLGOAL":     "player_prop",
-    "KXNHLPTS":      "player_prop",
-    "KXNHLAST":      "player_prop",
-    "KXNHLFIRSTGOAL":"player_prop",
-    "KXNBABLK":      "player_prop",
+    "KXNHLGOAL": "player_prop",
+    "KXNHLPTS": "player_prop",
+    "KXNHLAST": "player_prop",
+    "KXNHLFIRSTGOAL": "player_prop",
+    "KXNBABLK": "player_prop",
     # --- Mentions ---
-    "KXNBAMENTION":  "mention",
+    "KXNBAMENTION": "mention",
     "KXFOXNEWSMENTION": "mention",
-    "KXPOLITICSMENTION":"mention",
-    "KXLASTWORDCOUNT":"mention",
+    "KXPOLITICSMENTION": "mention",
+    "KXLASTWORDCOUNT": "mention",
     # --- Esports ---
-    "KXCS2MAP":      "esports",
-    "KXCS2GAME":     "esports",
-    "KXLOLMAP":      "esports",
-    "KXLOLGAME":     "esports",
+    "KXCS2MAP": "esports",
+    "KXCS2GAME": "esports",
+    "KXLOLMAP": "esports",
+    "KXLOLGAME": "esports",
     # --- Motorsports / Golf (race/tournament winner) ---
-    "KXF1":          "game",
-    "KXNASCARRACE":  "game",
-    "KXPGATOUR":     "game",
+    "KXF1": "game",
+    "KXNASCARRACE": "game",
+    "KXPGATOUR": "game",
 }
 
 # Map Kalshi ticker prefixes to Odds API sport keys
 # Full list: https://the-odds-api.com/sports-odds-data/sports-apis.html
 KALSHI_TO_ODDS_SPORT = {
     # --- MLB ---
-    "KXMLBGAME":       "baseball_mlb",
-    "KXMLBSPREAD":     "baseball_mlb",
-    "KXMLBTOTAL":      "baseball_mlb",
+    "KXMLBGAME": "baseball_mlb",
+    "KXMLBSPREAD": "baseball_mlb",
+    "KXMLBTOTAL": "baseball_mlb",
     # --- NHL ---
-    "KXNHLGAME":       "icehockey_nhl",
-    "KXNHLTOTAL":      "icehockey_nhl",
-    "KXNHLSPREAD":     "icehockey_nhl",
+    "KXNHLGAME": "icehockey_nhl",
+    "KXNHLTOTAL": "icehockey_nhl",
+    "KXNHLSPREAD": "icehockey_nhl",
     # --- NBA ---
-    "KXNBAGAME":       "basketball_nba",
-    "KXNBASPREAD":     "basketball_nba",
-    "KXNBATOTAL":      "basketball_nba",
+    "KXNBAGAME": "basketball_nba",
+    "KXNBASPREAD": "basketball_nba",
+    "KXNBATOTAL": "basketball_nba",
     # --- NFL ---
-    "KXNFLGAME":       "americanfootball_nfl",
-    "KXNFLSPREAD":     "americanfootball_nfl",
-    "KXNFLTOTAL":      "americanfootball_nfl",
+    "KXNFLGAME": "americanfootball_nfl",
+    "KXNFLSPREAD": "americanfootball_nfl",
+    "KXNFLTOTAL": "americanfootball_nfl",
     # --- College Basketball ---
-    "KXNCAABBGAME":    "basketball_ncaab",
-    "KXNCAAMBGAME":    "basketball_ncaab",
-    "KXNCAAMBSPREAD":  "basketball_ncaab",
-    "KXNCAAMBTOTAL":   "basketball_ncaab",
+    "KXNCAABBGAME": "basketball_ncaab",
+    "KXNCAAMBGAME": "basketball_ncaab",
+    "KXNCAAMBSPREAD": "basketball_ncaab",
+    "KXNCAAMBTOTAL": "basketball_ncaab",
     # --- College Football ---
-    "KXNCAAFGAME":     "americanfootball_ncaaf",
-    "KXNCAAFSPREAD":   "americanfootball_ncaaf",
-    "KXNCAAFTOTAL":    "americanfootball_ncaaf",
+    "KXNCAAFGAME": "americanfootball_ncaaf",
+    "KXNCAAFSPREAD": "americanfootball_ncaaf",
+    "KXNCAAFTOTAL": "americanfootball_ncaaf",
     # --- College Women's Basketball ---
-    "KXNCAAWBGAME":    "basketball_wncaab",
+    "KXNCAAWBGAME": "basketball_wncaab",
     # --- Soccer ---
-    "KXMLSGAME":       "soccer_usa_mls",
-    "KXMLSSPREAD":     "soccer_usa_mls",
-    "KXMLSTOTAL":      "soccer_usa_mls",
-    "KXUCL":           "soccer_uefa_champs_league",
-    "KXEPL":           "soccer_epl",
-    "KXLALIGA":        "soccer_spain_la_liga",
-    "KXSERIEA":        "soccer_italy_serie_a",
-    "KXBUNDESLIGA":    "soccer_germany_bundesliga",
-    "KXLIGUE1":        "soccer_france_ligue_one",
-    "KXWCGAME":        "soccer_fifa_world_cup",
-    "KXWCSPREAD":      "soccer_fifa_world_cup",
-    "KXWCTOTAL":       "soccer_fifa_world_cup",
+    "KXMLSGAME": "soccer_usa_mls",
+    "KXMLSSPREAD": "soccer_usa_mls",
+    "KXMLSTOTAL": "soccer_usa_mls",
+    "KXUCL": "soccer_uefa_champs_league",
+    "KXEPL": "soccer_epl",
+    "KXLALIGA": "soccer_spain_la_liga",
+    "KXSERIEA": "soccer_italy_serie_a",
+    "KXBUNDESLIGA": "soccer_germany_bundesliga",
+    "KXLIGUE1": "soccer_france_ligue_one",
+    "KXWCGAME": "soccer_fifa_world_cup",
+    "KXWCSPREAD": "soccer_fifa_world_cup",
+    "KXWCTOTAL": "soccer_fifa_world_cup",
     # --- Combat Sports ---
-    "KXUFCFIGHT":      "mma_mixed_martial_arts",
-    "KXBOXING":        "boxing_boxing",
+    "KXUFCFIGHT": "mma_mixed_martial_arts",
+    "KXBOXING": "boxing_boxing",
     # --- Motorsports / Golf ---
     # NOTE: The Odds API has no game-level keys for F1, NASCAR, or PGA tournament winners.
     # `golf_pga_championship_winner` is outrights-only, which 422s when requested with
@@ -183,13 +189,13 @@ KALSHI_TO_ODDS_SPORT = {
     # scored without external odds; PGA tournament winners are handled separately by
     # futures_edge.py using the `outrights` market type.
     # --- Cricket ---
-    "KXIPL":           "cricket_ipl",
+    "KXIPL": "cricket_ipl",
     # --- Tennis (Wimbledon) ---
     # h2h match-winner only; no spread/total on Kalshi.
     # NOTE: verify these prefixes locally — Kalshi API was egress-blocked during
     # the initial implementation (2026-06-28). Also try: KXATPGAME, KXWTAGAME.
-    "KXATPMATCH":      "tennis_atp_wimbledon",
-    "KXWTAMATCH":      "tennis_wta_wimbledon",
+    "KXATPMATCH": "tennis_atp_wimbledon",
+    "KXWTAMATCH": "tennis_wta_wimbledon",
 }
 
 
@@ -245,8 +251,12 @@ def fetch_odds_api(sport_key: str, markets: str = "h2h") -> list:
             sport_key, markets, cfg.ttl_seconds, cfg.live_ttl_seconds
         )
         if cached_events is not None:
-            log.info("Odds API file cache hit for %s (age %ds, %d events)",
-                     sport_key, age, len(cached_events))
+            log.info(
+                "Odds API file cache hit for %s (age %ds, %d events)",
+                sport_key,
+                age,
+                len(cached_events),
+            )
             _odds_cache[cache_key] = (time.monotonic(), cached_events)
             return cached_events
 
@@ -258,8 +268,7 @@ def fetch_odds_api(sport_key: str, markets: str = "h2h") -> list:
         api_key = get_current_key()
         if not api_key or api_key in tried:
             if tried:
-                log.warning("All %d Odds API keys returned 401/429 for %s",
-                            len(tried), sport_key)
+                log.warning("All %d Odds API keys returned 401/429 for %s", len(tried), sport_key)
             return []
         tried.add(api_key)
         try:
@@ -302,7 +311,9 @@ def fetch_odds_api(sport_key: str, markets: str = "h2h") -> list:
 _event_odds_cache: dict[str, tuple[float, dict]] = {}
 
 
-def fetch_event_odds_api(sport_key: str, event_id: str, markets: str = "h2h,spreads,totals") -> dict | None:
+def fetch_event_odds_api(
+    sport_key: str, event_id: str, markets: str = "h2h,spreads,totals"
+) -> dict | None:
     """Fetch event-level odds from The Odds API with caching and key rotation (Phase 2)."""
     cache_key = f"{sport_key}:{event_id}:{markets}"
     cfg = get_config().odds_cache
@@ -315,12 +326,11 @@ def fetch_event_odds_api(sport_key: str, event_id: str, markets: str = "h2h,spre
         del _event_odds_cache[cache_key]
 
     if cfg.enabled:
-        cached_event, age = odds_cache.load_event(
-            sport_key, event_id, cfg.live_ttl_seconds
-        )
+        cached_event, age = odds_cache.load_event(sport_key, event_id, cfg.live_ttl_seconds)
         if cached_event is not None:
-            log.info("Odds API (event) file cache hit for %s:%s (age %ds)",
-                     sport_key, event_id, age)
+            log.info(
+                "Odds API (event) file cache hit for %s:%s (age %ds)", sport_key, event_id, age
+            )
             _event_odds_cache[cache_key] = (time.monotonic(), cached_event)
             return cached_event
 
@@ -332,8 +342,9 @@ def fetch_event_odds_api(sport_key: str, event_id: str, markets: str = "h2h,spre
         api_key = get_current_key()
         if not api_key or api_key in tried:
             if tried:
-                log.warning("All %d Odds API keys returned 401/429 for event %s",
-                            len(tried), event_id)
+                log.warning(
+                    "All %d Odds API keys returned 401/429 for event %s", len(tried), event_id
+                )
             return None
         tried.add(api_key)
         try:
@@ -369,14 +380,17 @@ def fetch_event_odds_api(sport_key: str, event_id: str, markets: str = "h2h,spre
                 odds_cache.store_event(sport_key, event_id, event)
             return event
         except Exception as e:
-            log.warning("Odds API (event) error for %s:%s: %s", sport_key, event_id, redact_secrets(e))
+            log.warning(
+                "Odds API (event) error for %s:%s: %s", sport_key, event_id, redact_secrets(e)
+            )
             return None
 
 
 def _refresh_event_if_live(matched_event: dict, market: dict) -> dict:
-    """If the game is in progress, refresh its odds from the per-event Odds API endpoint (Phase 2)."""
+    """If the game is in progress, refresh its odds from the per-event Odds API endpoint (Phase 2)."""  # noqa: E501
     is_live = False
     from ticker_display import is_game_started
+
     if is_game_started(market.get("ticker", "")):
         is_live = True
     else:
@@ -398,7 +412,9 @@ def _refresh_event_if_live(matched_event: dict, market: dict) -> dict:
             # that visible rather than silent so a bad fill is diagnosable.
             log.warning(
                 "Live odds refresh failed for %s (%s); proceeding on the stale "
-                "sport-level snapshot", event_id, sport_key,
+                "sport-level snapshot",
+                event_id,
+                sport_key,
             )
     return matched_event
 
@@ -429,7 +445,9 @@ def _live_consensus_too_thin(events: list, n_fresh_books: int, n_excluded: int) 
         log.warning(
             "Live consensus thinned to %d fresh book(s) (< %d) after dropping %d "
             "stale book(s) — skipping rather than pricing off a thin sample",
-            n_fresh_books, floor, n_excluded,
+            n_fresh_books,
+            floor,
+            n_excluded,
         )
         return True
     return False
@@ -486,7 +504,8 @@ def _is_bookmaker_stale(bookmaker: dict, event: dict, max_age: int) -> bool:
         log.warning(
             "Excluding bookmaker %s on live event: no usable last_update on the "
             "bookmaker or any of its %d market(s)",
-            bookmaker.get("key"), len(bookmaker.get("markets", [])),
+            bookmaker.get("key"),
+            len(bookmaker.get("markets", [])),
         )
         return True
 
@@ -494,7 +513,9 @@ def _is_bookmaker_stale(bookmaker: dict, event: dict, max_age: int) -> bool:
     if age > max_age:
         log.warning(
             "Excluding bookmaker %s because its last_update is %d seconds old (limit %d)",
-            bookmaker.get("key"), age, max_age
+            bookmaker.get("key"),
+            age,
+            max_age,
         )
         return True
 
@@ -616,7 +637,8 @@ def consensus_fair_value(events: list, team_name: str) -> tuple[float, dict] | N
                     log.warning(
                         "consensus_fair_value: '%s' matches multiple outcomes "
                         "%s — ambiguous side, emitting no edge",
-                        team_name, [o.get("name") for o in outcomes],
+                        team_name,
+                        [o.get("name") for o in outcomes],
                     )
                     return None
                 if matched_idx is None:
@@ -658,7 +680,9 @@ def consensus_fair_value(events: list, team_name: str) -> tuple[float, dict] | N
     if len(matched_event_ids) > 1:
         log.warning(
             "consensus_fair_value: '%s' matched %d distinct events — refusing "
-            "to pool across games", team_name, len(matched_event_ids),
+            "to pool across games",
+            team_name,
+            len(matched_event_ids),
         )
         return None
 
@@ -684,11 +708,11 @@ def consensus_fair_value(events: list, team_name: str) -> tuple[float, dict] | N
 # band overconfidence in the 14-day review.  NHL left untouched (+87% ROI,
 # well-calibrated).
 SPORT_MARGIN_STDEV = {
-    "basketball_nba": 13.8,       # R2: 12.0 * 1.15
-    "basketball_ncaab": 12.1,     # R2: 11.0 * 1.10
+    "basketball_nba": 13.8,  # R2: 12.0 * 1.15
+    "basketball_ncaab": 12.1,  # R2: 11.0 * 1.10
     "americanfootball_nfl": 13.5,
     "americanfootball_ncaaf": 15.0,
-    "baseball_mlb": 4.025,        # R2: 3.5 * 1.15
+    "baseball_mlb": 4.025,  # R2: 3.5 * 1.15
     "icehockey_nhl": 2.5,
     # soccer: 1.8 stands on its PHYSICAL argument only. 2026-06-29 calibration
     # against 74 completed World Cup matches: mean total 2.96 goals, so the
@@ -790,8 +814,11 @@ def load_calibration_stdevs():
     ttl_days = get_config().gates.calibration_stdevs_ttl_days
     file_age_days = (time.time() - mtime) / 86400
     if file_age_days > ttl_days:
-        log.warning("calibration_stdevs.json is stale (age %.1f days > %d days). Using defaults.",
-                    file_age_days, ttl_days)
+        log.warning(
+            "calibration_stdevs.json is stale (age %.1f days > %d days). Using defaults.",
+            file_age_days,
+            ttl_days,
+        )
         return
 
     try:
@@ -802,8 +829,10 @@ def load_calibration_stdevs():
         return
 
     if data.get("version") != 1:
-        log.warning("calibration_stdevs.json has unsupported version %r. Using defaults.",
-                    data.get("version"))
+        log.warning(
+            "calibration_stdevs.json has unsupported version %r. Using defaults.",
+            data.get("version"),
+        )
         return
 
     margin = _valid_stdev_map(data.get("margin_stdev", {}))
@@ -814,8 +843,11 @@ def load_calibration_stdevs():
 
     _cached_calibrated_margin_stdev = margin
     _cached_calibrated_total_stdev = total
-    log.info("Loaded calibrated standard deviations from %s (age %.1f days).",
-             calibration_path, file_age_days)
+    log.info(
+        "Loaded calibrated standard deviations from %s (age %.1f days).",
+        calibration_path,
+        file_age_days,
+    )
 
 
 def _get_margin_stdev(ticker: str) -> float:
@@ -829,9 +861,9 @@ def _get_margin_stdev(ticker: str) -> float:
     return 12.0  # default fallback (basketball-like)
 
 
-def consensus_spread_prob(events: list, team_name: str, strike: float,
-                          ticker: str = "",
-                          stdev_adjustment: float = 0.0) -> tuple[float, dict] | None:
+def consensus_spread_prob(
+    events: list, team_name: str, strike: float, ticker: str = "", stdev_adjustment: float = 0.0
+) -> tuple[float, dict] | None:
     """
     Estimate probability of a team winning by > strike points using
     sportsbook spreads and a normal-distribution model.
@@ -867,7 +899,8 @@ def consensus_spread_prob(events: list, team_name: str, strike: float,
                     log.warning(
                         "consensus_spread_prob: '%s' matches multiple outcomes "
                         "%s — ambiguous side, emitting no edge",
-                        team_name, [o.get("name") for o in outcomes],
+                        team_name,
+                        [o.get("name") for o in outcomes],
                     )
                     return None
                 if idx is None:
@@ -885,17 +918,17 @@ def consensus_spread_prob(events: list, team_name: str, strike: float,
                 # ever take the YES side. Mirrors the moneyline devig in
                 # consensus_fair_value.
                 raw_implied = implied_prob(book_odds)
-                book_overround = sum(implied_prob(oc.get("price", 2.0))
-                                     for oc in outcomes)
-                devigged = (raw_implied / book_overround
-                            if book_overround > 0 else raw_implied)
-                spread_data.append({
-                    "book": bookmaker["key"],
-                    "spread": book_spread,
-                    "odds": book_odds,
-                    "implied": round(devigged, 4),
-                    "raw_implied": round(raw_implied, 4),
-                })
+                book_overround = sum(implied_prob(oc.get("price", 2.0)) for oc in outcomes)
+                devigged = raw_implied / book_overround if book_overround > 0 else raw_implied
+                spread_data.append(
+                    {
+                        "book": bookmaker["key"],
+                        "spread": book_spread,
+                        "odds": book_odds,
+                        "implied": round(devigged, 4),
+                        "raw_implied": round(raw_implied, 4),
+                    }
+                )
 
     # S19: the thin-consensus guard runs BEFORE the empty check. When the
     # staleness filter strips every book, this list is empty and the bare
@@ -914,7 +947,9 @@ def consensus_spread_prob(events: list, team_name: str, strike: float,
     if len(matched_event_ids) > 1:
         log.warning(
             "consensus_spread_prob: '%s' matched %d distinct events — refusing "
-            "to pool across games", team_name, len(matched_event_ids),
+            "to pool across games",
+            team_name,
+            len(matched_event_ids),
         )
         return None
 
@@ -967,11 +1002,11 @@ def consensus_spread_prob(events: list, team_name: str, strike: float,
 # Sport-specific total score standard deviations (empirical).
 # Represents how much the combined score varies around the expected total.
 SPORT_TOTAL_STDEV = {
-    "basketball_nba": 20.7,       # R2: 18.0 * 1.15
-    "basketball_ncaab": 17.6,     # R2: 16.0 * 1.10
+    "basketball_nba": 20.7,  # R2: 18.0 * 1.15
+    "basketball_ncaab": 17.6,  # R2: 16.0 * 1.10
     "americanfootball_nfl": 13.0,
     "americanfootball_ncaaf": 14.0,
-    "baseball_mlb": 3.45,         # R2: 3.0 * 1.15
+    "baseball_mlb": 3.45,  # R2: 3.0 * 1.15
     "icehockey_nhl": 2.2,
     # soccer: FOLLOW-UP (logged in ROADMAP 2026-06-29) — empirically too LOW.
     # 74 WC matches show a realized total-goals stdev of 1.86 vs 1.5 here, so
@@ -993,9 +1028,9 @@ def _get_total_stdev(ticker: str) -> float:
     return 12.0
 
 
-def consensus_total_prob(events: list, strike: float,
-                         ticker: str = "",
-                         stdev_adjustment: float = 0.0) -> tuple[float, dict] | None:
+def consensus_total_prob(
+    events: list, strike: float, ticker: str = "", stdev_adjustment: float = 0.0
+) -> tuple[float, dict] | None:
     """
     Estimate probability of total going over strike using sportsbook totals
     and a normal-distribution model.
@@ -1028,17 +1063,17 @@ def consensus_total_prob(events: list, strike: float,
                 # same bias the spread model carried (raw implied runs ~half the
                 # vig high, pushing the inferred mean and P(over) up).
                 raw_implied = implied_prob(over["price"])
-                book_overround = sum(implied_prob(o.get("price", 2.0))
-                                     for o in outcomes)
-                devigged = (raw_implied / book_overround
-                            if book_overround > 0 else raw_implied)
-                total_data.append({
-                    "book": bookmaker["key"],
-                    "line": over.get("point", 0),
-                    "odds": over.get("price", 2.0),
-                    "implied": round(devigged, 4),
-                    "raw_implied": round(raw_implied, 4),
-                })
+                book_overround = sum(implied_prob(o.get("price", 2.0)) for o in outcomes)
+                devigged = raw_implied / book_overround if book_overround > 0 else raw_implied
+                total_data.append(
+                    {
+                        "book": bookmaker["key"],
+                        "line": over.get("point", 0),
+                        "odds": over.get("price", 2.0),
+                        "implied": round(devigged, 4),
+                        "raw_implied": round(raw_implied, 4),
+                    }
+                )
 
     # S19: the thin-consensus guard runs BEFORE the empty check. When the
     # staleness filter strips every book, this list is empty and the bare
@@ -1058,7 +1093,8 @@ def consensus_total_prob(events: list, strike: float,
     if len(matched_event_ids) > 1:
         log.warning(
             "consensus_total_prob: totals matched %d distinct events — refusing "
-            "to pool across games", len(matched_event_ids),
+            "to pool across games",
+            len(matched_event_ids),
         )
         return None
 
@@ -1177,8 +1213,9 @@ def _match_team_outcome(outcomes: list, team_name: str) -> tuple[int | None, boo
     odds feed happened to list first (which inverted the favorite and
     fabricated a large phantom edge).
     """
-    scored = [(_team_match_strength(o.get("name", ""), team_name), i)
-              for i, o in enumerate(outcomes)]
+    scored = [
+        (_team_match_strength(o.get("name", ""), team_name), i) for i, o in enumerate(outcomes)
+    ]
     scored = [(s, i) for s, i in scored if s > 0]
     if not scored:
         return None, False
@@ -1190,6 +1227,7 @@ def _match_team_outcome(outcomes: list, team_name: str) -> tuple[int | None, boo
 
 
 # ── Extract Info from Kalshi Market ───────────────────────────────────────────
+
 
 def extract_team_from_market(market: dict) -> str | None:
     """Extract the team name this market resolves YES for."""
@@ -1227,8 +1265,9 @@ def extract_event_teams(market: dict) -> tuple[str, str] | None:
     rules = market.get("rules_primary", "")
     # Pattern: "Team A vs Team B" or "Team A at Team B" (multiple context words)
     match = re.search(
-        r"the (.+?) (?:vs\.?|at) (.+?) (?:professional|college|men's college|women's college|NCAA|MLB|NBA|NHL|NFL|MLS)",
-        rules, re.IGNORECASE,
+        r"the (.+?) (?:vs\.?|at) (.+?) (?:professional|college|men's college|women's college|NCAA|MLB|NBA|NHL|NFL|MLS)",  # noqa: E501
+        rules,
+        re.IGNORECASE,
     )
     if match:
         return _clean_team(match.group(1)), _clean_team(match.group(2))
@@ -1321,6 +1360,7 @@ def extract_strike(market: dict) -> float | None:
 
 # ── Team Stats Integration ───────────────────────────────────────────────────
 
+
 def _sport_from_ticker(ticker: str) -> str | None:
     """Map a Kalshi ticker prefix to a sport key for team_stats lookup."""
     for prefix, sport in _PREFIX_TO_SPORT.items():
@@ -1406,8 +1446,7 @@ def _adjust_confidence_with_stats(confidence: str, stats_signal: dict) -> str:
     return levels[max(idx - 1, 0)]
 
 
-def _sharp_money_signal(team_name: str, side: str, ticker: str,
-                        sharp_signals: dict) -> dict:
+def _sharp_money_signal(team_name: str, side: str, ticker: str, sharp_signals: dict) -> dict:
     """
     Check if ESPN line movement data shows sharp action relevant to this bet.
 
@@ -1432,6 +1471,7 @@ def _sharp_money_signal(team_name: str, side: str, ticker: str,
     if not signal:
         # Extract team abbrev from ticker: KXNBAGAME-26MAR25OKLBOS-OKC -> OKC, BOS
         import re
+
         match = re.search(r"\d{2}[A-Z]{3}\d{2}(\w+)-", ticker)
         if match:
             matchup = match.group(1)
@@ -1471,10 +1511,14 @@ def _sharp_money_signal(team_name: str, side: str, ticker: str,
 
 # ── Core Edge Detection ──────────────────────────────────────────────────────
 
-def detect_edge_game(market: dict, odds_events: list,
-                     sharp_signals: dict | None = None,
-                     pitcher_data: dict | None = None,
-                     rest_data: dict | None = None) -> Opportunity | None:
+
+def detect_edge_game(
+    market: dict,
+    odds_events: list,
+    sharp_signals: dict | None = None,
+    pitcher_data: dict | None = None,
+    rest_data: dict | None = None,
+) -> Opportunity | None:
     """Detect edge on game outcome markets (moneyline)."""
     ticker = market["ticker"]
     team = extract_team_from_market(market)
@@ -1578,25 +1622,32 @@ def detect_edge_game(market: dict, odds_events: list,
         # B2B team on the road is a disadvantage — reduce confidence if betting YES
         if rest_data.get("rest_advantage", 0) < 0 and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "contradicts"})
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
         elif rest_data.get("rest_advantage", 0) > 0 and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "supports"})
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
 
     # Adjust confidence with sharp money / line movement
     sharp = _sharp_money_signal(team, side, ticker, sharp_signals or {})
     if sharp.get("signal_found"):
         details["sharp_money"] = sharp
         if sharp.get("agrees_with_bet") is True:
-            confidence = _adjust_confidence_with_stats(confidence, {"stats_found": True, "signal": "supports"})
+            confidence = _adjust_confidence_with_stats(
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
         elif sharp.get("agrees_with_bet") is False:
-            confidence = _adjust_confidence_with_stats(confidence, {"stats_found": True, "signal": "contradicts"})
+            confidence = _adjust_confidence_with_stats(
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
 
     composite = (
-        min(edge / 0.01, 10) * 0.40 +      # edge strength (40%)
-        {"low": 3, "medium": 6, "high": 6}[confidence] * 0.30 +  # confidence (30%) — C4: high capped to medium (F49)
-        liquidity * 0.20 +                   # liquidity (20%)
-        5 * 0.10                             # time sensitivity placeholder (10%)
+        min(edge / 0.01, 10) * 0.40  # edge strength (40%)
+        + {"low": 3, "medium": 6, "high": 6}[confidence]
+        * 0.30  # confidence (30%) — C4: high capped to medium (F49)
+        + liquidity * 0.20  # liquidity (20%)
+        + 5 * 0.10  # time sensitivity placeholder (10%)
     )
 
     return Opportunity(
@@ -1615,10 +1666,13 @@ def detect_edge_game(market: dict, odds_events: list,
     )
 
 
-def detect_edge_spread(market: dict, odds_events: list,
-                       sharp_signals: dict | None = None,
-                       rest_data: dict | None = None,
-                       weather_data: dict | None = None) -> Opportunity | None:
+def detect_edge_spread(
+    market: dict,
+    odds_events: list,
+    sharp_signals: dict | None = None,
+    rest_data: dict | None = None,
+    weather_data: dict | None = None,
+) -> Opportunity | None:
     """Detect edge on spread markets."""
     ticker = market["ticker"]
     team = extract_team_from_market(market)
@@ -1644,8 +1698,9 @@ def detect_edge_spread(market: dict, odds_events: list,
     if weather_data and weather_data.get("scoring_impact"):
         stdev_adj += weather_data["scoring_impact"].get("stdev_adjustment", 0.0)
 
-    result = consensus_spread_prob(odds_events, team, strike, ticker=ticker,
-                                   stdev_adjustment=stdev_adj)
+    result = consensus_spread_prob(
+        odds_events, team, strike, ticker=ticker, stdev_adjustment=stdev_adj
+    )
     if result is None:
         return None
 
@@ -1710,25 +1765,31 @@ def detect_edge_spread(market: dict, odds_events: list,
         # B2B team covering a spread is harder — reduce confidence
         if rest_data.get("rest_advantage", 0) < 0 and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "contradicts"})
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
         elif rest_data.get("rest_advantage", 0) > 0 and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "supports"})
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
 
     # Adjust confidence with sharp money / line movement
     sharp = _sharp_money_signal(team, side, ticker, sharp_signals or {})
     if sharp.get("signal_found"):
         details["sharp_money"] = sharp
         if sharp.get("agrees_with_bet") is True:
-            confidence = _adjust_confidence_with_stats(confidence, {"stats_found": True, "signal": "supports"})
+            confidence = _adjust_confidence_with_stats(
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
         elif sharp.get("agrees_with_bet") is False:
-            confidence = _adjust_confidence_with_stats(confidence, {"stats_found": True, "signal": "contradicts"})
+            confidence = _adjust_confidence_with_stats(
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
 
     composite = (
-        min(edge / 0.01, 10) * 0.40 +
-        {"low": 3, "medium": 6, "high": 6}[confidence] * 0.30 +  # C4: high capped to medium (F49)
-        liquidity * 0.20 +
-        5 * 0.10
+        min(edge / 0.01, 10) * 0.40
+        + {"low": 3, "medium": 6, "high": 6}[confidence] * 0.30  # C4: high capped to medium (F49)
+        + liquidity * 0.20
+        + 5 * 0.10
     )
 
     return Opportunity(
@@ -1766,8 +1827,20 @@ def _extract_home_team_abbr(ticker: str) -> str | None:
     return None
 
 
-_MONTHS = {"JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
-           "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12}
+_MONTHS = {
+    "JAN": 1,
+    "FEB": 2,
+    "MAR": 3,
+    "APR": 4,
+    "MAY": 5,
+    "JUN": 6,
+    "JUL": 7,
+    "AUG": 8,
+    "SEP": 9,
+    "OCT": 10,
+    "NOV": 11,
+    "DEC": 12,
+}
 
 # Eastern Time is UTC-4 (EDT) through the bulk of the sports calendar. This
 # offset is used ONLY to disambiguate which odds event a Kalshi market refers
@@ -1808,8 +1881,9 @@ def _ticker_scheduled_utc(ticker: str) -> datetime | None:
     try:
         # Treat the ET wall-clock numerals as UTC, then shift by the ET offset
         # to land on the true UTC instant (good enough for event matching).
-        et_as_utc = datetime(2000 + int(yy), month, int(dd),
-                             int(hhmm[:2]), int(hhmm[2:]), tzinfo=timezone.utc)
+        et_as_utc = datetime(
+            2000 + int(yy), month, int(dd), int(hhmm[:2]), int(hhmm[2:]), tzinfo=timezone.utc
+        )
     except ValueError:
         return None
     return et_as_utc + timedelta(hours=_ET_UTC_OFFSET_HOURS)
@@ -1841,9 +1915,8 @@ def _event_has_matchup(event: dict, team_a: str, team_b: str) -> bool:
     """
     home = event.get("home_team", "") or ""
     away = event.get("away_team", "") or ""
-    return (
-        (_team_match(home, team_a) and _team_match(away, team_b))
-        or (_team_match(away, team_a) and _team_match(home, team_b))
+    return (_team_match(home, team_a) and _team_match(away, team_b)) or (
+        _team_match(away, team_a) and _team_match(home, team_b)
     )
 
 
@@ -1907,7 +1980,9 @@ def find_market_event(market: dict, events: list) -> dict | None:
             return best
         log.warning(
             "find_market_event: no odds event within 6h of %s scheduled start "
-            "— specific game absent, emitting no edge", ticker)
+            "— specific game absent, emitting no edge",
+            ticker,
+        )
         return None
 
     # Tennis: the ticker date is the market's expected expiration (~a day after
@@ -1923,15 +1998,19 @@ def find_market_event(market: dict, events: list) -> dict | None:
             if not tdate:
                 return candidates[0]
             try:
-                within = abs((datetime.fromisoformat(cdate)
-                              - datetime.fromisoformat(tdate)).days) <= 3
+                within = (
+                    abs((datetime.fromisoformat(cdate) - datetime.fromisoformat(tdate)).days) <= 3
+                )
             except (ValueError, TypeError):
                 within = False
             if within:
                 return candidates[0]
         log.warning(
             "find_market_event: %d tennis candidate(s) for %s — absent/"
-            "ambiguous, emitting no edge", len(candidates), ticker)
+            "ambiguous, emitting no edge",
+            len(candidates),
+            ticker,
+        )
         return None
 
     # Spread/total and NBA/NHL game tickers carry the date but no time. Require
@@ -1944,7 +2023,11 @@ def find_market_event(market: dict, events: list) -> dict | None:
             return same_day[0]
         log.warning(
             "find_market_event: %d candidate events on %s for %s — series/"
-            "absent/ambiguous, emitting no edge", len(same_day), gdate, ticker)
+            "absent/ambiguous, emitting no edge",
+            len(same_day),
+            gdate,
+            ticker,
+        )
         return None
 
     # No date signal at all (unexpected for game tickers): only safe to match
@@ -1953,17 +2036,23 @@ def find_market_event(market: dict, events: list) -> dict | None:
         return candidates[0]
 
     log.warning(
-        "find_market_event: %d candidate events for %s (%s vs %s) — ambiguous, "
-        "emitting no edge", len(candidates), ticker, team_a, team_b,
+        "find_market_event: %d candidate events for %s (%s vs %s) — ambiguous, " "emitting no edge",
+        len(candidates),
+        ticker,
+        team_a,
+        team_b,
     )
     return None
 
 
-def detect_edge_total(market: dict, odds_events: list,
-                      sharp_signals: dict | None = None,
-                      pitcher_data: dict | None = None,
-                      rest_data: dict | None = None,
-                      weather_data: dict | None = None) -> Opportunity | None:
+def detect_edge_total(
+    market: dict,
+    odds_events: list,
+    sharp_signals: dict | None = None,
+    pitcher_data: dict | None = None,
+    rest_data: dict | None = None,
+    weather_data: dict | None = None,
+) -> Opportunity | None:
     """Detect edge on over/under total markets."""
     ticker = market["ticker"]
     strike = extract_strike(market)
@@ -1989,8 +2078,7 @@ def detect_edge_total(market: dict, odds_events: list,
         stdev_adj += rest_data.get("stdev_adjustment", 0.0)
     if weather_data and weather_data.get("scoring_impact"):
         stdev_adj += weather_data["scoring_impact"].get("stdev_adjustment", 0.0)
-    result = consensus_total_prob(odds_events, strike, ticker=ticker,
-                                  stdev_adjustment=stdev_adj)
+    result = consensus_total_prob(odds_events, strike, ticker=ticker, stdev_adjustment=stdev_adj)
     if result is None:
         return None
 
@@ -2047,8 +2135,13 @@ def detect_edge_total(market: dict, odds_events: list,
             details["weather"] = weather_data
             details["weather_adjustment"] = adj
             details["weather_stdev_adj"] = impact.get("stdev_adjustment", 0.0)
-            log.info("Weather adjustment for %s: %+.1f%% fair, %+.2f stdev (%s)",
-                     ticker, adj * 100, impact.get("stdev_adjustment", 0.0), impact["reason"])
+            log.info(
+                "Weather adjustment for %s: %+.1f%% fair, %+.2f stdev (%s)",
+                ticker,
+                adj * 100,
+                impact.get("stdev_adjustment", 0.0),
+                impact["reason"],
+            )
 
     # Pitcher matchup signal for MLB totals
     if pitcher_data and pitcher_data.get("matchup_quality") != "unknown":
@@ -2061,18 +2154,26 @@ def detect_edge_total(market: dict, odds_events: list,
         psig = pitcher_data.get("confidence_signal", "neutral")
         if psig == "supports_over" and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "supports"})
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
         elif psig == "supports_under" and side == "no":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "supports"})
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
         elif psig == "supports_over" and side == "no":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "contradicts"})
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
         elif psig == "supports_under" and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "contradicts"})
-        log.info("Pitcher matchup for %s: %s (stdev %+.2f)",
-                 ticker, pitcher_data["matchup_quality"], stdev_adj)
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
+        log.info(
+            "Pitcher matchup for %s: %s (stdev %+.2f)",
+            ticker,
+            pitcher_data["matchup_quality"],
+            stdev_adj,
+        )
 
     # Rest day / back-to-back signal for totals (NBA/NHL)
     if rest_data and (rest_data.get("is_b2b") or rest_data.get("opponent_is_b2b")):
@@ -2084,13 +2185,19 @@ def detect_edge_total(market: dict, odds_events: list,
         rsig = rest_data.get("confidence_signal", "neutral")
         if rsig == "supports_under" and side == "no":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "supports"})
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
         elif rsig == "supports_under" and side == "yes":
             confidence = _adjust_confidence_with_stats(
-                confidence, {"stats_found": True, "signal": "contradicts"})
-        log.info("Rest day signal for %s: b2b=%s opp_b2b=%s (stdev %+.2f)",
-                 ticker, rest_data.get("is_b2b"), rest_data.get("opponent_is_b2b"),
-                 rest_data.get("stdev_adjustment", 0))
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
+        log.info(
+            "Rest day signal for %s: b2b=%s opp_b2b=%s (stdev %+.2f)",
+            ticker,
+            rest_data.get("is_b2b"),
+            rest_data.get("opponent_is_b2b"),
+            rest_data.get("stdev_adjustment", 0),
+        )
 
     # Sharp money / line movement signal for totals
     home_team = _extract_home_team_abbr(ticker)
@@ -2098,15 +2205,19 @@ def detect_edge_total(market: dict, odds_events: list,
     if sharp.get("signal_found"):
         details["sharp_money"] = sharp
         if sharp.get("agrees_with_bet") is True:
-            confidence = _adjust_confidence_with_stats(confidence, {"stats_found": True, "signal": "supports"})
+            confidence = _adjust_confidence_with_stats(
+                confidence, {"stats_found": True, "signal": "supports"}
+            )
         elif sharp.get("agrees_with_bet") is False:
-            confidence = _adjust_confidence_with_stats(confidence, {"stats_found": True, "signal": "contradicts"})
+            confidence = _adjust_confidence_with_stats(
+                confidence, {"stats_found": True, "signal": "contradicts"}
+            )
 
     composite = (
-        min(edge / 0.01, 10) * 0.40 +
-        {"low": 3, "medium": 6, "high": 6}[confidence] * 0.30 +  # C4: high capped to medium (F49)
-        liquidity * 0.20 +
-        5 * 0.10
+        min(edge / 0.01, 10) * 0.40
+        + {"low": 3, "medium": 6, "high": 6}[confidence] * 0.30  # C4: high capped to medium (F49)
+        + liquidity * 0.20
+        + 5 * 0.10
     )
 
     return Opportunity(
@@ -2133,13 +2244,13 @@ def detect_edge_spread_analysis(market: dict) -> Opportunity | None:
     """
     yes_ask = float(market.get("yes_ask_dollars", "0"))
     yes_bid = float(market.get("yes_bid_dollars", "0"))
-    no_ask = float(market.get("no_ask_dollars", "0"))
+    no_ask = float(market.get("no_ask_dollars", "0"))  # noqa: F841
 
     if yes_ask <= 0 or yes_ask >= 1.0 or yes_bid <= 0:
         return None
 
     spread = yes_ask - yes_bid
-    midpoint = (yes_ask + yes_bid) / 2
+    midpoint = (yes_ask + yes_bid) / 2  # noqa: F841
 
     # Only flag if spread is tight (< $0.05) — indicates some price discovery
     if spread > 0.05:
@@ -2155,61 +2266,106 @@ def detect_edge_spread_analysis(market: dict) -> Opportunity | None:
 # Named ticker prefix shortcuts for --filter
 FILTER_SHORTCUTS = {
     # --- US Major Leagues ---
-    "nba":     ["KXNBAGAME", "KXNBASPREAD", "KXNBATOTAL", "KXNBABLK", "KXNBA3PT", "KXNBAREB", "KXNBAAST", "KXNBASTL", "KXNBAPTS", "KXNBAMVP", "KXNBAROY", "KXNBADPOY"],
-    "nhl":     ["KXNHLGAME", "KXNHLSPREAD", "KXNHLTOTAL", "KXNHLGOAL", "KXNHLPTS", "KXNHLAST", "KXNHLFIRSTGOAL", "KXNHLHART", "KXNHLNORRIS", "KXNHLCALDER"],
+    "nba": [
+        "KXNBAGAME",
+        "KXNBASPREAD",
+        "KXNBATOTAL",
+        "KXNBABLK",
+        "KXNBA3PT",
+        "KXNBAREB",
+        "KXNBAAST",
+        "KXNBASTL",
+        "KXNBAPTS",
+        "KXNBAMVP",
+        "KXNBAROY",
+        "KXNBADPOY",
+    ],
+    "nhl": [
+        "KXNHLGAME",
+        "KXNHLSPREAD",
+        "KXNHLTOTAL",
+        "KXNHLGOAL",
+        "KXNHLPTS",
+        "KXNHLAST",
+        "KXNHLFIRSTGOAL",
+        "KXNHLHART",
+        "KXNHLNORRIS",
+        "KXNHLCALDER",
+    ],
     # KXMLBSPREAD/KXMLBTOTAL added 2026-07-20 — the series launched on Kalshi
     # after MLB was first wired (March), so MLB ran moneyline-only all season.
-    "mlb":     ["KXMLBGAME", "KXMLBSPREAD", "KXMLBTOTAL", "KXMLBPLAYOFFS"],
-    "nfl":     ["KXNFLGAME", "KXNFLSPREAD", "KXNFLTOTAL", "KXNFLDRAFT"],
+    "mlb": ["KXMLBGAME", "KXMLBSPREAD", "KXMLBTOTAL", "KXMLBPLAYOFFS"],
+    "nfl": ["KXNFLGAME", "KXNFLSPREAD", "KXNFLTOTAL", "KXNFLDRAFT"],
     # --- College Sports ---
-    "ncaamb":  ["KXNCAAMBGAME", "KXNCAAMBSPREAD", "KXNCAAMBTOTAL", "KXNCAAMBMOP"],
-    "ncaabb":  ["KXNCAABBGAME"],
-    "ncaawb":  ["KXNCAAWBGAME"],
-    "ncaafb":  ["KXNCAAFGAME", "KXNCAAFSPREAD", "KXNCAAFTOTAL"],
+    "ncaamb": ["KXNCAAMBGAME", "KXNCAAMBSPREAD", "KXNCAAMBTOTAL", "KXNCAAMBMOP"],
+    "ncaabb": ["KXNCAABBGAME"],
+    "ncaawb": ["KXNCAAWBGAME"],
+    "ncaafb": ["KXNCAAFGAME", "KXNCAAFSPREAD", "KXNCAAFTOTAL"],
+    # Aliases for the names everything else in the repo actually uses. The
+    # canonical keys end in -b (basketball/football), but `_detect_sport`,
+    # MIN_EDGE_THRESHOLD_<SPORT> and every doc say `ncaaf`/`ncaab` -- and an
+    # unknown shortcut falls through to a LITERAL prefix (`NCAAF`), matching
+    # nothing, silently. That is how longshot_scan.bat scanned zero college
+    # football and zero college basketball for six days. 2026-09-16.
+    "ncaaf": ["KXNCAAFGAME", "KXNCAAFSPREAD", "KXNCAAFTOTAL"],
+    "ncaab": ["KXNCAAMBGAME", "KXNCAAMBSPREAD", "KXNCAAMBTOTAL", "KXNCAAMBMOP", "KXNCAABBGAME"],
     # --- Soccer / Football ---
-    "mls":     ["KXMLSGAME", "KXMLSSPREAD", "KXMLSTOTAL"],
-    "ucl":     ["KXUCL"],
-    "epl":     ["KXEPL"],
-    "laliga":  ["KXLALIGA"],
-    "seriea":  ["KXSERIEA"],
+    "mls": ["KXMLSGAME", "KXMLSSPREAD", "KXMLSTOTAL"],
+    "ucl": ["KXUCL"],
+    "epl": ["KXEPL"],
+    "laliga": ["KXLALIGA"],
+    "seriea": ["KXSERIEA"],
     "bundesliga": ["KXBUNDESLIGA"],
-    "ligue1":  ["KXLIGUE1"],
+    "ligue1": ["KXLIGUE1"],
     "worldcup": ["KXWCGAME", "KXWCSPREAD", "KXWCTOTAL"],
-    "wc":      ["KXWCGAME", "KXWCSPREAD", "KXWCTOTAL"],
-    "soccer":  ["KXMLSGAME", "KXMLSSPREAD", "KXMLSTOTAL", "KXUCL", "KXEPL", "KXLALIGA", "KXSERIEA", "KXBUNDESLIGA", "KXLIGUE1", "KXWCGAME", "KXWCSPREAD", "KXWCTOTAL"],
+    "wc": ["KXWCGAME", "KXWCSPREAD", "KXWCTOTAL"],
+    "soccer": [
+        "KXMLSGAME",
+        "KXMLSSPREAD",
+        "KXMLSTOTAL",
+        "KXUCL",
+        "KXEPL",
+        "KXLALIGA",
+        "KXSERIEA",
+        "KXBUNDESLIGA",
+        "KXLIGUE1",
+        "KXWCGAME",
+        "KXWCSPREAD",
+        "KXWCTOTAL",
+    ],
     # --- Combat Sports ---
-    "ufc":     ["KXUFCFIGHT"],
-    "boxing":  ["KXBOXING"],
+    "ufc": ["KXUFCFIGHT"],
+    "boxing": ["KXBOXING"],
     # --- Motorsports ---
-    "f1":      ["KXF1", "KXF1CONSTRUCTORS"],
-    "nascar":  ["KXNASCARRACE"],
+    "f1": ["KXF1", "KXF1CONSTRUCTORS"],
+    "nascar": ["KXNASCARRACE"],
     # --- Golf ---
     # PGA Tour markets (KXPGATOUR) are outright tournament-winner markets, so
     # they route to the futures scanner, which prices the 4 majors against The
     # Odds API outright fields. Weekly tour stops have no odds feed and are
     # skipped there. `golf-futures` is the equivalent futures-path filter.
-    "pga":     ["__FUTURES__golf-futures"],
+    "pga": ["__FUTURES__golf-futures"],
     # --- Cricket ---
-    "ipl":     ["KXIPL"],
+    "ipl": ["KXIPL"],
     # --- Tennis (Wimbledon) ---
     # Match-winner only (no spread/total). Both ATP and WTA singles.
     # NOTE: verify KXATPMATCH/KXWTAMATCH against live Kalshi markets.
     # Alternate prefixes to try: KXATPGAME, KXWTAGAME, KXWIMMEN, KXWMENSINGLES.
     "wimbledon": ["KXATPMATCH", "KXWTAMATCH"],
-    "tennis":    ["KXATPMATCH", "KXWTAMATCH"],
+    "tennis": ["KXATPMATCH", "KXWTAMATCH"],
     # --- Esports ---
-    "cs2":     ["KXCS2MAP", "KXCS2GAME"],
-    "lol":     ["KXLOLMAP", "KXLOLGAME"],
+    "cs2": ["KXCS2MAP", "KXCS2GAME"],
+    "lol": ["KXLOLMAP", "KXLOLGAME"],
     "esports": ["KXCS2MAP", "KXCS2GAME", "KXLOLMAP", "KXLOLGAME"],
     # --- Futures (routed to futures_edge.py) ---
-    "futures":       ["__FUTURES__"],
-    "nfl-futures":   ["__FUTURES__nfl-futures"],
-    "superbowl":     ["__FUTURES__nfl-futures"],
-    "nba-futures":   ["__FUTURES__nba-futures"],
-    "nhl-futures":   ["__FUTURES__nhl-futures"],
-    "mlb-futures":   ["__FUTURES__mlb-futures"],
+    "futures": ["__FUTURES__"],
+    "nfl-futures": ["__FUTURES__nfl-futures"],
+    "superbowl": ["__FUTURES__nfl-futures"],
+    "nba-futures": ["__FUTURES__nba-futures"],
+    "nhl-futures": ["__FUTURES__nhl-futures"],
+    "mlb-futures": ["__FUTURES__mlb-futures"],
     "ncaab-futures": ["__FUTURES__ncaab-futures"],
-    "golf-futures":  ["__FUTURES__golf-futures"],
+    "golf-futures": ["__FUTURES__golf-futures"],
 }
 
 
@@ -2270,11 +2426,17 @@ def scan_all_markets(
         shortcuts = [s.strip().lower() for s in ticker_filter.split(",")]
 
         # Route futures filters to the dedicated futures scanner
-        if len(shortcuts) == 1 and shortcuts[0] in FILTER_SHORTCUTS and FILTER_SHORTCUTS[shortcuts[0]][0].startswith("__FUTURES__"):
+        if (
+            len(shortcuts) == 1
+            and shortcuts[0] in FILTER_SHORTCUTS
+            and FILTER_SHORTCUTS[shortcuts[0]][0].startswith("__FUTURES__")
+        ):
             from futures_edge import scan_futures_markets
+
             futures_filter = shortcuts[0] if shortcuts[0] != "futures" else None
-            return scan_futures_markets(client, min_edge=min_edge,
-                                        ticker_filter=futures_filter, top_n=top_n)
+            return scan_futures_markets(
+                client, min_edge=min_edge, ticker_filter=futures_filter, top_n=top_n
+            )
 
         filter_prefixes = []
         raw_prefixes = []
@@ -2282,12 +2444,23 @@ def scan_all_markets(
             if shortcut in FILTER_SHORTCUTS:
                 filter_prefixes.extend(FILTER_SHORTCUTS[shortcut])
             else:
+                # Not a known shortcut -- treat it as a raw ticker prefix. This
+                # is a real feature (ad-hoc `--filter KXNHLGOAL`), but it is
+                # also indistinguishable from a typo, and a typo matches zero
+                # markets and reports "no opportunities" like a quiet day. Say
+                # so loudly: silence here cost six days of longshot college
+                # scans. 2026-09-16.
                 filter_prefixes.append(shortcut.upper())
                 raw_prefixes.append(shortcut.upper())
 
         label = ", ".join(shortcuts)
         if raw_prefixes:
             rprint(f"[bold]Filter: {label} -> {', '.join(filter_prefixes)}[/bold]")
+            rprint(
+                f"[yellow]  NOTE: {', '.join(raw_prefixes)} is not a named filter -- "
+                f"using it as a raw ticker prefix. If that was a typo it will match "
+                f"0 markets and look like a quiet day.[/yellow]"
+            )
         else:
             rprint(f"[bold]Filter: {label} -> {len(filter_prefixes)} prefixes[/bold]")
 
@@ -2301,7 +2474,9 @@ def scan_all_markets(
         for prefix in filter_prefixes:
             cursor = None
             for _ in range(5):
-                resp = client.get_markets(limit=1000, status="open", series_ticker=prefix, cursor=cursor)
+                resp = client.get_markets(
+                    limit=1000, status="open", series_ticker=prefix, cursor=cursor
+                )
                 batch = resp.get("markets", [])
                 all_markets.extend(batch)
                 cursor = resp.get("cursor", "")
@@ -2319,13 +2494,17 @@ def scan_all_markets(
         for prefix in sorted(all_sport_prefixes):
             cursor = None
             for _ in range(3):
-                resp = client.get_markets(limit=1000, status="open", series_ticker=prefix, cursor=cursor)
+                resp = client.get_markets(
+                    limit=1000, status="open", series_ticker=prefix, cursor=cursor
+                )
                 batch = resp.get("markets", [])
                 all_markets.extend(batch)
                 cursor = resp.get("cursor", "")
                 if not cursor:
                     break
-        rprint(f"  Found {len(all_markets)} markets across {len(all_sport_prefixes)} sport prefixes")
+        rprint(
+            f"  Found {len(all_markets)} markets across {len(all_sport_prefixes)} sport prefixes"
+        )
 
     # Remove markets past their expected expiration. NOTE: expected_expiration_time
     # is the market CLOSE (after the game ends), so this does NOT drop in-progress
@@ -2333,9 +2512,11 @@ def scan_all_markets(
     # until the market expires. The scan views flag them via is_game_started (R27/F44).
     now = datetime.now(timezone.utc).isoformat()
     before = len(all_markets)
-    all_markets = [m for m in all_markets
-                   if (m.get("expected_expiration_time") or "") > now
-                   or not m.get("expected_expiration_time")]
+    all_markets = [
+        m
+        for m in all_markets
+        if (m.get("expected_expiration_time") or "") > now or not m.get("expected_expiration_time")
+    ]
     expired = before - len(all_markets)
     if expired:
         rprint(f"  Skipped {expired} closed markets (past expiration; in-progress games are kept)")
@@ -2343,12 +2524,17 @@ def scan_all_markets(
     # 1b. Apply date filter early to reduce Odds API calls
     if date_filter:
         before_date = len(all_markets)
-        all_markets = [m for m in all_markets
-                       if _extract_game_date(m["ticker"]) == date_filter
-                       or _extract_game_date(m["ticker"]) is None]
+        all_markets = [
+            m
+            for m in all_markets
+            if _extract_game_date(m["ticker"]) == date_filter
+            or _extract_game_date(m["ticker"]) is None
+        ]
         skipped_date = before_date - len(all_markets)
         if skipped_date:
-            rprint(f"  Date pre-filter ({date_filter}): {before_date} -> {len(all_markets)} markets")
+            rprint(
+                f"  Date pre-filter ({date_filter}): {before_date} -> {len(all_markets)} markets"
+            )
 
     # 2. Categorize
     categorized: dict[str, list] = {}
@@ -2358,7 +2544,8 @@ def scan_all_markets(
             continue
         categorized.setdefault(cat, []).append(m)
 
-    rprint(f"  Categories: { {k: len(v) for k, v in categorized.items()} }")
+    _cats = {k: len(v) for k, v in categorized.items()}
+    rprint(f"  Categories: {_cats}")
 
     # 3. Fetch external odds data for supported sports
     odds_data: dict[str, list] = {}
@@ -2423,7 +2610,7 @@ def scan_all_markets(
     rest_sports = {"basketball_nba", "icehockey_nhl"} & sports_needed
     for rs in rest_sports:
         # Collect unique game dates from tickers
-        prefix_map = {v: k for k, v in KALSHI_TO_ODDS_SPORT.items()}
+        prefix_map = {v: k for k, v in KALSHI_TO_ODDS_SPORT.items()}  # noqa: F841
         game_dates = set()
         for m in all_markets:
             for prefix, sport in KALSHI_TO_ODDS_SPORT.items():
@@ -2439,7 +2626,9 @@ def scan_all_markets(
                 log.debug("Rest data fetch failed for %s %s: %s", rs, gd, e)
         if rest_cache:
             b2b_count = sum(1 for v in rest_cache.values() if v.get("is_b2b"))
-            rprint(f"  Rest days ({rs.split('_')[-1].upper()}): {len(rest_cache)} teams, {b2b_count} on back-to-back")
+            rprint(
+                f"  Rest days ({rs.split('_')[-1].upper()}): {len(rest_cache)} teams, {b2b_count} on back-to-back"  # noqa: E501
+            )
 
     # 4. Run edge detection per category
     opportunities: list[Opportunity] = []
@@ -2484,9 +2673,13 @@ def scan_all_markets(
                 home = _extract_home_team_abbr(m["ticker"])
                 if home:
                     mlb_pitchers = pitcher_cache.get(home.upper())
-            opp = detect_edge_game(m, odds_data[sport_key], sharp_signals=sharp_signals,
-                                   pitcher_data=mlb_pitchers,
-                                   rest_data=_rest_for_market(m["ticker"]))
+            opp = detect_edge_game(
+                m,
+                odds_data[sport_key],
+                sharp_signals=sharp_signals,
+                pitcher_data=mlb_pitchers,
+                rest_data=_rest_for_market(m["ticker"]),
+            )
             if opp and opp.edge >= min_edge:
                 opportunities.append(opp)
 
@@ -2498,9 +2691,13 @@ def scan_all_markets(
                 sport_key = sk
                 break
         if sport_key and sport_key in odds_data:
-            opp = detect_edge_spread(m, odds_data[sport_key], sharp_signals=sharp_signals,
-                                     rest_data=_rest_for_market(m["ticker"]),
-                                     weather_data=_weather_for_market(m["ticker"]))
+            opp = detect_edge_spread(
+                m,
+                odds_data[sport_key],
+                sharp_signals=sharp_signals,
+                rest_data=_rest_for_market(m["ticker"]),
+                weather_data=_weather_for_market(m["ticker"]),
+            )
             if opp and opp.edge >= min_edge:
                 opportunities.append(opp)
 
@@ -2518,10 +2715,14 @@ def scan_all_markets(
                 home = _extract_home_team_abbr(m["ticker"])
                 if home:
                     mlb_pitchers = pitcher_cache.get(home.upper())
-            opp = detect_edge_total(m, odds_data[sport_key], sharp_signals=sharp_signals,
-                                    pitcher_data=mlb_pitchers,
-                                    rest_data=_rest_for_market(m["ticker"]),
-                                    weather_data=_weather_for_market(m["ticker"]))
+            opp = detect_edge_total(
+                m,
+                odds_data[sport_key],
+                sharp_signals=sharp_signals,
+                pitcher_data=mlb_pitchers,
+                rest_data=_rest_for_market(m["ticker"]),
+                weather_data=_weather_for_market(m["ticker"]),
+            )
             if opp and opp.edge >= min_edge:
                 opportunities.append(opp)
 
@@ -2536,13 +2737,17 @@ def scan_all_markets(
 
 # ── Output ────────────────────────────────────────────────────────────────────
 
+
 def print_opportunities(opportunities: list[Opportunity]):
     if not opportunities:
         rprint("[yellow]No opportunities found above edge threshold.[/yellow]")
         return
 
     from ticker_display import (
-        parse_game_datetime, format_bet_label, format_pick_label, sport_from_ticker,
+        parse_game_datetime,
+        format_bet_label,
+        format_pick_label,
+        sport_from_ticker,
         is_game_started,
     )
 
@@ -2562,7 +2767,9 @@ def print_opportunities(opportunities: list[Opportunity]):
     table.add_column("Type", style="magenta")
     table.add_column("Pick", style="bold white", max_width=22)
     table.add_column("When", style="dim")
-    table.add_column("Started")  # R27: flag in-progress games (live price vs stale pre-game odds, F44)
+    table.add_column(
+        "Started"
+    )  # R27: flag in-progress games (live price vs stale pre-game odds, F44)
     table.add_column("Mkt", justify="right")
     table.add_column("Fair", justify="right", style="green")
     table.add_column("Edge", justify="right", style="bold green")
@@ -2591,7 +2798,6 @@ def print_opportunities(opportunities: list[Opportunity]):
     console.print(table)
 
 
-
 def print_detail(client: KalshiClient, ticker: str):
     """Print detailed edge analysis for a single market."""
     snap = client.get_market_snapshot(ticker)
@@ -2617,7 +2823,7 @@ def print_detail(client: KalshiClient, ticker: str):
             sport_key = sk
             break
 
-    if sport_key and ODDS_API_KEY:
+    if sport_key and get_current_key():
         events = fetch_odds_api(sport_key, markets="h2h,spreads,totals")
         rprint(f"\n  Odds API: {len(events)} events for {sport_key}")
 
@@ -2625,13 +2831,17 @@ def print_detail(client: KalshiClient, ticker: str):
         # scanner and never blends a team's odds across multiple games.
         matched_event = find_market_event(market, events)
         if matched_event is None:
-            rprint("  [yellow]No single odds event matches this game "
-                   "(absent from feed or ambiguous) — no edge computed[/yellow]")
+            rprint(
+                "  [yellow]No single odds event matches this game "
+                "(absent from feed or ambiguous) — no edge computed[/yellow]"
+            )
             events = []
         else:
             teams = extract_event_teams(market)
-            rprint(f"  Matched event: {matched_event.get('away_team')} @ "
-                   f"{matched_event.get('home_team')}  (market teams: {teams})")
+            rprint(
+                f"  Matched event: {matched_event.get('away_team')} @ "
+                f"{matched_event.get('home_team')}  (market teams: {teams})"
+            )
             events = [matched_event]
 
         if cat == "game" and team and events:
@@ -2645,12 +2855,15 @@ def print_detail(client: KalshiClient, ticker: str):
                 if yes_ask > 0:
                     rprint(f"  Edge (yes): {fair - yes_ask:+.1%}")
                 for book, info in details.get("books", {}).items():
-                    rprint(f"    {book:>20}: odds={info['raw_odds']:.3f}  implied={info['implied']:.1%}  devig={info['devigged']:.1%}")
+                    rprint(
+                        f"    {book:>20}: odds={info['raw_odds']:.3f}  implied={info['implied']:.1%}  devig={info['devigged']:.1%}"  # noqa: E501
+                    )
     elif not get_current_key():
         rprint("\n  [yellow]ODDS_API_KEY not set -- cannot fetch external odds[/yellow]")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
+
 
 def main():
     parser = argparse.ArgumentParser(description="Kalshi edge detector -- find +EV opportunities")
@@ -2658,38 +2871,74 @@ def main():
 
     scan_p = sub.add_parser("scan", help="Scan all markets for edge")
     scan_p.add_argument("--min-edge", type=float, default=MIN_EDGE, help="Minimum edge threshold")
-    scan_p.add_argument("--filter", dest="ticker_filter",
-                        help="Filter by sport/prefix: ncaamb, nba, nhl, mlb, esports, or raw ticker prefix")
-    scan_p.add_argument("--category", choices=["game", "spread", "total", "player_prop", "esports", "other"],
-                        help="Filter to specific market category")
+    scan_p.add_argument(
+        "--filter",
+        dest="ticker_filter",
+        help="Filter by sport/prefix: ncaamb, nba, nhl, mlb, esports, or raw ticker prefix",
+    )
+    scan_p.add_argument(
+        "--category",
+        choices=["game", "spread", "total", "player_prop", "esports", "other"],
+        help="Filter to specific market category",
+    )
     scan_p.add_argument("--top", type=int, default=20, help="Number of top opportunities")
     scan_p.add_argument("--save", action="store_true", help="Save results to watchlist")
-    scan_p.add_argument("--execute", action="store_true",
-                        help="Execute bets through the pipeline (requires confirmation)")
-    scan_p.add_argument("--unit-size", type=float, default=None,
-                        help="Dollar amount per bet (default: UNIT_SIZE from .env)")
-    scan_p.add_argument("--max-bets", type=int, default=5,
-                        help="Maximum number of bets to place")
-    scan_p.add_argument("--min-bets", type=int, default=None,
-                        help="Minimum approved bets required to proceed. If fewer pass "
-                             "risk checks, abort to avoid over-concentrating budget.")
-    scan_p.add_argument("--pick", type=str, default=None,
-                        help="Comma-separated row numbers to execute (e.g., '1,3,5')")
-    scan_p.add_argument("--ticker", type=str, nargs="+", default=None,
-                        help="Execute only these specific tickers")
-    scan_p.add_argument("--date", type=str, default=None,
-                        help="Only show games on this date (today, tomorrow, YYYY-MM-DD, mar31)")
-    scan_p.add_argument("--budget", type=str, default=None,
-                        help="Max total cost for the batch. Percentage of bankroll (e.g. '10%%') "
-                             "or dollar amount (e.g. '15'). Bets scaled down proportionally.")
-    scan_p.add_argument("--exclude-open", action="store_true",
-                        help="Exclude markets where you already have an open position")
-    scan_p.add_argument("--report-dir", type=str, default=None,
-                        help="Override report output directory for --save")
-    scan_p.add_argument("--rescan", action="store_true",
-                        help="R26: ignore the scan cache and rescan live. Default behavior "
-                             "for --execute --pick/--ticker is to replay the cached preview "
-                             "so row indices stay locked to what you saw.")
+    scan_p.add_argument(
+        "--execute",
+        action="store_true",
+        help="Execute bets through the pipeline (requires confirmation)",
+    )
+    scan_p.add_argument(
+        "--unit-size",
+        type=float,
+        default=None,
+        help="Dollar amount per bet (default: UNIT_SIZE from .env)",
+    )
+    scan_p.add_argument("--max-bets", type=int, default=5, help="Maximum number of bets to place")
+    scan_p.add_argument(
+        "--min-bets",
+        type=int,
+        default=None,
+        help="Minimum approved bets required to proceed. If fewer pass "
+        "risk checks, abort to avoid over-concentrating budget.",
+    )
+    scan_p.add_argument(
+        "--pick",
+        type=str,
+        default=None,
+        help="Comma-separated row numbers to execute (e.g., '1,3,5')",
+    )
+    scan_p.add_argument(
+        "--ticker", type=str, nargs="+", default=None, help="Execute only these specific tickers"
+    )
+    scan_p.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="Only show games on this date (today, tomorrow, YYYY-MM-DD, mar31)",
+    )
+    scan_p.add_argument(
+        "--budget",
+        type=str,
+        default=None,
+        help="Max total cost for the batch. Percentage of bankroll (e.g. '10%%') "
+        "or dollar amount (e.g. '15'). Bets scaled down proportionally.",
+    )
+    scan_p.add_argument(
+        "--exclude-open",
+        action="store_true",
+        help="Exclude markets where you already have an open position",
+    )
+    scan_p.add_argument(
+        "--report-dir", type=str, default=None, help="Override report output directory for --save"
+    )
+    scan_p.add_argument(
+        "--rescan",
+        action="store_true",
+        help="R26: ignore the scan cache and rescan live. Default behavior "
+        "for --execute --pick/--ticker is to replay the cached preview "
+        "so row indices stay locked to what you saw.",
+    )
 
     detail_p = sub.add_parser("detail", help="Detailed analysis of one market")
     detail_p.add_argument("ticker", help="Market ticker")
@@ -2703,6 +2952,7 @@ def main():
         resolved_date = None
         if args.date:
             from ticker_display import resolve_date_arg
+
             resolved_date = resolve_date_arg(args.date)
 
         # R26 scan-cache fingerprint — args that determine the row universe.
@@ -2725,17 +2975,13 @@ def main():
         #    can reorder rows on price/score drift, executing the wrong picks.
         cached_rows = None
         cache_age_seconds = None
-        if (
-            args.execute
-            and (args.pick is not None or args.ticker is not None)
-            and not args.rescan
-        ):
+        if args.execute and (args.pick is not None or args.ticker is not None) and not args.rescan:
             from scan_cache import load as _scan_cache_load, fingerprints_match
+
             cached = _scan_cache_load()
             if cached is None:
                 rprint(
-                    "[dim]Scan cache: no fresh preview found "
-                    "— running a live scan first.[/dim]"
+                    "[dim]Scan cache: no fresh preview found " "— running a live scan first.[/dim]"
                 )
             else:
                 ok, diffs = fingerprints_match(cached["fingerprint"], fingerprint)
@@ -2774,23 +3020,31 @@ def main():
             # Apply date filter on opportunities (catches any edge cases the early filter missed)
             if opportunities and resolved_date:
                 from ticker_display import filter_by_date
+
                 before = len(opportunities)
                 opportunities = filter_by_date(opportunities, resolved_date)
                 if len(opportunities) < before:
-                    rprint(f"[dim]Date filter ({resolved_date}): {before} -> {len(opportunities)} opportunities[/dim]")
+                    rprint(
+                        f"[dim]Date filter ({resolved_date}): {before} -> {len(opportunities)} opportunities[/dim]"  # noqa: E501
+                    )
             if opportunities and args.exclude_open:
                 from ticker_display import filter_exclude_tickers
+
                 positions = client.get_positions(limit=200, count_filter="position")
                 open_tickers = {p.get("ticker", "") for p in positions.get("market_positions", [])}
                 before = len(opportunities)
                 opportunities = filter_exclude_tickers(opportunities, open_tickers)
-                rprint(f"[dim]Excluded open positions: {before} -> {len(opportunities)} opportunities[/dim]")
+                rprint(
+                    f"[dim]Excluded open positions: {before} -> {len(opportunities)} opportunities[/dim]"  # noqa: E501
+                )
 
         sized_orders = None
         if (cached_rows is not None) or (
-            opportunities and (args.execute or args.unit_size is not None or args.budget is not None)
+            opportunities
+            and (args.execute or args.unit_size is not None or args.budget is not None)
         ):
             from kalshi_executor import execute_pipeline, UNIT_SIZE, parse_budget_arg
+
             budget_val = parse_budget_arg(args.budget)
             sized_orders = execute_pipeline(
                 client=client,
@@ -2810,22 +3064,35 @@ def main():
             print_opportunities(opportunities)
         if args.save:
             from report_writer import save_execution_report, save_scan_report
+
             if sized_orders is not None:
-                rpt = save_execution_report(sized_orders, report_type="sports",
-                                            filter_label=args.ticker_filter or "", min_edge=args.min_edge,
-                                            output_dir=args.report_dir)
+                rpt = save_execution_report(
+                    sized_orders,
+                    report_type="sports",
+                    filter_label=args.ticker_filter or "",
+                    min_edge=args.min_edge,
+                    output_dir=args.report_dir,
+                )
             elif opportunities:
-                rpt = save_scan_report(opportunities, report_type="sports",
-                                       filter_label=args.ticker_filter or "", min_edge=args.min_edge,
-                                       output_dir=args.report_dir)
+                rpt = save_scan_report(
+                    opportunities,
+                    report_type="sports",
+                    filter_label=args.ticker_filter or "",
+                    min_edge=args.min_edge,
+                    output_dir=args.report_dir,
+                )
             else:
                 # No opportunities cleared the edge threshold. Still emit a
                 # proof-of-life report (empty "0 orders" execution report) so the
                 # paired email task has something to send on empty days, rather
                 # than silently skipping (feedback_sameday_empty_emails).
-                rpt = save_execution_report([], report_type="sports",
-                                            filter_label=args.ticker_filter or "", min_edge=args.min_edge,
-                                            output_dir=args.report_dir)
+                rpt = save_execution_report(
+                    [],
+                    report_type="sports",
+                    filter_label=args.ticker_filter or "",
+                    min_edge=args.min_edge,
+                    output_dir=args.report_dir,
+                )
             if rpt:
                 rprint(f"[dim]Report saved to {rpt}[/dim]")
 

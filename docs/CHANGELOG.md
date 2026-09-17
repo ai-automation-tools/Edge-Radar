@@ -2,6 +2,303 @@
 
 ---
 
+## 2026-09-16 (S23b) -- the fills endpoint calls it `fee_cost`, and nothing read the post-kickoff tell
+
+S23 closed with two items it deliberately did not fix. Both are now fixed, and
+the first was not the benign thing it looked like.
+
+### `taker_fees` was 0.00 on all 67 `fills_api` rows because the key is wrong
+
+The defensible reading was: Kalshi charges no maker fee, the executor posts
+limit orders, so passive fills legitimately cost nothing. S23 flagged it for a
+spot-check anyway, on the grounds that 52-of-52 is not a distribution. It is
+not maker fills. Probing `/portfolio/fills` live:
+
+```
+KEYS: action book_side count_fp created_time exchange_index FEE_COST fill_id
+      is_taker market_ticker no_price_dollars order_id outcome_side side
+      subaccount_number ticker trade_id ts yes_price_dollars
+
+fills fetched: 155, distinct orders: 138
+orders with NONZERO fee_cost: 136   total $4.1106
+orders flagged is_taker:      133
+```
+
+`fetch_fill_fees` read `fee_dollars or taker_fee_dollars or fee` -- **three
+names the endpoint has never used**. Every fill resolved to 0, and the settler
+stamped the result as `fee_source: "fills_api"`. A modelled number wearing a
+measured label.
+
+**A marketable limit at the ask crosses the spread, so it fills as taker.**
+"We post limit orders" and "our orders rest on the book" are different facts,
+and the fee model's own docstring says the first while the inference assumed the
+second. 133 of 138 orders were takers.
+
+**P&L was never wrong.** `trade_fees()` falls back to the modelled fee on a
+recorded zero, which is exactly why this survived a month: the arithmetic was
+right, only the provenance lied. The model turns out to be *conservative* --
+over the 135 matched rows it charges $4.82 against $4.10 actually paid, the
+15% gap being the per-order `ceil` on 1-3 contract orders. Gating was never too
+loose, and F1's floor needs no change.
+
+The read now takes **first key PRESENT, not first key truthy** -- a maker fill
+reports `"0.000000"`, which must record as a measured zero rather than falling
+through to the next name -- and an unrecognised payload returns `None`, not 0,
+so the caller omits the order and the model takes over. A rename logs a warning
+instead of silently zeroing the book again.
+
+### Backfill: `kalshi_settler.py backfill-fees [--apply]`
+
+Fixing the reader does not repair the 133 closed rows behind it -- the settler
+only stamps fees on what it is settling now. The new subcommand walks the log
+once. Only `fees` changes; `net_pnl` follows it, and `won`/`revenue`/`cost` are
+untouched (asserted after the run).
+
+```
+Updated 133 trade rows; recorded fees move by $+4.0959
+
+settlement log   fees $14.3519 -> $16.1351      net_pnl $51.8181 -> $50.0349
+  76 rows fees UP   (+$2.2151)  -- pre-F1 settlements recorded fees of 0
+  51 rows fees DOWN ( -$0.4319)  -- modelled ceil overstated the real fee
+```
+
+The book is $1.78 worse than it read, all of it fees genuinely paid before
+2026-08-25 and never recorded.
+
+### `close_capture_reason: "missed"` now has a reader
+
+S23 noted the flag "has been a post-kickoff tell sitting in the trade log since
+09-12". The fix for that is not another gate -- Gate 4.8 already rejects these,
+and **fails open when neither `event_start_time` nor the ticker yields a
+dateable start**, which is the right call at gate time and exactly why the
+condition needs a detector behind it as well.
+
+`daily_summary.load_post_kickoff_orders()` reports, above everything else in the
+digest:
+
+- **proven** -- `timestamp > event_start_time`, with minutes late, and
+- **suspected** -- no start time on the row *and* `close_capture_reason:
+  "missed"`, reported separately and never counted as proof, because a CLV
+  capture task that simply did not run looks identical.
+
+Replayed over the 09-12 window it returns exactly the 10 NCAAF orders S23 found,
++26 to +122 minutes, and nothing in the last 24h. Two independent tells sat in
+the log for four days with no reader; the gate is the control, this is the
+alarm that says the control failed open.
+
+---
+
+## 2026-09-16 (S23) -- Gate 4.8 had never fired on a spread, a total, or any football market
+
+Operator asked whether the first week of college football had been analysed for
+outstanding issues. It had not -- S21c reported bet-level P&L and never audited
+the pipeline behind it. Doing so found the actual cause of the NCAAF losses,
+and it is not `margin_stdev`.
+
+### 10 of 16 NCAAF orders were placed AFTER kickoff, with ALLOW_LIVE_BETS=false
+
+```
+                                              placed    kickoff   delta
+KXNCAAFSPREAD-26SEP12WSUKSU-KSU25            18:01:33   16:05Z   +117min
+KXNCAAFSPREAD-26SEP12APPECU-ECU8             18:01:33   16:00Z   +122min
+KXNCAAFSPREAD-26SEP12COLGCMU-CMU12           18:01:34   17:05Z    +57min
+KXNCAAFSPREAD-26SEP12OKLAMICH-OKLA5          18:01:35   16:14Z   +107min
+KXNCAAFSPREAD-26SEP12USFARMY-ARMY8           18:01:36   16:05Z   +117min
+KXNCAAFSPREAD-26SEP12ALAUK-UK5               21:01:16   19:45Z    +76min
+KXNCAAFTOTAL-26SEP12SHUMASS-55               21:01:17   19:30Z    +91min
+  (+3 more that never filled)
+```
+
+Two batches, 18:01Z and 21:01Z: `All-Sports-NoDateFilter-Midday-Execution`
+(daily 11:00 AM PT) and `All-Sports-SameDay-Late-Execution` (daily 2:00 PM PT).
+Both run **daily, including Saturdays** -- dead in the middle of the slate.
+
+Split the NCAAF book on that line and it stops being a sport problem:
+
+| | n | W-L | staked | P&L | ROI |
+|:--|--:|:--|--:|--:|--:|
+| **post-kickoff** | 7 | 1-6 | $8.62 | **-$3.15** | **-36.5%** |
+| pre-game | 4 | 1-3 | $4.20 | +$0.57 | **+13.6%** |
+
+**The entire NCAAF loss is the live bets.** An alt-spread model priced off
+pre-game consensus is catastrophically wrong two hours into a game, where much
+of the margin distribution has already resolved. This is a far better
+explanation of 11 one-sided YES bets going 2-9 than an unfitted stdev -- and it
+is consistent with S21c's finding that the stdev disagreement did not replicate
+on fresh pre-gate rows.
+
+### Why the gate could not see them
+
+`is_game_started()` parses the start time out of the **ticker**, and only
+moneyline series embed one (`KXMLBGAME-26JUL21`**`1840`**`MINCLE-MIN`). Every
+spread, every total, and every football ticker is date-only:
+
+```
+KXNCAAFSPREAD-26SEP12WSUKSU-KSU25   sched=None    started=False
+KXNCAAFTOTAL-26SEP12SHUMASS-55      sched=None    started=False
+KXNCAAFGAME-26SEP12WSUKSU-KSU       sched=None    started=False
+KXNFLSPREAD-26SEP13ARILAC-LAC28     sched=None    started=False
+KXMLBGAME-26JUL211840MINCLE-MIN     sched=2026-07-21 22:40Z   started=True
+```
+
+So Gate 4.8 returned False for them no matter the time of day. **123 of 175
+filled live-money bets -- $128 of $211 staked, 61% -- sat on markets it
+structurally could not protect**, led by KXWCSPREAD (36), KXMLSSPREAD (20),
+KXMLSTOTAL (18), KXNFLTOTAL (11), KXNFLSPREAD (10), KXNCAAFSPREAD (10). The
+limitation was *documented in the comments at both call sites* and never
+connected to the fix sitting next to it.
+
+### The fix
+
+`details["event_start_time"]` -- the Odds API `commence_time` for the matched
+event, carrying a real time -- was **already on the opportunity at gate time**.
+The executor only read it *after* the fact, to stamp the trade row (line 1638).
+New `_game_has_started(opp)` prefers it and falls back to the ticker; both Gate
+4.8 call sites now use it. Fails **open** when neither source is dateable,
+matching Gates 3.6/3.7 -- an unknown start time is a sizing question, not a
+legality one.
+
+Replaying all 16 real NCAAF orders through the fixed gate: **10 rejected
+`live_betting_disabled`** (the 7 filled ones staking $8.62 for -$3.15), and the
+**4-bet pre-game book survives untouched at +13.6%**.
+
+**This also protects the live NFL pilot.** No NFL row carries
+`event_start_time` (the S8 field postdates the whole NFL book), so no past NFL
+bet can be proven live -- but NFL tickers are all date-only too, so the gate
+never covered them either, and Sunday 1:00/4:25 PM ET kickoffs sit *before*
+both the 11 AM and 2 PM PT tasks.
+
+### Two open items, not fixed here
+
+- **`taker_fees` is 0.00 on all 52 rows that carry `fee_source: fills_api`** --
+  not one nonzero fee in the book. Kalshi charges no maker fee and the executor
+  posts limit orders, so passive fills legitimately cost 0; but 52/52 wants a
+  spot-check against a known taker fill before F1's "fees are now captured
+  post-trade" is trusted. Gating and sizing use the *modelled* fee and are
+  unaffected either way.
+- **`close_capture_reason: "missed"` on exactly the 7 live bets.** Not an
+  independent bug -- the t-minus-5 CLV window had already passed at order time.
+  Worth noting that this flag has been a post-kickoff tell sitting in the trade
+  log since 09-12.
+
+---
+
+## 2026-09-16 (S21c) -- NCAAF to a 0.08 pilot floor, and S21's mechanism does not replicate
+
+Operator asked to re-enable college football. Checks first. The freeze came off
+to a **0.08 pilot floor by operator override** -- the same shape as S1b, and
+recorded as such, because the S21b shadow book had **zero settled rows** at the
+time of the change.
+
+### The evidence the freeze is waiting on had not arrived
+
+```
+$ python scripts/backtest/shadow_book.py review --sport ncaaf
+  No settled shadow rows for NCAAF.
+
+354 rows collected 09-13 -> 09-16, game dates:
+  26SEP17   6
+  26SEP18  14
+  26SEP19 332   <- settles into the 09-20 06:00 pass
+  26SEP26   2
+```
+
+The daily `Shadow-Book-NCAAF` task is healthy (09-16 pass: scanned 142, added
+56). It simply started four days ago and college football plays on Saturdays.
+**Re-run `review --sport ncaaf --save` on 09-21** -- the Brier pair and the
+stdev sweep land on a ~350-row sample, 30x the 11 live bets, at zero risk.
+
+### S21's margin-stdev finding was a selection artifact
+
+S21 froze NCAAF on the reading that `margin_stdev` 15.0 is an unfitted prior
+the market disagrees with at ~9.5, and that 11 straight YES bets were one
+disagreement restated eleven times. Solving the same strike-independent
+expression `stdev* = 15 * ppf(1-fv) / ppf(1-px)` reproduces that exactly -- and
+then fails to reproduce it anywhere else:
+
+| population | n | median implied `margin_stdev` |
+|:--|--:|--:|
+| 10 filled live spread bets (S21's sample) | 10 | **9.44** |
+| fresh PRE-GATE shadow spread rows, tail strikes only | 94 | **17.04** (IQR 14.2-20.6) |
+
+15.0 sits inside the fresh IQR. The reason is mechanical: **edge on a YES
+big-cover bet is monotone decreasing in market-implied stdev**, so the gate
+harvests the lowest-implied-stdev rows in the book by construction. The
+"eleven restatements of one disagreement" is real, but it is the *selection
+rule* restating itself, not a miscalibrated parameter.
+
+The direction inverts too. If 15.0 were too fat, the model would sit *above*
+the market on big covers. Signed to the YES event, on fresh pre-gate rows:
+
+| YES-event price | n | mean(model - market) | model higher |
+|:--|--:|--:|--:|
+| <=0.30 (big-cover longshots) | 49 | **-0.018** | 29% |
+| 0.30-0.70 | 107 | -0.004 | 50% |
+| >=0.70 | 45 | **+0.031** | 76% |
+
+**Do not refit `margin_stdev` down to 9.5.** It would under-price every tail in
+the sport to chase an artifact of the selection rule.
+
+### Why 0.08 and not the global 0.03
+
+The rows that clear at 0.03 are not the population that got frozen. Simulating
+gates 3-4.6b at live `.env` values over the 354 shadow rows:
+
+| floor | rows clearing | of those, px >= 0.51 |
+|:--|--:|--:|
+| 0.03 (global) | 26 | **20** |
+| 0.05 | 14 | 12 |
+| **0.08 (shipped)** | **4** | 4 |
+| 0.10 | 0 | 0 |
+
+Last week's 11 NCAAF bets were all 12-32c and went 2-9, **-20% ROI on $12.82**.
+This week's clearing rows are 52-75c -- **F3's inversion band**, where the
+high-edge half wins 10.8pts *less*. Unfreezing to 0.03 would not resume the
+frozen experiment; it would start a new one in the band the model is on record
+as worst in. At 0.08 the band exposure is capped by count, not avoided, and
+Gate 2b still holds NCAAF to 33% of equity.
+
+Live check after the change: `doctor.py` reports `ncaaf=8.0%`, NCAAF is off the
+sports-OFF line (only `worldcup` remains), the scanner fetches 4620 NCAAF
+markets again, and **all 20 preview rows still show gate verdict `edge`** --
+today's best NCAAF edge is 8.4% against a 0.08 floor plus a 2c fee. The pilot
+is binding on day one, which is the point.
+
+### Found while verifying: `--filter ncaaf` silently matched nothing
+
+`scan.py sports --filter ncaaf` returned **0 markets**. The canonical shortcut
+keys are `ncaafb`/`ncaamb`, but an unknown shortcut falls through to a literal
+uppercase prefix -- `ncaaf` -> `NCAAF` -- which no Kalshi series carries. The
+scan then reports "No opportunities found above edge threshold", which is
+indistinguishable from a quiet day.
+
+`longshot_scan.bat` passes `--filter ...,ncaab,ncaaf,...`. **Neither is a key,
+so the longshot profile scanned zero college football and zero college
+basketball from its 09-10 migration until today** -- the same failure the
+retired Edge-Radar-Longshot fork hit on a stale `KXNCAAFBGAME` prefix, which
+rode across with the `.bat`. Three fixes:
+
+- `ncaaf` and `ncaab` added to `FILTER_SHORTCUTS` as aliases. Fixed in code
+  rather than in the `.bat`, because the schedulers are gitignored and a
+  `.bat`-only fix does not survive a clone.
+- The raw-prefix fallback now prints a yellow NOTE naming the unrecognised
+  token. It stays a feature (`--filter KXNHLGOAL` is legitimate), but it no
+  longer fails quietly.
+- `TestCollegeFilterAliases` asserts every shortcut maps to a `KX*` series and
+  that every sport with a `MIN_EDGE_THRESHOLD_<SPORT>` floor is reachable by a
+  filter of the same name -- a floor only binds rows a filter can fetch.
+
+### Also settled: the NFL S1b review fired
+
+`NFL-Week1-Review` ran 09-15 07:00 and returned **branch A** (model Brier
+0.1216 vs market 0.1333, n=22, model error -0.4% against a 15% bar),
+independently ratifying the 0.08 NFL floor the operator had set by hand on
+09-13. `applied: false` -- the key was already at the value the script would
+have written. CLAUDE.md's "re-run the review once MNF settles" is now
+satisfied; the end state is correct and the path bypassed the gate.
+
+---
+
 ## 2026-09-13 (S22) -- Gate 6b: never hold both sides of one game
 
 Operator spotted it by eye: "multiple bets in the same game, but bets for the

@@ -32,6 +32,7 @@ from futures_edge import devig_nway, FUTURES_MAP
 
 # ── devig_nway ───────────────────────────────────────────────────────────────
 
+
 class TestDevigNway:
     def test_two_way_even(self):
         outcomes = [
@@ -45,7 +46,7 @@ class TestDevigNway:
     def test_two_way_favorite(self):
         outcomes = [
             {"name": "Favorite", "price": 1.5},  # implied 66.7%
-            {"name": "Underdog", "price": 3.0},   # implied 33.3%
+            {"name": "Underdog", "price": 3.0},  # implied 33.3%
         ]
         result = devig_nway(outcomes)
         # Total implied = 1.0 (no vig in this case)
@@ -99,6 +100,7 @@ class TestDevigNway:
 
 # ── R22: futures ticker-to-series matching (no prefix collision) ─────────────
 
+
 class TestFuturesSeriesMatch:
     """R22 (2026-04-24): `FUTURES_MAP` is now keyed by exact series (everything
     before the first hyphen in the ticker). Old `ticker.startswith(prefix)`
@@ -151,6 +153,7 @@ class TestFuturesSeriesMatch:
 
 # ── PGA: resolve the major from the market title (Odds API majors-only) ──────
 
+
 class TestGolfMajorResolution:
     """KXPGATOUR spans the whole PGA Tour, but The Odds API only publishes
     outright fields for the 4 majors. `_golf_major_key` maps a market title to
@@ -160,22 +163,26 @@ class TestGolfMajorResolution:
 
     def test_us_open_resolves(self):
         from futures_edge import _golf_major_key
+
         key, label = _golf_major_key("Will Bud Cauley win the U.S. Open?")
         assert key == "golf_us_open_winner"
         assert label == "U.S. Open Winner"
 
     def test_pga_championship_resolves(self):
         from futures_edge import _golf_major_key
+
         key, _ = _golf_major_key("Will Tom Hoge win the PGA Championship?")
         assert key == "golf_pga_championship_winner"
 
     def test_masters_resolves(self):
         from futures_edge import _golf_major_key
+
         key, _ = _golf_major_key("Will X win the Masters?")
         assert key == "golf_masters_tournament_winner"
 
     def test_the_open_resolves(self):
         from futures_edge import _golf_major_key
+
         key, _ = _golf_major_key("Will X win The Open?")
         assert key == "golf_the_open_championship_winner"
 
@@ -183,21 +190,28 @@ class TestGolfMajorResolution:
         # "U.S. Open Final Qualifying ..." contains "u.s. open" but is NOT the
         # major — must return None so it isn't priced against U.S. Open odds.
         from futures_edge import _golf_major_key
-        assert _golf_major_key(
-            "Will Kevin Streelman win the U.S. Open Final Qualifying Dallas Playoff?"
-        ) is None
+
+        assert (
+            _golf_major_key(
+                "Will Kevin Streelman win the U.S. Open Final Qualifying Dallas Playoff?"
+            )
+            is None
+        )
 
     def test_canadian_open_not_mistaken_for_the_open(self):
         # Bare "open" must not match The Open Championship.
         from futures_edge import _golf_major_key
+
         assert _golf_major_key("Will Ben Kohles win the RBC Canadian Open?") is None
 
     def test_weekly_stop_is_skipped(self):
         from futures_edge import _golf_major_key
+
         assert _golf_major_key("Will Marco Penge win the RBC Heritage?") is None
 
 
 # ── R13: confidence bumps are one-way (down only) ───────────────────────────
+
 
 class TestConfidenceBumpsOneWay:
     """R13 (2026-04-24): `_adjust_confidence_with_stats` should drop a level
@@ -228,6 +242,7 @@ class TestConfidenceBumpsOneWay:
 
 
 # ── Normal CDF spread model (math validation) ───────────────────────────────
+
 
 class TestSpreadMath:
     """Validate the normal CDF model used for spread probability.
@@ -347,6 +362,7 @@ class TestTotalMath:
 
 # ── fetch_odds_api key-rotation ──────────────────────────────────────────────
 
+
 class TestFetchOddsApiKeyRotation:
     """Regression for the silent-0-events bug where range(3) bailed before
     trying the last rotated key. A single-sport scan must rotate through every
@@ -370,18 +386,21 @@ class TestFetchOddsApiKeyRotation:
         """
         import odds_api
         import odds_cache
+
         monkeypatch.setattr(odds_api, "_QUOTA_CACHE_PATH", tmp_path / "quota.json")
         monkeypatch.setattr(odds_cache, "_CACHE_DIR", tmp_path / "odds_cache")
 
     def _setup_keys(self, keys: list[str]) -> None:
         """Install a known key list into odds_api module state."""
         import odds_api
+
         odds_api._keys = list(keys)
         odds_api._current_index = 0
         odds_api._remaining = {}
 
     def test_tries_all_keys_before_giving_up(self):
         import edge_detector
+
         edge_detector._odds_cache.clear()
         self._setup_keys(["k1", "k2", "k3", "k4"])
 
@@ -399,6 +418,7 @@ class TestFetchOddsApiKeyRotation:
     def test_succeeds_after_rotating_past_exhausted_keys(self):
         """Reproduces the user-reported bug: first 3 keys exhausted, 4th works."""
         import edge_detector
+
         edge_detector._odds_cache.clear()
         self._setup_keys(["k1", "k2", "k3", "k4"])
 
@@ -421,6 +441,7 @@ class TestFetchOddsApiKeyRotation:
     def test_first_key_success_no_rotation(self):
         """Happy path: first key works, no unnecessary rotation."""
         import edge_detector
+
         edge_detector._odds_cache.clear()
         self._setup_keys(["k1", "k2"])
 
@@ -435,11 +456,11 @@ class TestFetchOddsApiKeyRotation:
     def test_single_key_401_returns_empty(self):
         """One configured key that 401s — log and return [] without retrying."""
         import edge_detector
+
         edge_detector._odds_cache.clear()
         self._setup_keys(["only_key"])
 
-        with patch("edge_detector.requests.get",
-                   return_value=self._mock_response(401)) as mock_get:
+        with patch("edge_detector.requests.get", return_value=self._mock_response(401)) as mock_get:
             result = edge_detector.fetch_odds_api("baseball_mlb", markets="h2h")
 
         assert result == []
@@ -448,6 +469,7 @@ class TestFetchOddsApiKeyRotation:
 
 
 # ── In-process cache live-aware TTL (L1) ─────────────────────────────────────
+
 
 class TestInProcessCacheTtl:
     """L1: the in-process `_odds_cache` now expires. Pre-game entries live for
@@ -467,10 +489,12 @@ class TestInProcessCacheTtl:
         import odds_api
         import odds_cache
         import edge_detector
+
         # Disable the file cache so we isolate the in-process layer.
         monkeypatch.setattr(odds_api, "_QUOTA_CACHE_PATH", tmp_path / "quota.json")
         monkeypatch.setattr(odds_cache, "_CACHE_DIR", tmp_path / "odds_cache")
         from app.config import reset_config
+
         monkeypatch.setenv("ODDS_CACHE_ENABLED", "false")
         monkeypatch.setenv("ODDS_CACHE_TTL_SECONDS", "300")
         monkeypatch.setenv("ODDS_LIVE_TTL_SECONDS", "45")
@@ -484,12 +508,14 @@ class TestInProcessCacheTtl:
 
     def test_pregame_entry_dedups_within_ttl(self, monkeypatch):
         import edge_detector
+
         clock = [1000.0]
         monkeypatch.setattr(edge_detector.time, "monotonic", lambda: clock[0])
         upcoming = [{"home_team": "Yankees", "commence_time": "2099-01-01T00:00:00Z"}]
 
-        with patch("edge_detector.requests.get",
-                   return_value=self._mock_response(upcoming)) as mock_get:
+        with patch(
+            "edge_detector.requests.get", return_value=self._mock_response(upcoming)
+        ) as mock_get:
             edge_detector.fetch_odds_api("baseball_mlb", markets="h2h")
             clock[0] += 120  # 2 min later — still within 300s pre-game TTL
             edge_detector.fetch_odds_api("baseball_mlb", markets="h2h")
@@ -498,12 +524,14 @@ class TestInProcessCacheTtl:
 
     def test_live_entry_expires_on_live_ttl(self, monkeypatch):
         import edge_detector
+
         clock = [1000.0]
         monkeypatch.setattr(edge_detector.time, "monotonic", lambda: clock[0])
         live = [{"home_team": "Yankees", "commence_time": "2020-01-01T00:00:00Z"}]
 
-        with patch("edge_detector.requests.get",
-                   return_value=self._mock_response(live)) as mock_get:
+        with patch(
+            "edge_detector.requests.get", return_value=self._mock_response(live)
+        ) as mock_get:
             edge_detector.fetch_odds_api("baseball_mlb", markets="h2h")
             clock[0] += 60  # 60s later — past the 45s live TTL
             edge_detector.fetch_odds_api("baseball_mlb", markets="h2h")
@@ -512,6 +540,7 @@ class TestInProcessCacheTtl:
 
 
 # ── Opponent-validated event matching (fix A + B) ─────────────────────────────
+
 
 # SPORT-LEVEL Odds API responses carry a per-bookmaker last_update; these fixtures
 # model that shape, and must stamp it or the Phase-2 live-staleness guard excludes
@@ -525,8 +554,7 @@ def _fresh_lu():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _h2h_event(away, home, away_price, home_price, commence,
-               books=("pinnacle", "draftkings")):
+def _h2h_event(away, home, away_price, home_price, commence, books=("pinnacle", "draftkings")):
     """Build a minimal Odds API h2h event with N identical bookmakers."""
     return {
         "away_team": away,
@@ -536,13 +564,15 @@ def _h2h_event(away, home, away_price, home_price, commence,
             {
                 "key": b,
                 "last_update": _fresh_lu(),
-                "markets": [{
-                    "key": "h2h",
-                    "outcomes": [
-                        {"name": away, "price": away_price},
-                        {"name": home, "price": home_price},
-                    ],
-                }],
+                "markets": [
+                    {
+                        "key": "h2h",
+                        "outcomes": [
+                            {"name": away, "price": away_price},
+                            {"name": home, "price": home_price},
+                        ],
+                    }
+                ],
             }
             for b in books
         ],
@@ -558,21 +588,24 @@ def _totals_event(away, home, line, over_price, commence, books=("pinnacle",)):
             {
                 "key": b,
                 "last_update": _fresh_lu(),
-                "markets": [{
-                    "key": "totals",
-                    "outcomes": [
-                        {"name": "Over", "point": line, "price": over_price},
-                        {"name": "Under", "point": line, "price": over_price},
-                    ],
-                }],
+                "markets": [
+                    {
+                        "key": "totals",
+                        "outcomes": [
+                            {"name": "Over", "point": line, "price": over_price},
+                            {"name": "Under", "point": line, "price": over_price},
+                        ],
+                    }
+                ],
             }
             for b in books
         ],
     }
 
 
-def _spread_event(favorite, underdog, fav_point, fav_price, dog_price,
-                  commence, books=("pinnacle",)):
+def _spread_event(
+    favorite, underdog, fav_point, fav_price, dog_price, commence, books=("pinnacle",)
+):
     """Odds API spreads event. fav_point is the favorite's handicap (negative,
     e.g. -1.5); the underdog gets +fav_point. Prices carry book vig."""
     return {
@@ -583,21 +616,22 @@ def _spread_event(favorite, underdog, fav_point, fav_price, dog_price,
             {
                 "key": b,
                 "last_update": _fresh_lu(),
-                "markets": [{
-                    "key": "spreads",
-                    "outcomes": [
-                        {"name": favorite, "point": fav_point, "price": fav_price},
-                        {"name": underdog, "point": -fav_point, "price": dog_price},
-                    ],
-                }],
+                "markets": [
+                    {
+                        "key": "spreads",
+                        "outcomes": [
+                            {"name": favorite, "point": fav_point, "price": fav_price},
+                            {"name": underdog, "point": -fav_point, "price": dog_price},
+                        ],
+                    }
+                ],
             }
             for b in books
         ],
     }
 
 
-def _mlb_game_market(away, home, yes_team, ticker, yes_ask="0.54",
-                     no_ask="0.48", yes_bid="0.52"):
+def _mlb_game_market(away, home, yes_team, ticker, yes_ask="0.54", no_ask="0.48", yes_bid="0.52"):
     return {
         "ticker": ticker,
         "title": f"{away} vs {home} Winner?",
@@ -617,26 +651,35 @@ def _mlb_game_market(away, home, yes_team, ticker, yes_ask="0.54",
 class TestExtractEventTeams:
     def test_strips_totals_filler_prefix(self):
         # Totals rules read "the teams in the New York at San Antonio ..."
-        m = {"rules_primary": (
-            "If the teams in the New York at San Antonio professional "
-            "basketball game originally scheduled for Jun 3, 2026 collectively "
-            "score more than 232.5 points, then the market resolves to Yes.")}
+        m = {
+            "rules_primary": (
+                "If the teams in the New York at San Antonio professional "
+                "basketball game originally scheduled for Jun 3, 2026 collectively "
+                "score more than 232.5 points, then the market resolves to Yes."
+            )
+        }
         assert extract_event_teams(m) == ("New York", "San Antonio")
 
     def test_plain_vs_matchup(self):
-        m = {"rules_primary": (
-            "If Washington wins the Washington vs Arizona professional "
-            "baseball game originally scheduled for Jun 5, 2026, then the "
-            "market resolves to Yes.")}
+        m = {
+            "rules_primary": (
+                "If Washington wins the Washington vs Arizona professional "
+                "baseball game originally scheduled for Jun 5, 2026, then the "
+                "market resolves to Yes."
+            )
+        }
         assert extract_event_teams(m) == ("Washington", "Arizona")
 
     def test_strips_playoff_game_prefix(self):
         # Playoff-series rules carry a "Game N:" prefix that leaked into the
         # team name and broke clean matching.
-        m = {"rules_primary": (
-            "If San Antonio wins the Game 3: San Antonio at New York "
-            "professional basketball game originally scheduled for "
-            "Jun 8, 2026, then the market resolves to Yes.")}
+        m = {
+            "rules_primary": (
+                "If San Antonio wins the Game 3: San Antonio at New York "
+                "professional basketball game originally scheduled for "
+                "Jun 8, 2026, then the market resolves to Yes."
+            )
+        }
         assert extract_event_teams(m) == ("San Antonio", "New York")
 
 
@@ -648,20 +691,27 @@ class TestFindMarketEvent:
     def test_absent_game_returns_none(self):
         # Kalshi market is Washington @ Arizona, but the only Arizona event in
         # the feed is Dodgers @ Arizona — must NOT match (the old bug).
-        market = _mlb_game_market("Washington", "Arizona", "Arizona",
-                                  "KXMLBGAME-26JUN052140WSHAZ-AZ")
-        feed = [_h2h_event("Los Angeles Dodgers", "Arizona Diamondbacks",
-                           1.6, 2.5, "2026-06-05T01:41:00Z")]
+        market = _mlb_game_market(
+            "Washington", "Arizona", "Arizona", "KXMLBGAME-26JUN052140WSHAZ-AZ"
+        )
+        feed = [
+            _h2h_event(
+                "Los Angeles Dodgers", "Arizona Diamondbacks", 1.6, 2.5, "2026-06-05T01:41:00Z"
+            )
+        ]
         assert find_market_event(market, feed) is None
 
     def test_matches_correct_event(self):
-        market = _mlb_game_market("Washington", "Arizona", "Arizona",
-                                  "KXMLBGAME-26JUN052140WSHAZ-AZ")
-        wsh_az = _h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                            2.0, 1.85, "2026-06-06T01:40:00Z")
+        market = _mlb_game_market(
+            "Washington", "Arizona", "Arizona", "KXMLBGAME-26JUN052140WSHAZ-AZ"
+        )
+        wsh_az = _h2h_event(
+            "Washington Nationals", "Arizona Diamondbacks", 2.0, 1.85, "2026-06-06T01:40:00Z"
+        )
         feed = [
-            _h2h_event("Los Angeles Dodgers", "Arizona Diamondbacks",
-                       1.6, 2.5, "2026-06-05T01:41:00Z"),
+            _h2h_event(
+                "Los Angeles Dodgers", "Arizona Diamondbacks", 1.6, 2.5, "2026-06-05T01:41:00Z"
+            ),
             wsh_az,
         ]
         assert find_market_event(market, feed) is wsh_az
@@ -669,12 +719,15 @@ class TestFindMarketEvent:
     def test_series_disambiguated_by_scheduled_time(self):
         # Same matchup on consecutive days; ticker time (26JUN05 21:40 ET ->
         # 2026-06-06T01:40Z) must select the Jun-5 game, not the Jun-4 one.
-        market = _mlb_game_market("Washington", "Arizona", "Arizona",
-                                  "KXMLBGAME-26JUN052140WSHAZ-AZ")
-        jun4 = _h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                          2.0, 1.85, "2026-06-05T01:40:00Z")
-        jun5 = _h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                          1.95, 1.9, "2026-06-06T01:40:00Z")
+        market = _mlb_game_market(
+            "Washington", "Arizona", "Arizona", "KXMLBGAME-26JUN052140WSHAZ-AZ"
+        )
+        jun4 = _h2h_event(
+            "Washington Nationals", "Arizona Diamondbacks", 2.0, 1.85, "2026-06-05T01:40:00Z"
+        )
+        jun5 = _h2h_event(
+            "Washington Nationals", "Arizona Diamondbacks", 1.95, 1.9, "2026-06-06T01:40:00Z"
+        )
         assert find_market_event(market, [jun4, jun5]) is jun5
 
     def test_ambiguous_without_time_refuses(self):
@@ -682,15 +735,19 @@ class TestFindMarketEvent:
         # can't be disambiguated -> refuse (return None) rather than guess.
         market = {
             "ticker": "KXNHLSPREAD-26JUN09CARVGK-VGK2",
-            "rules_primary": ("If Vegas wins by over 2.5 goals in the Carolina "
-                              "at Vegas professional hockey game originally "
-                              "scheduled for Jun 9, 2026, then the market "
-                              "resolves to Yes."),
+            "rules_primary": (
+                "If Vegas wins by over 2.5 goals in the Carolina "
+                "at Vegas professional hockey game originally "
+                "scheduled for Jun 9, 2026, then the market "
+                "resolves to Yes."
+            ),
         }
-        a = _h2h_event("Carolina Hurricanes", "Vegas Golden Knights",
-                       2.1, 1.7, "2026-06-09T23:00:00Z")
-        b = _h2h_event("Carolina Hurricanes", "Vegas Golden Knights",
-                       2.0, 1.8, "2026-06-09T20:00:00Z")
+        a = _h2h_event(
+            "Carolina Hurricanes", "Vegas Golden Knights", 2.1, 1.7, "2026-06-09T23:00:00Z"
+        )
+        b = _h2h_event(
+            "Carolina Hurricanes", "Vegas Golden Knights", 2.0, 1.8, "2026-06-09T20:00:00Z"
+        )
         assert find_market_event(market, [a, b]) is None
 
     def test_series_single_event_wrong_date_refuses(self):
@@ -701,14 +758,15 @@ class TestFindMarketEvent:
         game4 = {
             "ticker": "KXNBAGAME-26JUN10SASNYK-SAS",
             "yes_sub_title": "San Antonio",
-            "rules_primary": ("If San Antonio wins the Game 4: San Antonio at "
-                              "New York professional basketball game originally "
-                              "scheduled for Jun 10, 2026, then the market "
-                              "resolves to Yes."),
+            "rules_primary": (
+                "If San Antonio wins the Game 4: San Antonio at "
+                "New York professional basketball game originally "
+                "scheduled for Jun 10, 2026, then the market "
+                "resolves to Yes."
+            ),
         }
         # Only Game 1 (Jun 3, 20:30 ET -> 2026-06-04T00:30Z) is in the feed.
-        game1 = _h2h_event("New York Knicks", "San Antonio Spurs",
-                           2.4, 1.6, "2026-06-04T00:30:00Z")
+        game1 = _h2h_event("New York Knicks", "San Antonio Spurs", 2.4, 1.6, "2026-06-04T00:30:00Z")
         assert find_market_event(game4, [game1]) is None
 
     def test_no_time_ticker_matches_same_date(self):
@@ -717,13 +775,16 @@ class TestFindMarketEvent:
         game1 = {
             "ticker": "KXNBAGAME-26JUN03NYKSAS-NYK",
             "yes_sub_title": "New York",
-            "rules_primary": ("If New York wins the Game 1: New York at San "
-                              "Antonio professional basketball game originally "
-                              "scheduled for Jun 3, 2026, then the market "
-                              "resolves to Yes."),
+            "rules_primary": (
+                "If New York wins the Game 1: New York at San "
+                "Antonio professional basketball game originally "
+                "scheduled for Jun 3, 2026, then the market "
+                "resolves to Yes."
+            ),
         }
-        ev = _h2h_event("New York Knicks", "San Antonio Spurs",
-                        2.4, 1.6, "2026-06-04T00:30:00Z")  # Jun 3 20:30 ET
+        ev = _h2h_event(
+            "New York Knicks", "San Antonio Spurs", 2.4, 1.6, "2026-06-04T00:30:00Z"
+        )  # Jun 3 20:30 ET
         assert find_market_event(game1, [ev]) is ev
 
 
@@ -732,25 +793,37 @@ class TestDetectEdgeGameContamination:
     +34.7% MLB edges must now yield no edge."""
 
     def test_wrong_opponent_game_yields_no_edge(self):
-        market = _mlb_game_market("Washington", "Arizona", "Arizona",
-                                  "KXMLBGAME-26JUN052140WSHAZ-AZ")
+        market = _mlb_game_market(
+            "Washington", "Arizona", "Arizona", "KXMLBGAME-26JUN052140WSHAZ-AZ"
+        )
         # Feed only has Arizona-vs-Dodgers (Arizona a heavy dog) — exactly the
         # data that fabricated a huge NO-Arizona edge before the fix.
-        feed = [_h2h_event("Los Angeles Dodgers", "Arizona Diamondbacks",
-                           1.6, 2.5, "2026-06-05T01:41:00Z")]
+        feed = [
+            _h2h_event(
+                "Los Angeles Dodgers", "Arizona Diamondbacks", 1.6, 2.5, "2026-06-05T01:41:00Z"
+            )
+        ]
         assert detect_edge_game(market, feed) is None
 
     def test_correct_game_still_produces_opportunity(self):
-        market = _mlb_game_market("Washington", "Arizona", "Arizona",
-                                  "KXMLBGAME-26JUN052140WSHAZ-AZ",
-                                  yes_ask="0.40", no_ask="0.62")
+        market = _mlb_game_market(
+            "Washington",
+            "Arizona",
+            "Arizona",
+            "KXMLBGAME-26JUN052140WSHAZ-AZ",
+            yes_ask="0.40",
+            no_ask="0.62",
+        )
         # Arizona ~54% fair (home favorite vs Washington); yes_ask 0.40 -> real
         # positive YES edge against the CORRECT opponent.
-        feed = [_h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                           2.0, 1.85, "2026-06-06T01:40:00Z")]
+        feed = [
+            _h2h_event(
+                "Washington Nationals", "Arizona Diamondbacks", 2.0, 1.85, "2026-06-06T01:40:00Z"
+            )
+        ]
         opp = detect_edge_game(market, feed)
         assert opp is not None
-        assert 0.45 < opp.fair_value < 0.65   # sane, not a fabricated extreme
+        assert 0.45 < opp.fair_value < 0.65  # sane, not a fabricated extreme
         assert opp.edge > 0
 
 
@@ -772,11 +845,11 @@ class TestSameCityDisambiguation:
 
     def test_match_outcome_picks_unique_best(self):
         outcomes = [
-            {"name": "Los Angeles Angels"},   # listed first (away)
+            {"name": "Los Angeles Angels"},  # listed first (away)
             {"name": "Los Angeles Dodgers"},
         ]
         idx, ambiguous = _match_team_outcome(outcomes, "Los Angeles D")
-        assert (idx, ambiguous) == (1, False)   # Dodgers, not the first-listed
+        assert (idx, ambiguous) == (1, False)  # Dodgers, not the first-listed
         idx, ambiguous = _match_team_outcome(outcomes, "Los Angeles A")
         assert (idx, ambiguous) == (0, False)
 
@@ -791,11 +864,12 @@ class TestSameCityDisambiguation:
 
     def test_consensus_resolves_correct_la_team(self):
         # Angels @ Dodgers: away dog 2.64, home favorite 1.51.
-        ev = _h2h_event("Los Angeles Angels", "Los Angeles Dodgers",
-                        2.64, 1.51, "2026-06-06T02:11:00Z")
+        ev = _h2h_event(
+            "Los Angeles Angels", "Los Angeles Dodgers", 2.64, 1.51, "2026-06-06T02:11:00Z"
+        )
         fair_dodgers, _ = consensus_fair_value([ev], "Los Angeles D")
         fair_angels, _ = consensus_fair_value([ev], "Los Angeles A")
-        assert fair_dodgers > 0.6          # the favorite, not the dog
+        assert fair_dodgers > 0.6  # the favorite, not the dog
         assert fair_angels < 0.4
         assert fair_dodgers + fair_angels == pytest.approx(1.0, abs=0.001)
 
@@ -803,10 +877,18 @@ class TestSameCityDisambiguation:
         # Dodgers-win market (YES priced 0.65) against the real same-city game.
         # Before the fix this produced a bogus +27.9% NO ("Dodgers lose") edge.
         market = _mlb_game_market(
-            "Los Angeles Angels", "Los Angeles Dodgers", "Los Angeles D",
-            "KXMLBGAME-26JUN052210LAALAD-LAD", yes_ask="0.65", no_ask="0.36")
-        feed = [_h2h_event("Los Angeles Angels", "Los Angeles Dodgers",
-                           2.64, 1.51, "2026-06-06T02:11:00Z")]
+            "Los Angeles Angels",
+            "Los Angeles Dodgers",
+            "Los Angeles D",
+            "KXMLBGAME-26JUN052210LAALAD-LAD",
+            yes_ask="0.65",
+            no_ask="0.36",
+        )
+        feed = [
+            _h2h_event(
+                "Los Angeles Angels", "Los Angeles Dodgers", 2.64, 1.51, "2026-06-06T02:11:00Z"
+            )
+        ]
         opp = detect_edge_game(market, feed)
         assert opp is not None
         # Fair must reflect the Dodgers' ~0.64 win prob, so neither side shows a
@@ -820,17 +902,22 @@ class TestConsensusBeltAndSuspenders:
 
     def test_fair_value_refuses_multi_event(self):
         feed = [
-            _h2h_event("Los Angeles Dodgers", "Arizona Diamondbacks",
-                       1.6, 2.5, "2026-06-05T01:41:00Z"),
-            _h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                       2.0, 1.85, "2026-06-06T01:40:00Z"),
+            _h2h_event(
+                "Los Angeles Dodgers", "Arizona Diamondbacks", 1.6, 2.5, "2026-06-05T01:41:00Z"
+            ),
+            _h2h_event(
+                "Washington Nationals", "Arizona Diamondbacks", 2.0, 1.85, "2026-06-06T01:40:00Z"
+            ),
         ]
         # "Arizona" matches both events -> refuse.
         assert consensus_fair_value(feed, "Arizona") is None
 
     def test_fair_value_single_event_ok(self):
-        feed = [_h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                           2.0, 1.85, "2026-06-06T01:40:00Z")]
+        feed = [
+            _h2h_event(
+                "Washington Nationals", "Arizona Diamondbacks", 2.0, 1.85, "2026-06-06T01:40:00Z"
+            )
+        ]
         result = consensus_fair_value(feed, "Arizona")
         assert result is not None
         fair, details = result
@@ -865,23 +952,29 @@ class TestThreeWayDevig:
         # asserts None, and None is what an all-books-excluded event returns.
         # These tests are about 3-way de-vig math; keep them off the live path.
         if commence is None:
-            commence = (datetime.now(timezone.utc) + timedelta(days=2)).isoformat().replace("+00:00", "Z")
+            commence = (
+                (datetime.now(timezone.utc) + timedelta(days=2)).isoformat().replace("+00:00", "Z")
+            )
         return {
             "home_team": home,
             "away_team": away,
             "commence_time": commence,
-            "bookmakers": [{
-                "key": "pinnacle",
-                "last_update": _fresh_lu(),
-                "markets": [{
-                    "key": "h2h",
-                    "outcomes": [
-                        {"name": home, "price": home_p},
-                        {"name": away, "price": away_p},
-                        {"name": "Draw", "price": draw_p},
+            "bookmakers": [
+                {
+                    "key": "pinnacle",
+                    "last_update": _fresh_lu(),
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": home, "price": home_p},
+                                {"name": away, "price": away_p},
+                                {"name": "Draw", "price": draw_p},
+                            ],
+                        }
                     ],
-                }],
-            }],
+                }
+            ],
         }
 
     def test_three_way_uses_win_share(self):
@@ -921,8 +1014,7 @@ class TestSpreadTotalDevig:
         # 0.5, so the inferred mean margin must equal the line (1.5) — no vig
         # leak. With the raw 0.5263 it would land above 1.5.
         ev = _spread_event("Brazil", "Japan", -1.5, 1.90, 1.90, self.FUTURE)
-        result = consensus_spread_prob([ev], "Brazil", 2.5,
-                                       ticker="KXWCSPREAD-26JUL01BRAJPN-BRA3")
+        result = consensus_spread_prob([ev], "Brazil", 2.5, ticker="KXWCSPREAD-26JUL01BRAJPN-BRA3")
         assert result is not None
         _, d = result
         assert d["inferred_mean_margin"] == pytest.approx(1.5, abs=0.02)
@@ -936,14 +1028,16 @@ class TestSpreadTotalDevig:
         ev = _spread_event("Brazil", "Japan", -1.5, 1.50, 2.50, self.FUTURE)
         strike = 1.5
         fair_devig, d = consensus_spread_prob(
-            [ev], "Brazil", strike, ticker="KXWCSPREAD-26JUL01BRAJPN-BRA2")
+            [ev], "Brazil", strike, ticker="KXWCSPREAD-26JUL01BRAJPN-BRA2"
+        )
         raw_implied = d["books"][0]["raw_implied"]
         stdev = d["margin_stdev"]
         # reproduce the OLD (buggy) computation from the raw implied
         from scipy.stats import norm
+
         raw_mean = -(-1.5) - stdev * norm.ppf(1 - raw_implied)
         raw_fair = 1 - norm.cdf(strike, loc=raw_mean, scale=stdev)
-        assert fair_devig < raw_fair          # de-vig reduced the cover prob
+        assert fair_devig < raw_fair  # de-vig reduced the cover prob
         assert d["inferred_mean_margin"] < raw_mean
 
     def test_total_symmetric_vig_infers_mean_at_the_line(self):
@@ -960,8 +1054,9 @@ class TestSpreadTotalDevig:
     def test_two_way_share_unchanged(self):
         # Regression: the proportional devig must match the old 2-way result.
         # implied: AZ 1/1.85=.5405, WSH 1/2.0=.5000; total 1.0405; AZ=.5195
-        ev = _h2h_event("Washington Nationals", "Arizona Diamondbacks",
-                        2.0, 1.85, "2026-06-06T01:40:00Z")
+        ev = _h2h_event(
+            "Washington Nationals", "Arizona Diamondbacks", 2.0, 1.85, "2026-06-06T01:40:00Z"
+        )
         fair, _ = consensus_fair_value([ev], "Arizona")
         assert fair == pytest.approx(0.5195, abs=0.002)
 
@@ -1007,6 +1102,7 @@ class TestMlbSpreadTotalMappings:
 
     def test_mlb_filter_includes_spread_and_total(self):
         from edge_detector import FILTER_SHORTCUTS
+
         assert "KXMLBSPREAD" in FILTER_SHORTCUTS["mlb"]
         assert "KXMLBTOTAL" in FILTER_SHORTCUTS["mlb"]
         assert "KXMLBGAME" in FILTER_SHORTCUTS["mlb"]  # unchanged
@@ -1022,13 +1118,17 @@ class TestMlbSpreadTotalMappings:
     def test_stdev_resolves_to_baseball(self):
         # KXMLB -> baseball_mlb in _PREFIX_TO_SPORT (prefix match covers the
         # new series), so the R2-calibrated run stdevs price these markets.
-        assert _get_margin_stdev("KXMLBSPREAD-26JUL202140CINSEA-SEA9") == \
-            SPORT_MARGIN_STDEV["baseball_mlb"]
-        assert _get_total_stdev("KXMLBTOTAL-26JUL211840MINCLE-9") == \
-            SPORT_TOTAL_STDEV["baseball_mlb"]
+        assert (
+            _get_margin_stdev("KXMLBSPREAD-26JUL202140CINSEA-SEA9")
+            == SPORT_MARGIN_STDEV["baseball_mlb"]
+        )
+        assert (
+            _get_total_stdev("KXMLBTOTAL-26JUL211840MINCLE-9") == SPORT_TOTAL_STDEV["baseball_mlb"]
+        )
 
     def test_ticker_display_handles_new_series(self):
         from ticker_display import sport_from_ticker, bet_type_from_ticker
+
         assert sport_from_ticker("KXMLBSPREAD-26JUL202140CINSEA-SEA9") == "MLB"
         assert bet_type_from_ticker("KXMLBSPREAD-26JUL202140CINSEA-SEA9") == "Spread"
         assert bet_type_from_ticker("KXMLBTOTAL-26JUL211840MINCLE-9") == "Total"
@@ -1039,10 +1139,25 @@ class TestNbaConsensusBooks:
 
     def test_nba_low_books_forces_low_confidence(self):
         # NBA ticker with 5 books on 2026-04-21 (date must match commence time of event)
-        market = _mlb_game_market("Los Angeles Lakers", "Boston Celtics", "Los Angeles Lakers", "KXNBAGAME-26APR21LALBOS-LAL", yes_ask="0.40", no_ask="0.62")
-        feed = [_h2h_event("Los Angeles Lakers", "Boston Celtics", 2.0, 1.85, "2026-04-22T01:40:00Z", 
-                           books=("pinnacle", "draftkings", "fanduel", "betmgm", "pointsbet"))]
-        
+        market = _mlb_game_market(
+            "Los Angeles Lakers",
+            "Boston Celtics",
+            "Los Angeles Lakers",
+            "KXNBAGAME-26APR21LALBOS-LAL",
+            yes_ask="0.40",
+            no_ask="0.62",
+        )
+        feed = [
+            _h2h_event(
+                "Los Angeles Lakers",
+                "Boston Celtics",
+                2.0,
+                1.85,
+                "2026-04-22T01:40:00Z",
+                books=("pinnacle", "draftkings", "fanduel", "betmgm", "pointsbet"),
+            )
+        ]
+
         # Detect edge: NBA needs 8 books, so 5 books forces low confidence
         opp = detect_edge_game(market, feed)
         assert opp is not None
@@ -1050,10 +1165,25 @@ class TestNbaConsensusBooks:
 
     def test_mlb_low_books_retains_medium_confidence(self):
         # MLB ticker with 5 books on 2026-04-21
-        market = _mlb_game_market("New York Yankees", "Kansas City Royals", "New York Yankees", "KXMLBGAME-26APR21NYYKAC-NYY", yes_ask="0.40", no_ask="0.62")
-        feed = [_h2h_event("New York Yankees", "Kansas City Royals", 2.0, 1.85, "2026-04-22T01:40:00Z", 
-                           books=("pinnacle", "draftkings", "fanduel", "betmgm", "pointsbet"))]
-        
+        market = _mlb_game_market(
+            "New York Yankees",
+            "Kansas City Royals",
+            "New York Yankees",
+            "KXMLBGAME-26APR21NYYKAC-NYY",
+            yes_ask="0.40",
+            no_ask="0.62",
+        )
+        feed = [
+            _h2h_event(
+                "New York Yankees",
+                "Kansas City Royals",
+                2.0,
+                1.85,
+                "2026-04-22T01:40:00Z",
+                books=("pinnacle", "draftkings", "fanduel", "betmgm", "pointsbet"),
+            )
+        ]
+
         # MLB does not have NBA consensus books constraint, so 5 books gets medium confidence
         opp = detect_edge_game(market, feed)
         assert opp is not None
@@ -1069,10 +1199,12 @@ class TestDynamicStdevLoading:
         Reset them before AND after each test here so a populated override can't
         leak into a sibling test that expects the hardcoded defaults."""
         import edge_detector
+
         def _clear():
             edge_detector._last_loaded_stdev_time = 0.0
             edge_detector._cached_calibrated_margin_stdev = {}
             edge_detector._cached_calibrated_total_stdev = {}
+
         _clear()
         yield
         _clear()
@@ -1080,39 +1212,36 @@ class TestDynamicStdevLoading:
     @patch("paths.DATA_DIR")
     def test_loads_overrides_when_present_and_fresh(self, mock_data_dir, tmp_path):
         mock_data_dir.return_value = tmp_path
-        
+
         # Write dummy calibration overrides
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         calibration_file = cache_dir / "calibration_stdevs.json"
-        
+
         calibration_data = {
             "version": 1,
             "updated_at": datetime.now(timezone.utc).isoformat(),
-            "margin_stdev": {
-                "basketball_nba": 15.5,
-                "baseball_mlb": 5.0
-            },
-            "total_stdev": {
-                "basketball_nba": 25.0
-            }
+            "margin_stdev": {"basketball_nba": 15.5, "baseball_mlb": 5.0},
+            "total_stdev": {"basketball_nba": 25.0},
         }
         with open(calibration_file, "w", encoding="utf-8") as f:
             json.dump(calibration_data, f)
-            
+
         with patch.dict(os.environ, {"TEST_CALIBRATION_STDEVS": "1"}):
             from app.config import reset_config
+
             reset_config()
             try:
                 with patch("paths.DATA_DIR", tmp_path):
                     import edge_detector
+
                     edge_detector._last_loaded_stdev_time = 0.0
-                    
+
                     # Check that lookups fetch the overrides
                     assert _get_margin_stdev("KXNBAGAME-...") == 15.5
                     assert _get_margin_stdev("KXMLBGAME-...") == 5.0
                     assert _get_total_stdev("KXNBATOTAL-...") == 25.0
-                    
+
                     # Non-overridden sports fall back to baseline constants
                     assert _get_margin_stdev("KXNHLGAME-...") == SPORT_MARGIN_STDEV["icehockey_nhl"]
             finally:
@@ -1124,30 +1253,30 @@ class TestDynamicStdevLoading:
         cache_dir = tmp_path / "cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         calibration_file = cache_dir / "calibration_stdevs.json"
-        
+
         calibration_data = {
             "version": 1,
             "updated_at": datetime.now(timezone.utc).isoformat(),
-            "margin_stdev": {
-                "basketball_nba": 15.5
-            },
-            "total_stdev": {}
+            "margin_stdev": {"basketball_nba": 15.5},
+            "total_stdev": {},
         }
         with open(calibration_file, "w", encoding="utf-8") as f:
             json.dump(calibration_data, f)
-            
+
         # Backdate the file by 31 days (default TTL is 30)
         mtime = time.time() - 31 * 86400
         os.utime(calibration_file, (mtime, mtime))
-        
+
         with patch.dict(os.environ, {"TEST_CALIBRATION_STDEVS": "1"}):
             from app.config import reset_config
+
             reset_config()
             try:
                 with patch("paths.DATA_DIR", tmp_path):
                     import edge_detector
+
                     edge_detector._last_loaded_stdev_time = 0.0
-                    
+
                     # Should fall back to the default baseline constant (13.8)
                     assert _get_margin_stdev("KXNBAGAME-...") == 13.8
             finally:
@@ -1172,13 +1301,17 @@ class TestDynamicStdevLoading:
 
         with patch.dict(os.environ, {"TEST_CALIBRATION_STDEVS": "1"}):
             from app.config import reset_config
+
             reset_config()
             try:
                 with patch("paths.DATA_DIR", tmp_path):
                     import edge_detector
+
                     edge_detector._last_loaded_stdev_time = 0.0
                     # Whole map rejected: even the *valid* MLB entry is discarded.
-                    assert _get_margin_stdev("KXNBAGAME-...") == SPORT_MARGIN_STDEV["basketball_nba"]
+                    assert (
+                        _get_margin_stdev("KXNBAGAME-...") == SPORT_MARGIN_STDEV["basketball_nba"]
+                    )
                     assert _get_margin_stdev("KXMLBGAME-...") == SPORT_MARGIN_STDEV["baseball_mlb"]
             finally:
                 reset_config()
@@ -1200,12 +1333,16 @@ class TestDynamicStdevLoading:
 
         with patch.dict(os.environ, {"TEST_CALIBRATION_STDEVS": "1"}):
             from app.config import reset_config
+
             reset_config()
             try:
                 with patch("paths.DATA_DIR", tmp_path):
                     import edge_detector
+
                     edge_detector._last_loaded_stdev_time = 0.0
-                    assert _get_margin_stdev("KXNBAGAME-...") == SPORT_MARGIN_STDEV["basketball_nba"]
+                    assert (
+                        _get_margin_stdev("KXNBAGAME-...") == SPORT_MARGIN_STDEV["basketball_nba"]
+                    )
             finally:
                 reset_config()
 
@@ -1228,18 +1365,21 @@ class TestCalibrationStdevComputation:
 
     def test_skips_below_min_samples(self):
         import model_calibration as mc
+
         # Overconfident (pred .65 vs real ~.42) but only 19 bets (< the 20 floor) — must not move.
         settled = self._recs(19, 0.65, 8)
         assert mc._calibrate_one_stdev(settled, "basketball_nba", 13.8, "spread") == 13.8
 
     def test_holds_when_gap_insignificant(self):
         import model_calibration as mc
+
         # 40 bets, pred .52 vs real .50 — a 2pp gap is within sampling noise.
         settled = self._recs(40, 0.52, 20)
         assert mc._calibrate_one_stdev(settled, "basketball_nba", 13.8, "spread") == 13.8
 
     def test_widens_on_significant_overconfidence(self):
         import model_calibration as mc
+
         # 60 bets, pred .55 vs real .40 — a 15pp gap clears the 1.96-SE gate.
         settled = self._recs(60, 0.55, 24)
         new = mc._calibrate_one_stdev(settled, "basketball_nba", 13.8, "spread")
@@ -1248,12 +1388,14 @@ class TestCalibrationStdevComputation:
 
     def test_excludes_missing_fair_value(self):
         import model_calibration as mc
+
         # 60 overconfident bets but none carry a recorded fair_value -> all excluded.
         settled = self._recs(60, 0.55, 24, has_fv=False)
         assert mc._calibrate_one_stdev(settled, "basketball_nba", 13.8, "spread") == 13.8
 
     def test_clamps_extreme_multiplier(self):
         import model_calibration as mc
+
         # pred .95 vs real .30 would imply x1.65; the clamp caps it at x1.25.
         settled = self._recs(60, 0.95, 18)
         new = mc._calibrate_one_stdev(settled, "basketball_nba", 13.8, "spread")
@@ -1267,82 +1409,96 @@ class TestLiveInPlayOddsPhase2:
     def test_refresh_event_if_live_updates_event_when_game_started(self, mock_fetch_event):
         from edge_detector import _refresh_event_if_live
         from datetime import datetime, timedelta, timezone
-        
+
         # Scenario 1: Game not started yet (future commence time)
-        commence_future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        commence_future = (
+            (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        )
         market = {"ticker": "KXNBAGAME-26APR21LALBOS-LAL"}
         matched_event = {
             "id": "event_123",
             "sport_key": "basketball_nba",
             "commence_time": commence_future,
-            "bookmakers": [{"key": "draftkings", "markets": []}]
+            "bookmakers": [{"key": "draftkings", "markets": []}],
         }
-        
+
         result = _refresh_event_if_live(matched_event, market)
         assert result is matched_event
         mock_fetch_event.assert_not_called()
-        
+
         # Scenario 2: Game started (commence time in the past)
-        commence_past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        commence_past = (
+            (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        )
         matched_event_past = {
             "id": "event_123",
             "sport_key": "basketball_nba",
             "commence_time": commence_past,
-            "bookmakers": [{"key": "draftkings", "markets": []}]
+            "bookmakers": [{"key": "draftkings", "markets": []}],
         }
-        
+
         refreshed_event = {
             "id": "event_123",
             "sport_key": "basketball_nba",
             "commence_time": commence_past,
-            "bookmakers": [{"key": "draftkings", "markets": [{"key": "h2h", "outcomes": []}]}]
+            "bookmakers": [{"key": "draftkings", "markets": [{"key": "h2h", "outcomes": []}]}],
         }
         mock_fetch_event.return_value = refreshed_event
-        
+
         result = _refresh_event_if_live(matched_event_past, market)
         assert result is refreshed_event
         mock_fetch_event.assert_called_once_with("basketball_nba", "event_123")
 
     def test_is_bookmaker_stale_excludes_stale_bookmaker_in_consensus(self):
-        from edge_detector import _is_bookmaker_stale, consensus_fair_value, _parse_iso_utc
+        from edge_detector import _is_bookmaker_stale, consensus_fair_value
         from datetime import datetime, timedelta, timezone
-        
+
         # Game in progress (started 10 mins ago)
-        commence_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
-        
+        commence_time = (
+            (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        )
+
         # Stale bookmaker last updated 30 minutes ago (1800s ago > 1200s max)
-        stale_lu = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+        stale_lu = (
+            (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+        )
         # Fresh bookmaker last updated 1 minute ago
-        fresh_lu = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
-        
+        fresh_lu = (
+            (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+        )
+
         event = {
             "commence_time": commence_time,
             "bookmakers": [
                 {
                     "key": "pinnacle",
                     "last_update": fresh_lu,
-                    "markets": [{
-                        "key": "h2h",
-                        "outcomes": [
-                            {"name": "Lakers", "price": 1.5},
-                            {"name": "Celtics", "price": 2.5}
-                        ]
-                    }]
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 1.5},
+                                {"name": "Celtics", "price": 2.5},
+                            ],
+                        }
+                    ],
                 },
                 {
                     "key": "draftkings",
                     "last_update": stale_lu,
-                    "markets": [{
-                        "key": "h2h",
-                        "outcomes": [
-                            {"name": "Lakers", "price": 2.0},
-                            {"name": "Celtics", "price": 2.0}
-                        ]
-                    }]
-                }
-            ]
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 2.0},
+                                {"name": "Celtics", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
+            ],
         }
-        
+
         # Verify freshness check on bookmakers
         assert _is_bookmaker_stale(event["bookmakers"][0], event, 1200) is False
         assert _is_bookmaker_stale(event["bookmakers"][1], event, 1200) is True
@@ -1350,14 +1506,21 @@ class TestLiveInPlayOddsPhase2:
         # Add two more fresh books so the live consensus survives the min-books
         # floor (default 3); the stale DraftKings line must still be excluded.
         for key in ("fanduel", "betmgm"):
-            event["bookmakers"].append({
-                "key": key,
-                "last_update": fresh_lu,
-                "markets": [{"key": "h2h", "outcomes": [
-                    {"name": "Lakers", "price": 1.5},
-                    {"name": "Celtics", "price": 2.5},
-                ]}],
-            })
+            event["bookmakers"].append(
+                {
+                    "key": key,
+                    "last_update": fresh_lu,
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 1.5},
+                                {"name": "Celtics", "price": 2.5},
+                            ],
+                        }
+                    ],
+                }
+            )
 
         result = consensus_fair_value([event], "Lakers")
         assert result is not None
@@ -1367,7 +1530,9 @@ class TestLiveInPlayOddsPhase2:
         assert "draftkings" not in details["books"]  # stale -> excluded
 
         # If the event was pre-game, last_update is not checked for staleness
-        pregame_commence = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+        pregame_commence = (
+            (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+        )
         event_pregame = dict(event, commence_time=pregame_commence)
 
         assert _is_bookmaker_stale(event_pregame["bookmakers"][0], event_pregame, 1200) is False
@@ -1386,16 +1551,44 @@ class TestLiveInPlayOddsPhase2:
         from edge_detector import consensus_fair_value
         from datetime import datetime, timedelta, timezone
 
-        commence = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
-        fresh = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
-        stale = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+        commence = (
+            (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        )
+        fresh = (
+            (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+        )
+        stale = (
+            (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+        )
         event = {
             "commence_time": commence,
             "bookmakers": [
-                {"key": "pinnacle", "last_update": fresh, "markets": [{"key": "h2h", "outcomes": [
-                    {"name": "Lakers", "price": 1.5}, {"name": "Celtics", "price": 2.5}]}]},
-                {"key": "draftkings", "last_update": stale, "markets": [{"key": "h2h", "outcomes": [
-                    {"name": "Lakers", "price": 2.0}, {"name": "Celtics", "price": 2.0}]}]},
+                {
+                    "key": "pinnacle",
+                    "last_update": fresh,
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 1.5},
+                                {"name": "Celtics", "price": 2.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "draftkings",
+                    "last_update": stale,
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 2.0},
+                                {"name": "Celtics", "price": 2.0},
+                            ],
+                        }
+                    ],
+                },
             ],
         }
         # 1 fresh book survives (< floor 3) AND a book was excluded -> None.
@@ -1408,15 +1601,41 @@ class TestLiveInPlayOddsPhase2:
         from edge_detector import consensus_fair_value
         from datetime import datetime, timedelta, timezone
 
-        commence = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
-        fresh = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+        commence = (
+            (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        )
+        fresh = (
+            (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
+        )
         event = {
             "commence_time": commence,
             "bookmakers": [
-                {"key": "pinnacle", "last_update": fresh, "markets": [{"key": "h2h", "outcomes": [
-                    {"name": "Lakers", "price": 1.5}, {"name": "Celtics", "price": 2.5}]}]},
-                {"key": "fanduel", "last_update": fresh, "markets": [{"key": "h2h", "outcomes": [
-                    {"name": "Lakers", "price": 1.5}, {"name": "Celtics", "price": 2.5}]}]},
+                {
+                    "key": "pinnacle",
+                    "last_update": fresh,
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 1.5},
+                                {"name": "Celtics", "price": 2.5},
+                            ],
+                        }
+                    ],
+                },
+                {
+                    "key": "fanduel",
+                    "last_update": fresh,
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 1.5},
+                                {"name": "Celtics", "price": 2.5},
+                            ],
+                        }
+                    ],
+                },
             ],
         }
         result = consensus_fair_value([event], "Lakers")
@@ -1429,15 +1648,22 @@ class TestLiveInPlayOddsPhase2:
         from edge_detector import _is_bookmaker_stale
         from datetime import datetime, timedelta, timezone
 
-        live = {"commence_time": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat().replace("+00:00", "Z")}
-        pregame = {"commence_time": (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat().replace("+00:00", "Z")}
+        live = {
+            "commence_time": (datetime.now(timezone.utc) - timedelta(minutes=5))
+            .isoformat()
+            .replace("+00:00", "Z")
+        }
+        pregame = {
+            "commence_time": (datetime.now(timezone.utc) + timedelta(hours=2))
+            .isoformat()
+            .replace("+00:00", "Z")
+        }
         no_lu = {"key": "pinnacle", "markets": []}
         bad_lu = {"key": "pinnacle", "last_update": "not-a-timestamp", "markets": []}
 
         assert _is_bookmaker_stale(no_lu, live, 1200) is True
         assert _is_bookmaker_stale(bad_lu, live, 1200) is True
         assert _is_bookmaker_stale(no_lu, pregame, 1200) is False
-
 
 
 class TestTennisMappings:
@@ -1476,13 +1702,11 @@ class TestTennisMappings:
     def test_atp_extract_players_from_real_rules(self):
         # The existing "(?:vs|at) ... professional" pattern returns last names,
         # which substring-match the Odds API full names.
-        market = {"ticker": "KXATPMATCH-26JUL01TSIDJO-TSI",
-                  "rules_primary": self._ATP_RULES}
+        market = {"ticker": "KXATPMATCH-26JUL01TSIDJO-TSI", "rules_primary": self._ATP_RULES}
         assert extract_event_teams(market) == ("Tsitsipas", "Djokovic")
 
     def test_wta_extract_players_from_real_rules(self):
-        market = {"ticker": "KXWTAMATCH-26JUL01SIEGAU-SIE",
-                  "rules_primary": self._WTA_RULES}
+        market = {"ticker": "KXWTAMATCH-26JUL01SIEGAU-SIE", "rules_primary": self._WTA_RULES}
         assert extract_event_teams(market) == ("Sierra", "Gauff")
 
     def test_find_event_tolerates_expiration_dated_ticker(self):
@@ -1490,21 +1714,23 @@ class TestTennisMappings:
         # AFTER the match commences (Jun 30 09:00 UTC). Exact ET-date equality
         # would miss it; the tennis branch accepts the single player-pair
         # candidate within a few days.
-        market = {"ticker": "KXATPMATCH-26JUL01TSIDJO-TSI",
-                  "yes_sub_title": "Stefanos Tsitsipas",
-                  "rules_primary": self._ATP_RULES}
-        ev = _h2h_event("Stefanos Tsitsipas", "Novak Djokovic",
-                        4.5, 1.2, "2026-06-30T09:00:00Z")
+        market = {
+            "ticker": "KXATPMATCH-26JUL01TSIDJO-TSI",
+            "yes_sub_title": "Stefanos Tsitsipas",
+            "rules_primary": self._ATP_RULES,
+        }
+        ev = _h2h_event("Stefanos Tsitsipas", "Novak Djokovic", 4.5, 1.2, "2026-06-30T09:00:00Z")
         assert find_market_event(market, [ev]) is ev
 
     def test_find_event_refuses_far_off_date(self):
         # A candidate whose commence is far from the ticker date is a stale /
         # wrong-tournament listing — refuse rather than fabricate an edge.
-        market = {"ticker": "KXATPMATCH-26JUL01TSIDJO-TSI",
-                  "yes_sub_title": "Stefanos Tsitsipas",
-                  "rules_primary": self._ATP_RULES}
-        ev = _h2h_event("Stefanos Tsitsipas", "Novak Djokovic",
-                        4.5, 1.2, "2026-06-20T09:00:00Z")
+        market = {
+            "ticker": "KXATPMATCH-26JUL01TSIDJO-TSI",
+            "yes_sub_title": "Stefanos Tsitsipas",
+            "rules_primary": self._ATP_RULES,
+        }
+        ev = _h2h_event("Stefanos Tsitsipas", "Novak Djokovic", 4.5, 1.2, "2026-06-20T09:00:00Z")
         assert find_market_event(market, [ev]) is None
 
 
@@ -1521,22 +1747,32 @@ class TestFuturesCompositeCalibration:
 
     @staticmethod
     def _market(yes_ask: float, yes_bid: float) -> dict:
-        return {"ticker": "KXNBA-27-SAS", "yes_sub_title": "San Antonio Spurs",
-                "yes_ask_dollars": yes_ask, "yes_bid_dollars": yes_bid,
-                "no_ask_dollars": 0.0}
+        return {
+            "ticker": "KXNBA-27-SAS",
+            "yes_sub_title": "San Antonio Spurs",
+            "yes_ask_dollars": yes_ask,
+            "yes_bid_dollars": yes_bid,
+            "no_ask_dollars": 0.0,
+        }
 
     @staticmethod
     def _fair(fair_value: float, n_books: int, spread: float) -> dict:
-        return {"San Antonio Spurs": {
-            "fair_value": fair_value, "n_books": n_books,
-            "min": fair_value - spread / 2, "max": fair_value + spread / 2}}
+        return {
+            "San Antonio Spurs": {
+                "fair_value": fair_value,
+                "n_books": n_books,
+                "min": fair_value - spread / 2,
+                "max": fair_value + spread / 2,
+            }
+        }
 
     def _score(self, edge: float, n_books: int, spread: float) -> float:
         from futures_edge import detect_edge_futures
+
         ask = 0.20
-        opp = detect_edge_futures(self._market(ask, ask - 0.01),
-                                  self._fair(ask + edge, n_books, spread),
-                                  "NBA Champion")
+        opp = detect_edge_futures(
+            self._market(ask, ask - 0.01), self._fair(ask + edge, n_books, spread), "NBA Champion"
+        )
         assert opp is not None and abs(opp.edge - edge) < 1e-6
         return opp.composite_score
 
@@ -1546,7 +1782,8 @@ class TestFuturesCompositeCalibration:
         # 8 books + tight spread -> high (conf 9), liquidity 10 - 0.01*20 = 9.8.
         expected = 0.4 * 10 + 0.3 * 9 + 0.2 * 9.8 + 0.5
         assert self._score(0.10, n_books=8, spread=0.01) == pytest.approx(
-            round(expected, 1), abs=0.05)
+            round(expected, 1), abs=0.05
+        )
 
     def test_realistic_medium_confidence_edge_can_clear_gate_four(self):
         # A 5% edge at medium confidence is the shape futures actually
@@ -1576,8 +1813,11 @@ class TestPerEventBookmakerShape:
 
     @staticmethod
     def _ago(minutes):
-        return (datetime.now(timezone.utc) - timedelta(minutes=minutes)) \
-            .isoformat().replace("+00:00", "Z")
+        return (
+            (datetime.now(timezone.utc) - timedelta(minutes=minutes))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
     def _live_event(self, bookmakers):
         return {"commence_time": self._ago(10), "bookmakers": bookmakers}
@@ -1598,22 +1838,25 @@ class TestPerEventBookmakerShape:
         """The regression: a book with no top-level timestamp but fresh markets
         must survive. Before the fix this returned True for every live book."""
         from edge_detector import _is_bookmaker_stale
+
         book = self._per_event_book(market_ages=(2,))
-        assert book.get("last_update") is None      # per-event shape, as served
+        assert book.get("last_update") is None  # per-event shape, as served
         event = self._live_event([book])
         assert _is_bookmaker_stale(book, event, 1200) is False
 
     def test_stale_per_event_book_is_still_excluded(self):
         """The fallback must not become a way to smuggle stale quotes through."""
         from edge_detector import _is_bookmaker_stale
-        book = self._per_event_book(market_ages=(40,))   # 2400s > 1200s
+
+        book = self._per_event_book(market_ages=(40,))  # 2400s > 1200s
         event = self._live_event([book])
         assert _is_bookmaker_stale(book, event, 1200) is True
 
     def test_oldest_market_wins(self):
         """A bookmaker is only as fresh as its stalest market (operator's call)."""
         from edge_detector import _bookmaker_last_update, _is_bookmaker_stale
-        book = self._per_event_book(market_ages=(1, 40, 2))   # one stale market
+
+        book = self._per_event_book(market_ages=(1, 40, 2))  # one stale market
         event = self._live_event([book])
         picked = _bookmaker_last_update(book)
         oldest = min(m["last_update"] for m in book["markets"])
@@ -1623,24 +1866,27 @@ class TestPerEventBookmakerShape:
     def test_bookmaker_level_timestamp_still_preferred(self):
         """Sport-level payloads keep working: the bookmaker field wins outright."""
         from edge_detector import _is_bookmaker_stale
+
         book = self._per_event_book(market_ages=(40,))
-        book["last_update"] = self._ago(1)      # fresh at the bookmaker level
+        book["last_update"] = self._ago(1)  # fresh at the bookmaker level
         event = self._live_event([book])
         assert _is_bookmaker_stale(book, event, 1200) is False
 
     def test_no_timestamp_anywhere_still_fails_closed(self):
         """The original intent survives: undateable quote -> exclude."""
         from edge_detector import _is_bookmaker_stale
-        book = {"key": "ghost", "title": "Ghost",
-                "markets": [{"key": "h2h", "outcomes": []}]}
+
+        book = {"key": "ghost", "title": "Ghost", "markets": [{"key": "h2h", "outcomes": []}]}
         event = self._live_event([book])
         assert _is_bookmaker_stale(book, event, 1200) is True
 
     def test_pregame_is_untouched(self):
         """Freshness is only required once a game is in progress."""
         from edge_detector import _is_bookmaker_stale
-        future = (datetime.now(timezone.utc) + timedelta(hours=3)) \
-            .isoformat().replace("+00:00", "Z")
+
+        future = (
+            (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat().replace("+00:00", "Z")
+        )
         book = {"key": "ghost", "markets": [{"key": "h2h", "outcomes": []}]}
         event = {"commence_time": future, "bookmakers": [book]}
         assert _is_bookmaker_stale(book, event, 1200) is False
@@ -1653,6 +1899,7 @@ class TestPerEventBookmakerShape:
         """
         import glob
         from edge_detector import _bookmaker_last_update
+
         files = glob.glob("data/cache/odds/events/*.json")
         if not files:
             pytest.skip("no cached per-event payloads on this machine")
@@ -1682,11 +1929,15 @@ class TestLiveConsensusThinGuardReachability:
 
     @staticmethod
     def _ago(minutes):
-        return (datetime.now(timezone.utc) - timedelta(minutes=minutes)) \
-            .isoformat().replace("+00:00", "Z")
+        return (
+            (datetime.now(timezone.utc) - timedelta(minutes=minutes))
+            .isoformat()
+            .replace("+00:00", "Z")
+        )
 
     def test_guard_fires_on_total_wipeout(self, caplog):
         from edge_detector import _live_consensus_too_thin
+
         events = [{"commence_time": self._ago(10)}]
         with caplog.at_level("WARNING"):
             assert _live_consensus_too_thin(events, n_fresh_books=0, n_excluded=6) is True
@@ -1696,31 +1947,40 @@ class TestLiveConsensusThinGuardReachability:
         """A genuine 'no books matched this team' is a different condition and
         must keep falling through to the empty check untouched."""
         from edge_detector import _live_consensus_too_thin
+
         events = [{"commence_time": self._ago(10)}]
         assert _live_consensus_too_thin(events, n_fresh_books=0, n_excluded=0) is False
 
     def test_guard_noops_on_pregame(self):
         from edge_detector import _live_consensus_too_thin
-        future = (datetime.now(timezone.utc) + timedelta(hours=3)) \
-            .isoformat().replace("+00:00", "Z")
+
+        future = (
+            (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat().replace("+00:00", "Z")
+        )
         assert _live_consensus_too_thin([{"commence_time": future}], 0, 6) is False
 
     def test_wipeout_reaches_the_guard_through_consensus_fair_value(self, caplog):
         """End-to-end: a live event whose books are all undateable must log the
         thin-consensus warning, not return None in silence."""
         from edge_detector import consensus_fair_value
+
         event = {
             "id": "e1",
             "commence_time": self._ago(10),
             "home_team": "Celtics",
             "away_team": "Lakers",
             "bookmakers": [
-                {   # per-event shape with NO timestamps anywhere -> excluded
+                {  # per-event shape with NO timestamps anywhere -> excluded
                     "key": key,
-                    "markets": [{"key": "h2h", "outcomes": [
-                        {"name": "Lakers", "price": 1.9},
-                        {"name": "Celtics", "price": 2.1},
-                    ]}],
+                    "markets": [
+                        {
+                            "key": "h2h",
+                            "outcomes": [
+                                {"name": "Lakers", "price": 1.9},
+                                {"name": "Celtics", "price": 2.1},
+                            ],
+                        }
+                    ],
                 }
                 for key in ("fanduel", "draftkings", "betmgm", "bovada")
             ],
@@ -1729,3 +1989,46 @@ class TestLiveConsensusThinGuardReachability:
             result = consensus_fair_value([event], "Lakers")
         assert result is None
         assert "thinned" in caplog.text.lower()
+
+
+class TestCollegeFilterAliases:
+    """2026-09-16: `--filter ncaaf` matched ZERO markets and said so silently.
+
+    The canonical shortcut keys are `ncaafb`/`ncaamb`, but `_detect_sport`,
+    `MIN_EDGE_THRESHOLD_<SPORT>` and every doc use `ncaaf`/`ncaab`. An unknown
+    shortcut falls through to a LITERAL uppercase prefix (`NCAAF`), which no
+    Kalshi series carries -- so the scan returned 0 markets and reported "no
+    opportunities" exactly like a quiet day. `longshot_scan.bat` passed both
+    bad names and scanned no college football or basketball for six days.
+    Same failure the retired Edge-Radar-Longshot fork hit on a stale prefix.
+    """
+
+    def test_ncaaf_alias_resolves_to_real_series(self):
+        from edge_detector import FILTER_SHORTCUTS
+
+        assert FILTER_SHORTCUTS["ncaaf"] == FILTER_SHORTCUTS["ncaafb"]
+        assert "KXNCAAFSPREAD" in FILTER_SHORTCUTS["ncaaf"]
+
+    def test_ncaab_alias_covers_mens_and_basketball_series(self):
+        from edge_detector import FILTER_SHORTCUTS
+
+        assert "KXNCAAMBGAME" in FILTER_SHORTCUTS["ncaab"]
+        assert "KXNCAABBGAME" in FILTER_SHORTCUTS["ncaab"]
+
+    def test_every_shortcut_maps_to_a_kalshi_prefix(self):
+        # A shortcut whose value is not a KX* series (or a futures sentinel)
+        # is the same silent-zero-match bug wearing a different name.
+        from edge_detector import FILTER_SHORTCUTS
+
+        for name, prefixes in FILTER_SHORTCUTS.items():
+            for p in prefixes:
+                assert p.startswith("KX") or p.startswith(
+                    "__FUTURES__"
+                ), f"filter {name!r} -> {p!r} is not a Kalshi series prefix"
+
+    def test_sport_floor_names_are_reachable_as_filters(self):
+        # MIN_EDGE_THRESHOLD_NCAAF only binds rows a filter can actually fetch.
+        from edge_detector import FILTER_SHORTCUTS
+
+        for sport in ("nfl", "ncaaf", "ncaab", "mlb", "nba", "nhl"):
+            assert sport in FILTER_SHORTCUTS, f"no --filter {sport}"

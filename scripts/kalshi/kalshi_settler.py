@@ -12,21 +12,20 @@ Usage:
     python scripts/kalshi_settler.py report --detail    # Per-trade breakdown
 """
 
-import os
-import re
-import sys
-import json
-import logging
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 
 # Shared imports
 from trade_log import (
-    load_trade_log, save_trade_log,
-    load_settlement_log, save_settlement_log,
-    trade_log_lock, settlement_revenue_dollars,
-    get_today_pnl, get_filled_contracts, get_filled_cost,
+    load_trade_log,
+    save_trade_log,
+    load_settlement_log,
+    save_settlement_log,
+    trade_log_lock,
+    settlement_revenue_dollars,
+    get_filled_contracts,
+    get_filled_cost,
 )
 
 from dotenv import load_dotenv
@@ -46,6 +45,30 @@ console = Console()
 
 # ── Fees ──────────────────────────────────────────────────────────────────────
 
+# The fee field on a Kalshi v2 fill. `fee_cost` is the real one, verified
+# against the live endpoint on 2026-09-16; the rest are kept only so a rename
+# degrades to a stale-but-present reading rather than a silent zero. Order
+# matters -- first key PRESENT wins, not first key truthy, because a genuine
+# maker fill reports "0.000000" and must be recorded as a measured zero.
+_FILL_FEE_KEYS = ("fee_cost", "fee_dollars", "taker_fee_dollars", "fee")
+
+
+def _fill_fee(fill: dict) -> float | None:
+    """Fee charged on one fill, or None if the payload names it something new.
+
+    None is not zero. A missing fee field means the endpoint changed shape and
+    the caller must NOT record a measured zero over it -- that is exactly the
+    bug this function exists to prevent.
+    """
+    for key in _FILL_FEE_KEYS:
+        if key in fill:
+            try:
+                return float(fill[key] or 0)
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 def fetch_fill_fees(client: KalshiClient, max_pages: int = 20) -> dict[str, float]:
     """Map order_id -> total fees actually charged, from `/portfolio/fills`.
 
@@ -56,10 +79,22 @@ def fetch_fill_fees(client: KalshiClient, max_pages: int = 20) -> dict[str, floa
     ~1c per contract. The fills endpoint is the authoritative record, so read it
     here at settle time rather than trusting the create response.
 
+    **The field is `fee_cost`.** This read `fee_dollars or taker_fee_dollars or
+    fee` -- three names the endpoint has never used -- so it resolved to 0 on
+    every fill and stamped 67 rows `fee_source: "fills_api", taker_fees: 0.0`:
+    a modelled number wearing a measured label. It looked defensible ("Kalshi
+    charges no maker fee and we post limit orders"), and it was not: 136 of 138
+    orders in the book carry a nonzero `fee_cost` and 133 are flagged
+    `is_taker`. A marketable limit at the ask crosses the spread, so it fills as
+    TAKER; posting a limit order is not the same fact as resting on the book.
+    P&L was never wrong -- `trade_fees()` falls back to the model on a zero --
+    but the label said measured, and the real $4.11 never entered the log.
+
     Returns {} on any API failure -- callers fall back to the modelled fee.
     """
     fees: dict[str, float] = {}
     cursor = None
+    unnamed = 0
     try:
         for _ in range(max_pages):
             resp = client.get_fills(limit=200, cursor=cursor)
@@ -67,20 +102,24 @@ def fetch_fill_fees(client: KalshiClient, max_pages: int = 20) -> dict[str, floa
                 oid = fill.get("order_id")
                 if not oid:
                     continue
-                raw = (fill.get("fee_dollars")
-                       or fill.get("taker_fee_dollars")
-                       or fill.get("fee")
-                       or 0)
-                try:
-                    fees[oid] = round(fees.get(oid, 0.0) + float(raw), 4)
-                except (TypeError, ValueError):
+                amount = _fill_fee(fill)
+                if amount is None:
+                    unnamed += 1
                     continue
+                fees[oid] = round(fees.get(oid, 0.0) + amount, 6)
             cursor = resp.get("cursor", "")
             if not cursor:
                 break
     except Exception as e:
         log.warning("Could not fetch fills for fee backfill: %s", e)
         return {}
+    if unnamed:
+        log.warning(
+            "%d fills carried no recognised fee field (tried %s) -- the payload "
+            "has been renamed again; falling back to the modelled fee for those",
+            unnamed,
+            ", ".join(_FILL_FEE_KEYS),
+        )
     return fees
 
 
@@ -91,15 +130,16 @@ def trade_fees(trade: dict) -> float:
     what made the whole fee cost invisible. `KALSHI_FEE_RATE=0` disables the
     model and restores the old behaviour.
     """
-    recorded = (float(trade.get("taker_fees") or 0)
-                + float(trade.get("maker_fees") or 0))
+    recorded = float(trade.get("taker_fees") or 0) + float(trade.get("maker_fees") or 0)
     if recorded > 0:
         return recorded
-    return taker_fee(int(get_filled_contracts(trade) or 0),
-                     float(trade.get("market_price_at_entry") or 0))
+    return taker_fee(
+        int(get_filled_contracts(trade) or 0), float(trade.get("market_price_at_entry") or 0)
+    )
 
 
 # ── Settlement Logic ──────────────────────────────────────────────────────────
+
 
 def calculate_pnl(trade: dict, settlement: dict) -> dict:
     """
@@ -230,6 +270,76 @@ def build_settlement_record(
     }
 
 
+def backfill_fees(client: KalshiClient, apply: bool = False) -> dict:
+    """Re-stamp real `fee_cost` onto rows the renamed-field bug zeroed.
+
+    `fetch_fill_fees` read three field names the endpoint has never used, so
+    every row it touched recorded `taker_fees: 0.0` under a `fills_api` label.
+    The settler only stamps fees on rows it is settling *now*, so fixing the
+    reader does not repair the book behind it -- those rows are closed and will
+    never be revisited. This walks the whole log once.
+
+    It does NOT recompute `won`, `revenue` or `cost`. Only `fees` changes, and
+    `net_pnl` follows it. Reports first; `--apply` writes.
+    """
+    fees = fetch_fill_fees(client)
+    if not fees:
+        rprint("[yellow]No fills returned -- nothing to backfill.[/yellow]")
+        return {"matched": 0, "changed": 0, "delta": 0.0, "applied": False}
+
+    changed, delta = 0, 0.0
+    with trade_log_lock():
+        trade_log = load_trade_log()
+        settlement_log = load_settlement_log()
+        by_order = {}
+        for st in settlement_log:
+            if st.get("order_id"):
+                by_order.setdefault(st["order_id"], []).append(st)
+
+        for trade in trade_log:
+            oid = trade.get("order_id") or ""
+            if oid not in fees:
+                continue
+            actual = fees[oid]
+            before = float(trade.get("taker_fees") or 0)
+            if abs(actual - before) < 1e-9:
+                continue
+            changed += 1
+            delta += actual - before
+            if not apply:
+                continue
+            trade["taker_fees"] = actual
+            trade["fee_source"] = "fills_api"
+            # A settled row's arithmetic was computed with the MODELLED fee
+            # (trade_fees falls back on a recorded zero), so net_pnl moves by
+            # the difference between the two, not by `actual` itself.
+            for st in by_order.get(oid, []):
+                if st.get("fees") is None or st.get("net_pnl") is None:
+                    continue
+                st["net_pnl"] = round(float(st["net_pnl"]) + float(st["fees"]) - actual, 4)
+                st["fees"] = round(actual, 4)
+                cost = float(st.get("cost") or 0)
+                st["roi"] = round(st["net_pnl"] / cost, 4) if cost > 0 else 0
+
+        if apply and changed:
+            save_trade_log(trade_log)
+            save_settlement_log(settlement_log)
+
+    verb = "Updated" if apply else "Would update"
+    rprint(
+        f"  {verb} [cyan]{changed}[/cyan] trade rows; "
+        f"recorded fees move by [cyan]${delta:+.4f}[/cyan]"
+    )
+    if not apply:
+        rprint("  [dim]dry run -- pass --apply to write[/dim]")
+    return {
+        "matched": len(fees),
+        "changed": changed,
+        "delta": round(delta, 4),
+        "applied": bool(apply and changed),
+    }
+
+
 def settle_trades(client: KalshiClient) -> dict:
     """
     Fetch settlements from Kalshi and update the trade log.
@@ -246,7 +356,8 @@ def settle_trades(client: KalshiClient) -> dict:
 
     # Find unsettled trades (skip zero-fill resting orders — they have no exposure)
     unsettled = [
-        t for t in snapshot
+        t
+        for t in snapshot
         if t.get("closed_at") is None
         and t.get("status") != "error"
         and t.get("fill_status") != "resting"
@@ -368,7 +479,9 @@ def settle_trades(client: KalshiClient) -> dict:
 
             # Update trade record
             trade["net_pnl"] = pnl["net_pnl"]
-            trade["closed_at"] = settlement.get("settled_time", datetime.now(timezone.utc).isoformat())
+            trade["closed_at"] = settlement.get(
+                "settled_time", datetime.now(timezone.utc).isoformat()
+            )
             trade["settlement_result"] = pnl["result"]
             trade["settlement_revenue"] = pnl["revenue"]
             trade["settlement_won"] = pnl["won"]
@@ -392,11 +505,14 @@ def settle_trades(client: KalshiClient) -> dict:
         save_trade_log(trade_log)
         save_settlement_log(settlement_log)
 
-    rprint(f"\n  Settled: [green]{settled_count}[/green]  Still open: [yellow]{still_open}[/yellow]")
+    rprint(
+        f"\n  Settled: [green]{settled_count}[/green]  Still open: [yellow]{still_open}[/yellow]"
+    )
     return {"settled": settled_count, "still_open": still_open}
 
 
 # ── Performance Report ────────────────────────────────────────────────────────
+
 
 def _fetch_api_settlements(client: KalshiClient, days: int | None = None) -> list[dict]:
     """Fetch all settlements from the Kalshi API, optionally filtered by date."""
@@ -412,6 +528,7 @@ def _fetch_api_settlements(client: KalshiClient, days: int | None = None) -> lis
 
     if days is not None:
         from datetime import timedelta
+
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         all_settlements = [s for s in all_settlements if (s.get("settled_time") or "") >= cutoff]
 
@@ -470,8 +587,10 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
         days: Only include trades settled in the last N days. None = all time.
     """
     from ticker_display import (
-        format_bet_label, bet_type_from_ticker,
-        parse_game_datetime, sport_from_ticker,
+        format_bet_label,
+        bet_type_from_ticker,
+        parse_game_datetime,
+        sport_from_ticker,
     )
 
     # ── Fetch data from Kalshi API ───────────────────────────────────────────
@@ -479,7 +598,9 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
 
     rprint("[dim]Fetching account data from Kalshi API...[/dim]")
     api_settlements = _fetch_api_settlements(client, days=days)
-    api_positions = client.get_positions(limit=200, count_filter="position").get("market_positions", [])
+    api_positions = client.get_positions(limit=200, count_filter="position").get(
+        "market_positions", []
+    )
     balance = client.get_balance_dollars()
 
     # Normalize settlements
@@ -504,14 +625,14 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
 
     # ── Markdown + console output ────────────────────────────────────────────
     md: list[str] = []
-    generated_at = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     period = f"Last {days} days" if days else "All time"
 
     rprint(f"\n-- Kalshi Account Report ({period}) --")
     rprint(f"  Generated: {generated_at}")
 
     md.append(f"# Kalshi Account Report ({period})")
-    md.append(f"")
+    md.append("")
     md.append(f"*Generated: {generated_at}*")
 
     # ── Account Balance ──────────────────────────────────────────────────────
@@ -519,16 +640,16 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
     portfolio = balance.get("portfolio_value", 0)
     total_value = bal + portfolio
 
-    rprint(f"\n[bold]Account Balance[/bold]")
+    rprint("\n[bold]Account Balance[/bold]")
     rprint(f"  Available:       ${bal:.2f}")
     rprint(f"  Portfolio value: ${portfolio:.2f}")
     rprint(f"  Total value:     ${total_value:.2f}")
 
-    md.append(f"")
-    md.append(f"## Account Balance")
-    md.append(f"")
-    md.append(f"| Metric | Value |")
-    md.append(f"|--------|-------|")
+    md.append("")
+    md.append("## Account Balance")
+    md.append("")
+    md.append("| Metric | Value |")
+    md.append("|--------|-------|")
     md.append(f"| Available | ${bal:.2f} |")
     md.append(f"| Portfolio value | ${portfolio:.2f} |")
     md.append(f"| Total value | **${total_value:.2f}** |")
@@ -538,11 +659,11 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
 
     if live_positions:
         rprint(f"\n[bold]Open Positions ({len(live_positions)})[/bold]")
-        md.append(f"")
+        md.append("")
         md.append(f"## Open Positions ({len(live_positions)})")
-        md.append(f"")
-        md.append(f"| Bet | Side | Contracts | Exposure |")
-        md.append(f"|-----|------|-----------|----------|")
+        md.append("")
+        md.append("| Bet | Side | Contracts | Exposure |")
+        md.append("|-----|------|-----------|----------|")
 
         for p in live_positions:
             ticker = p.get("ticker", "")
@@ -582,11 +703,11 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
     rprint(f"  Avg win:         ${avg_win:+.2f}")
     rprint(f"  Avg loss:        ${avg_loss:+.2f}")
 
-    md.append(f"")
+    md.append("")
     md.append(f"## Settlement Summary ({total_settled} bets)")
-    md.append(f"")
-    md.append(f"| Metric | Value |")
-    md.append(f"|--------|-------|")
+    md.append("")
+    md.append("| Metric | Value |")
+    md.append("|--------|-------|")
     md.append(f"| Record | **{len(wins)}W - {len(losses)}L ({win_rate:.0%})** |")
     md.append(f"| Net P&L | **${total_pnl:+.2f}** |")
     md.append(f"| Total wagered | ${total_wagered:.2f} |")
@@ -625,11 +746,11 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
         rprint(f"  Avg estimated edge:  {avg_edge_est:.1%}")
         rprint(f"  Realized edge (ROI): {edge_realized:+.1%}")
 
-        md.append(f"")
+        md.append("")
         md.append(f"## Edge Calibration ({len(edge_trades)} Edge-Radar trades)")
-        md.append(f"")
-        md.append(f"| Metric | Value |")
-        md.append(f"|--------|-------|")
+        md.append("")
+        md.append("| Metric | Value |")
+        md.append("|--------|-------|")
         md.append(f"| Avg estimated edge | {avg_edge_est:.1%} |")
         md.append(f"| Realized edge (ROI) | {edge_realized:+.1%} |")
 
@@ -644,9 +765,9 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
         if not groups:
             return
         rprint(f"\n[bold]{label}[/bold]")
-        md.append(f"")
+        md.append("")
         md.append(f"### {label}")
-        md.append(f"")
+        md.append("")
         md.append(f"| {label} | Bets | Win Rate | P&L | ROI |")
         md.append(f"|{'-' * max(len(label), 4)}--|------|----------|-----|-----|")
         for name, records in sorted(groups.items(), key=lambda x: -sum(r["net_pnl"] for r in x[1])):
@@ -699,11 +820,11 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
         table.add_column("Revenue", justify="right")
         table.add_column("P&L", justify="right")
 
-        md.append(f"")
-        md.append(f"## Settlement Detail")
-        md.append(f"")
-        md.append(f"| # | Bet | Type | Date | Side | Result | Qty | Cost | Revenue | P&L |")
-        md.append(f"|---|-----|------|------|------|--------|-----|------|---------|-----|")
+        md.append("")
+        md.append("## Settlement Detail")
+        md.append("")
+        md.append("| # | Bet | Type | Date | Side | Result | Qty | Cost | Revenue | P&L |")
+        md.append("|---|-----|------|------|------|--------|-----|------|---------|-----|")
 
         for i, r in enumerate(sorted(settled_records, key=lambda x: x.get("settled_time", "")), 1):
             pnl_color = "green" if r["net_pnl"] >= 0 else "red"
@@ -735,8 +856,8 @@ def generate_report(detail: bool = False, save: bool = False, days: int | None =
 
     if not settled_records:
         rprint("\n  [dim]No settlements in this period.[/dim]")
-        md.append(f"")
-        md.append(f"> No settlements found for this period.")
+        md.append("")
+        md.append("> No settlements found for this period.")
 
     # ── Save to file
     if save:
@@ -770,6 +891,7 @@ def _save_report_file(lines: list[str], days: int | None = None):
 
 
 # ── Reconciliation ───────────────────────────────────────────────────────────
+
 
 def reconcile_positions(client: KalshiClient):
     """
@@ -845,23 +967,38 @@ def reconcile_positions(client: KalshiClient):
     if not issues:
         rprint("\n  [green]All positions match.[/green]")
     else:
-        rprint(f"\n  [yellow]Run 'settle' to resolve stale local entries.[/yellow]")
+        rprint("\n  [yellow]Run 'settle' to resolve stale local entries.[/yellow]")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main():
-    parser = argparse.ArgumentParser(description="Kalshi settlement tracker & performance reporting")
+    parser = argparse.ArgumentParser(
+        description="Kalshi settlement tracker & performance reporting"
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("settle", help="Check for settled markets and update trade log P&L")
 
     report_p = sub.add_parser("report", help="Performance report")
     report_p.add_argument("--detail", action="store_true", help="Show per-trade breakdown")
-    report_p.add_argument("--save", action="store_true", help="Save report to reports/Accounts/Kalshi/")
-    report_p.add_argument("--days", type=int, default=None, help="Only include trades settled in the last N days (default: all)")
+    report_p.add_argument(
+        "--save", action="store_true", help="Save report to reports/Accounts/Kalshi/"
+    )
+    report_p.add_argument(
+        "--days",
+        type=int,
+        default=None,
+        help="Only include trades settled in the last N days (default: all)",
+    )
 
     sub.add_parser("reconcile", help="Compare local trade log vs Kalshi API positions")
+
+    bf_p = sub.add_parser(
+        "backfill-fees", help="Re-stamp real fill fees onto rows the renamed-field bug zeroed"
+    )
+    bf_p.add_argument("--apply", action="store_true", help="Write the changes (default: dry run)")
 
     args = parser.parse_args()
 
@@ -875,6 +1012,10 @@ def main():
     elif args.command == "reconcile":
         client = KalshiClient()
         reconcile_positions(client)
+
+    elif args.command == "backfill-fees":
+        client = KalshiClient()
+        backfill_fees(client, apply=args.apply)
 
 
 if __name__ == "__main__":

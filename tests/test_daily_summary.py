@@ -64,6 +64,7 @@ def _trade(**kw) -> dict:
 
 # ── Window filtering ─────────────────────────────────────────────────────────
 
+
 class TestLoadRecentSettlements:
     def test_within_window_included(self):
         rows = [_settled(NOW - timedelta(hours=12))]
@@ -103,6 +104,7 @@ class TestLoadRecentSettlements:
 
 # ── Open-position loader ─────────────────────────────────────────────────────
 
+
 class TestLoadOpenPositions:
     def test_filled_kept(self):
         out = load_open_positions([_trade()])
@@ -126,6 +128,7 @@ class TestLoadOpenPositions:
 
 
 # ── Aggregations ─────────────────────────────────────────────────────────────
+
 
 class TestAggregateYesterday:
     def test_empty(self):
@@ -176,13 +179,14 @@ class TestAggregateExposure:
 
 # ── Pending-today filter ─────────────────────────────────────────────────────
 
+
 class TestFilterPendingToday:
     def test_today_match(self):
         # NOW = Apr 30 12 PM PST. A May 1 game (10 PM PST Apr 30 PST = May 1 in UTC)
         # should NOT match today's PST date. An Apr 30 PST ticker should.
         positions = [
-            _trade(ticker="KXNBAGAME-26APR301900LALBOS-LAL"),    # Apr 30 7:00 PM
-            _trade(ticker="KXMLBGAME-26MAY020100NYMLAD-NYM"),    # May 2
+            _trade(ticker="KXNBAGAME-26APR301900LALBOS-LAL"),  # Apr 30 7:00 PM
+            _trade(ticker="KXMLBGAME-26MAY020100NYMLAD-NYM"),  # May 2
         ]
         out = filter_pending_today(positions, NOW)
         assert len(out) == 1
@@ -201,6 +205,7 @@ class TestFilterPendingToday:
 
 # ── 7-day rolling context ────────────────────────────────────────────────────
 
+
 class TestRolling7d:
     def test_under_5_returns_none(self):
         rows = [_settled(NOW - timedelta(hours=24)) for _ in range(4)]
@@ -208,11 +213,41 @@ class TestRolling7d:
 
     def test_at_5_returns_stats(self):
         rows = [
-            _settled(NOW - timedelta(hours=24), market_price_at_entry=0.50, won=True, cost=1.0, net_pnl=1.0),
-            _settled(NOW - timedelta(hours=48), market_price_at_entry=0.50, won=False, cost=1.0, net_pnl=-1.0),
-            _settled(NOW - timedelta(hours=72), market_price_at_entry=0.50, won=True, cost=1.0, net_pnl=1.0),
-            _settled(NOW - timedelta(hours=96), market_price_at_entry=0.50, won=False, cost=1.0, net_pnl=-1.0),
-            _settled(NOW - timedelta(hours=120), market_price_at_entry=0.50, won=True, cost=1.0, net_pnl=1.0),
+            _settled(
+                NOW - timedelta(hours=24),
+                market_price_at_entry=0.50,
+                won=True,
+                cost=1.0,
+                net_pnl=1.0,
+            ),
+            _settled(
+                NOW - timedelta(hours=48),
+                market_price_at_entry=0.50,
+                won=False,
+                cost=1.0,
+                net_pnl=-1.0,
+            ),
+            _settled(
+                NOW - timedelta(hours=72),
+                market_price_at_entry=0.50,
+                won=True,
+                cost=1.0,
+                net_pnl=1.0,
+            ),
+            _settled(
+                NOW - timedelta(hours=96),
+                market_price_at_entry=0.50,
+                won=False,
+                cost=1.0,
+                net_pnl=-1.0,
+            ),
+            _settled(
+                NOW - timedelta(hours=120),
+                market_price_at_entry=0.50,
+                won=True,
+                cost=1.0,
+                net_pnl=1.0,
+            ),
         ]
         out = rolling_7d_context(rows, NOW)
         assert out["n"] == 5
@@ -234,8 +269,14 @@ class TestRolling7d:
         priced everything at 0.50, where the flip is invisible; 0.80 is not.
         """
         rows = [
-            _settled(NOW - timedelta(hours=h), side="no",
-                     market_price_at_entry=0.80, won=True, cost=0.8, net_pnl=0.2)
+            _settled(
+                NOW - timedelta(hours=h),
+                side="no",
+                market_price_at_entry=0.80,
+                won=True,
+                cost=0.8,
+                net_pnl=0.2,
+            )
             for h in (24, 48, 72, 96, 120)
         ]
         out = rolling_7d_context(rows, NOW)
@@ -245,25 +286,41 @@ class TestRolling7d:
     def test_model_and_market_brier_are_separate(self):
         """The digest reports both; they must not collapse into one number."""
         rows = [
-            _settled(NOW - timedelta(hours=h), side="no",
-                     market_price_at_entry=0.80, fair_value=0.90,
-                     won=True, cost=0.8, net_pnl=0.2)
+            _settled(
+                NOW - timedelta(hours=h),
+                side="no",
+                market_price_at_entry=0.80,
+                fair_value=0.90,
+                won=True,
+                cost=0.8,
+                net_pnl=0.2,
+            )
             for h in (24, 48, 72, 96, 120)
         ]
         out = rolling_7d_context(rows, NOW)
-        assert out["brier_market"] == pytest.approx(0.04)   # (0.80 - 1)^2
-        assert out["brier_model"] == pytest.approx(0.01)    # (0.90 - 1)^2
+        assert out["brier_market"] == pytest.approx(0.04)  # (0.80 - 1)^2
+        assert out["brier_model"] == pytest.approx(0.01)  # (0.90 - 1)^2
         assert out["brier_n_market"] == 5
         assert out["brier_n_model"] == 5
 
     def test_missing_fair_value_does_not_sink_model_brier(self):
         """A row with no fair_value is skipped, not scored as 0.0 (the D1 trap)."""
         rows = [
-            _settled(NOW - timedelta(hours=24), market_price_at_entry=0.50, fair_value=0.50, won=True),
-            _settled(NOW - timedelta(hours=48), market_price_at_entry=0.50, fair_value=None, won=True),
-            _settled(NOW - timedelta(hours=72), market_price_at_entry=0.50, fair_value=0.50, won=True),
-            _settled(NOW - timedelta(hours=96), market_price_at_entry=0.50, fair_value=0.50, won=True),
-            _settled(NOW - timedelta(hours=120), market_price_at_entry=0.50, fair_value=0.50, won=True),
+            _settled(
+                NOW - timedelta(hours=24), market_price_at_entry=0.50, fair_value=0.50, won=True
+            ),
+            _settled(
+                NOW - timedelta(hours=48), market_price_at_entry=0.50, fair_value=None, won=True
+            ),
+            _settled(
+                NOW - timedelta(hours=72), market_price_at_entry=0.50, fair_value=0.50, won=True
+            ),
+            _settled(
+                NOW - timedelta(hours=96), market_price_at_entry=0.50, fair_value=0.50, won=True
+            ),
+            _settled(
+                NOW - timedelta(hours=120), market_price_at_entry=0.50, fair_value=0.50, won=True
+            ),
         ]
         out = rolling_7d_context(rows, NOW)
         assert out["brier_n_market"] == 5
@@ -272,6 +329,7 @@ class TestRolling7d:
 
 
 # ── End-to-end render ────────────────────────────────────────────────────────
+
 
 class TestBuildReport:
     def test_empty_day_proof_of_life(self):
@@ -288,8 +346,13 @@ class TestBuildReport:
 
     def test_yesterday_section_renders(self):
         settlements = [
-            _settled(NOW - timedelta(hours=12), ticker="KXNBAGAME-26APR29BOSNYK-BOS",
-                     won=True, net_pnl=2.5, cost=1.0),
+            _settled(
+                NOW - timedelta(hours=12),
+                ticker="KXNBAGAME-26APR29BOSNYK-BOS",
+                won=True,
+                net_pnl=2.5,
+                cost=1.0,
+            ),
         ]
         report = build_report(NOW, hours=24, settlements=settlements, trades=[], balance=None)
         assert "1 settled" in report
@@ -340,21 +403,25 @@ def _failed(ts: datetime, error: str = NEVADA_ERR, **kw) -> dict:
 class TestLoadFailedOrders:
     def test_error_in_window_included(self):
         from daily_summary import load_failed_orders
+
         rows = [_failed(NOW - timedelta(hours=3))]
         assert len(load_failed_orders(rows, 24, NOW)) == 1
 
     def test_error_outside_window_excluded(self):
         from daily_summary import load_failed_orders
+
         rows = [_failed(NOW - timedelta(hours=30))]
         assert load_failed_orders(rows, 24, NOW) == []
 
     def test_non_error_rows_ignored(self):
         from daily_summary import load_failed_orders
+
         rows = [_trade(timestamp=NOW.isoformat())]
         assert load_failed_orders(rows, 24, NOW) == []
 
     def test_malformed_timestamp_skipped(self):
         from daily_summary import load_failed_orders
+
         rows = [_failed(NOW), {"status": "error", "timestamp": "not-a-date"}]
         assert len(load_failed_orders(rows, 24, NOW)) == 1
 
@@ -362,7 +429,9 @@ class TestLoadFailedOrders:
 class TestFailedOrdersInReport:
     def test_rejections_surface_at_the_top(self):
         out = build_report(
-            NOW, 24, settlements=[],
+            NOW,
+            24,
+            settlements=[],
             trades=[_failed(NOW - timedelta(hours=k)) for k in (1, 2, 3)],
             balance=100.0,
         )
@@ -373,10 +442,14 @@ class TestFailedOrdersInReport:
 
     def test_reasons_are_grouped_with_counts(self):
         out = build_report(
-            NOW, 24, settlements=[],
-            trades=[_failed(NOW, error=NEVADA_ERR),
-                    _failed(NOW, error=NEVADA_ERR),
-                    _failed(NOW, error='{"error":{"code":"insufficient_balance"}}')],
+            NOW,
+            24,
+            settlements=[],
+            trades=[
+                _failed(NOW, error=NEVADA_ERR),
+                _failed(NOW, error=NEVADA_ERR),
+                _failed(NOW, error='{"error":{"code":"insufficient_balance"}}'),
+            ],
             balance=100.0,
         )
         assert "2x — Nevada residents" in out
@@ -388,18 +461,114 @@ class TestFailedOrdersInReport:
 
     def test_unparseable_error_blob_still_reports(self):
         out = build_report(
-            NOW, 24, settlements=[],
-            trades=[_failed(NOW, error="raw non-json text")], balance=100.0,
+            NOW,
+            24,
+            settlements=[],
+            trades=[_failed(NOW, error="raw non-json text")],
+            balance=100.0,
         )
         assert "1 order(s) REJECTED" in out
 
     def test_truncated_json_blob_still_names_the_reason(self):
         # `_record_failure` truncates the API body, so the JSON is cut mid-string
         # and won't parse -- the real log rows all look like this.
-        truncated = ('{"error":{"code":"Nevada_residents_are_not_currently_allowed_to_'
-                     'open_positions_in_Sports,_Elections_and_Entertainment._Check_your'
-                     '_email_for_more_details.","message":"Nevada residents are not currently')
-        out = build_report(NOW, 24, settlements=[],
-                           trades=[_failed(NOW, error=truncated)], balance=100.0)
+        truncated = (
+            '{"error":{"code":"Nevada_residents_are_not_currently_allowed_to_'
+            "open_positions_in_Sports,_Elections_and_Entertainment._Check_your"
+            '_email_for_more_details.","message":"Nevada residents are not currently'
+        )
+        out = build_report(
+            NOW, 24, settlements=[], trades=[_failed(NOW, error=truncated)], balance=100.0
+        )
         assert "Nevada residents are not currently allowed" in out
         assert '{"error"' not in out
+
+
+# ── Post-kickoff detector (S23b) ─────────────────────────────────────────────
+#
+# Gate 4.8 fails open when nothing can name a start time, so the digest carries
+# the detector behind the gate. Anchored on the real 09-12 NCAAF batch: 10
+# orders, 26-122 minutes after kickoff, with ALLOW_LIVE_BETS=false, unnoticed
+# for four days because nothing read either tell in the trade log.
+
+
+def _late(minutes_after: float, **kw) -> dict:
+    start = NOW - timedelta(minutes=minutes_after)
+    base = _trade(
+        ticker="KXNCAAFSPREAD-26SEP12WSUKSU-KSU25",
+        timestamp=NOW.isoformat(),
+        details={"event_start_time": start.isoformat()},
+        dry_run=False,
+    )
+    base.update(kw)
+    return base
+
+
+class TestLoadPostKickoffOrders:
+    def test_order_after_kickoff_is_flagged(self):
+        from daily_summary import load_post_kickoff_orders
+
+        out = load_post_kickoff_orders([_late(117)], 24, NOW)
+        assert len(out) == 1
+        assert out[0]["tell"] == "event_start_time"
+        assert round(out[0]["minutes_late"]) == 117
+
+    def test_pre_game_order_is_not_flagged(self):
+        from daily_summary import load_post_kickoff_orders
+
+        assert load_post_kickoff_orders([_late(-45)], 24, NOW) == []
+
+    def test_top_level_event_start_time_also_read(self):
+        # The executor stamps it on the row; the scanner puts it in `details`.
+        from daily_summary import load_post_kickoff_orders
+
+        row = _trade(
+            timestamp=NOW.isoformat(), event_start_time=(NOW - timedelta(minutes=30)).isoformat()
+        )
+        assert len(load_post_kickoff_orders([row], 24, NOW)) == 1
+
+    def test_dry_runs_and_errors_ignored(self):
+        from daily_summary import load_post_kickoff_orders
+
+        rows = [_late(60, dry_run=True), _late(60, status="error")]
+        assert load_post_kickoff_orders(rows, 24, NOW) == []
+
+    def test_outside_window_excluded(self):
+        from daily_summary import load_post_kickoff_orders
+
+        row = _late(60, timestamp=(NOW - timedelta(hours=30)).isoformat())
+        assert load_post_kickoff_orders([row], 24, NOW) == []
+
+    def test_missed_capture_is_the_weaker_tell(self):
+        # No start time on the row at all -- corroboration only, never proof,
+        # because a CLV capture task that simply did not run looks identical.
+        from daily_summary import load_post_kickoff_orders
+
+        row = _trade(timestamp=NOW.isoformat(), close_capture_reason="missed")
+        out = load_post_kickoff_orders([row], 24, NOW)
+        assert len(out) == 1
+        assert out[0]["minutes_late"] is None
+        assert out[0]["tell"] == "close_capture_reason=missed"
+
+    def test_missed_capture_ignored_when_start_time_says_pre_game(self):
+        from daily_summary import load_post_kickoff_orders
+
+        assert load_post_kickoff_orders([_late(-45, close_capture_reason="missed")], 24, NOW) == []
+
+
+class TestPostKickoffInReport:
+    def test_proven_late_order_surfaces_at_the_top(self):
+        out = build_report(NOW, 24, settlements=[], trades=[_late(117)], balance=100.0)
+        assert "placed AFTER kickoff" in out
+        assert "+117 min late" in out
+        assert out.index("AFTER kickoff") < out.index("## Yesterday")
+
+    def test_suspected_reported_separately_from_proven(self):
+        row = _trade(timestamp=NOW.isoformat(), close_capture_reason="missed")
+        out = build_report(NOW, 24, settlements=[], trades=[row], balance=100.0)
+        assert "unproven" in out
+        assert "placed AFTER kickoff" not in out
+
+    def test_clean_day_says_nothing(self):
+        out = build_report(NOW, 24, settlements=[], trades=[_late(-60)], balance=100.0)
+        assert "AFTER kickoff" not in out

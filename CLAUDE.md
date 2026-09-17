@@ -18,7 +18,7 @@
 
 | Domain | Coverage | Data Sources |
 |:-------|:---------|:-------------|
-| **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup (F3) and NCAAF (S21) are OFF** | The Odds API, ESPN, NHL/MLB Stats, NWS |
+| **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup (F3) is OFF; NCAAF is on a 0.08 pilot floor (S21c)** | The Odds API, ESPN, NHL/MLB Stats, NWS |
 | **Prediction markets** | Crypto (BTC, ETH, XRP, DOGE, SOL), weather (13 cities), S&P 500 | CoinGecko, Yahoo Finance, NWS |
 | **Championship futures** | NFL, NBA, NHL, MLB, PGA | Sportsbook futures odds |
 | **Execution pipeline** | Unified scan → risk-check → size → execute | Kalshi API (RSA-signed), Polymarket US (Ed25519) |
@@ -181,7 +181,7 @@ Every gate runs before any trade executes:
 | 4.6 | NO bets below `NO_SIDE_FAVORITE_THRESHOLD` need edge >= `NO_SIDE_MIN_EDGE` AND confidence=high | Reject |
 | 4.6b | All NO bets: effective edge floor = max(per-sport floor, `NO_SIDE_MIN_EDGE_GLOBAL`) (R28) | Reject |
 | 4.7 | Prediction categories (crypto/weather/spx/mentions/companies/politics) off unless `ALLOW_PREDICTION_BETS=true` (R25) | Reject |
-| 4.8 | In-progress games (`is_game_started`) off unless `ALLOW_LIVE_BETS=true` (L1) | Reject |
+| 4.8 | In-progress games off unless `ALLOW_LIVE_BETS=true` (L1). Detection is `_game_has_started()` — the Odds API start time, **not** the ticker (S23) | Reject |
 | 5 | Not already holding this market | Reject |
 | 6 | Per-event cap not exceeded (`MAX_PER_EVENT`; futures use `MAX_PER_EVENT_FUTURES`, P1) | Reject |
 | 6b | No **opposing side** already held or resting on this game (S22). Futures exempt | Reject |
@@ -201,6 +201,19 @@ Standing rules — do not reverse them without new settled evidence.
   never captured post-trade either (the v2 create-order response carries no `taker_fees_dollars`, so every
   logged trade recorded a fee of 0 and settlement computed `net_pnl = revenue - cost - 0`). `KALSHI_FEE_RATE=0`
   restores the old behaviour. *CHANGELOG 2026-08-25 (F1).*
+- **The fills endpoint calls the fee `fee_cost`, and our orders fill as TAKER.** `fetch_fill_fees`
+  read `fee_dollars or taker_fee_dollars or fee` — three names `/portfolio/fills` has never used —
+  so every fill resolved to 0 while the settler stamped `fee_source: "fills_api"`: a modelled number
+  wearing a measured label. It looked defensible ("Kalshi charges no maker fee, we post limit
+  orders"), and the inference was wrong — **a marketable limit at the ask crosses the spread**, so
+  133 of 138 orders are flagged `is_taker` and 136 carry a nonzero fee. Read **the first key
+  PRESENT, not the first key truthy**: a maker fill reports `"0.000000"`, which is a measured zero,
+  and an unrecognised payload must return `None` so the caller falls back to the model rather than
+  recording a zero. P&L was never wrong (`trade_fees()` falls back on a recorded zero) and the model
+  is **conservative** — $4.82 modelled against $4.10 actually paid over 135 rows, the gap being the
+  per-order `ceil` on 1-3 contract orders, so no floor needs changing. Repair a book behind a fee
+  bug with `python scripts/kalshi/kalshi_settler.py backfill-fees --apply`; settling only ever
+  stamps rows it is settling now. *CHANGELOG 2026-09-16 (S23b).*
 - **Kelly is `edge / (1 - price)`.** The `(1 - price)` divisor was missing until C11; without it favorites are under-sized 2.5x at 60c and 5x at 80c, and the flat floor collapses nearly every bet above ~60c to 1 contract — the single best-performing price band. *CHANGELOG 2026-07-27 (C11).*
 - **Two independent sizing lanes.** Below ~30c the flat floor `round(UNIT_SIZE / price)` binds and Kelly never clears it, so **`UNIT_SIZE` is the longshot knob**. Above ~60c Kelly binds and `UNIT_SIZE` is irrelevant, so **`KELLY_FRACTION` is the favorites knob**. Reach for the right one.
 - **`KELLY_FRACTION` is a portfolio fraction, not per-bet** — `kalshi_executor.py` divides it by `batch_size = min(len(opportunities), --max-bets)`. That divisor doubles as a crude correlation guard, but at 1.0 a fully correlated slate reaches full portfolio Kelly. **Keep it <= 0.5.**
@@ -233,11 +246,13 @@ Standing rules — do not reverse them without new settled evidence.
   (18 usable rows against its bar of 20). The evidence at the time pointed the right way —
   model Brier **0.1318 vs market 0.1399**, model ahead in *both* spread and total, over-claim
   **+0.019** against the 0.15 bar — but the bootstrap CI **[-0.042, +0.031]** still straddled
-  zero, and that is exactly the uncertainty the pilot cap exists to answer. **Re-run the review
-  once MNF settles**; if it returns C on the full sample, the floor goes back to 1.0. Record
-  which one set a floor, because "the script unfroze NFL" and "the operator unfroze NFL early"
+  zero, and that is exactly the uncertainty the pilot cap exists to answer.
+  **The re-run has now happened**: `NFL-Week1-Review` fired 2026-09-15 and returned
+  **branch A** (model Brier 0.1216 vs market 0.1333, n=22, model error −0.4%),
+  independently ratifying the same 0.08 floor — `applied: false` only because the key
+  already held the value the script would have written. Record which one set a floor, because "the script unfroze NFL" and "the operator unfroze NFL early"
   decay into the same sentence within a month, and only one of them is evidence.
-  *CHANGELOG 2026-09-13 (S1b).*
+  *CHANGELOG 2026-09-13 (S1b), 2026-09-15.*
 - **An edge that fires in one direction every time is a parameter, not a signal.** All
   11 NCAAF bets ever placed were YES on "team covers a big alternate spread", and the
   whole claimed edge was the margin stdev: solving per bet for the value that reconciles
@@ -249,9 +264,37 @@ Standing rules — do not reverse them without new settled evidence.
   never fitted: `calibration_stdevs.json` carries the `edge_detector.py` fallback
   byte-for-byte, and `_MIN_CALIB_SAMPLES` (20 per sport/category/30d) means 11 total
   settles never could fit it. Market Brier 0.1538 vs model 0.1744, per the S18 pair.
-  NCAAF is frozen in the live `.env` (`MIN_EDGE_THRESHOLD_NCAAF=1.0`) as of 2026-09-13,
-  on the same cold-start reasoning as S1 and with the same expiry: it comes out when
-  `strategy_state.json` (S10) ships. *CHANGELOG 2026-09-13 (S21).*
+  NCAAF was frozen on 2026-09-13 and moved to a **0.08 pilot floor on 2026-09-16
+  by operator override**, with the S21b shadow book still holding **zero settled
+  rows**. Expiry unchanged: the key comes out when `strategy_state.json` (S10) ships.
+  *CHANGELOG 2026-09-13 (S21), 2026-09-16 (S21c).*
+- **A one-sided book is a diagnostic; the stdev it implies is not.** S21's `9.5`
+  reproduces exactly on its own 10 filled spread bets — and nowhere else. Over 94
+  fresh **pre-gate** tail-strike rows the market implies a median of **17.0**
+  (IQR 14.2–20.6), with 15.0 inside it. Edge on a YES big-cover bet is monotone
+  decreasing in implied stdev, so **the gate harvests the lowest-implied-stdev rows
+  by construction** — the eleven restatements are the selection rule restating
+  itself. Direction inverts too: on fresh big-cover longshots the model runs
+  **1.8pts BELOW** market (higher on 29% of rows), and runs high only at px ≥ 0.70
+  (+3.1pts, 76%). **Never refit `margin_stdev` down to 9.5** — it would under-price
+  every tail in the sport to chase an artifact. **Solve a parameter on the pre-gate
+  population, never on the bets the gate selected.** *CHANGELOG 2026-09-16 (S21c).*
+- **Re-enabling a frozen sport is not resuming its experiment.** NCAAF's 11 frozen
+  bets were all 12–32c; the rows clearing at the global 0.03 floor a week later were
+  **20 of 26 at px ≥ 0.51** — F3's inversion band, where the high-edge half wins
+  10.8pts *less*. The 0.08 pilot caps that exposure by count (4 rows, vs 26 at 0.03).
+  **Check the price band of what would actually be bet before lifting a floor**, not
+  just the count. *CHANGELOG 2026-09-16 (S21c).*
+- **An unknown `--filter` name matches zero markets and says nothing.** Unrecognised
+  shortcuts fall through to a literal uppercase prefix (`ncaaf` → `NCAAF`), which no
+  Kalshi series carries, and the scan reports "no opportunities" exactly like a quiet
+  day. `longshot_scan.bat` passed `ncaab,ncaaf` — neither a key — and **scanned no
+  college football or basketball for six days** after its 09-10 migration, the same
+  failure the retired fork hit on a stale prefix. Both are aliases now, the fallback
+  prints a NOTE, and a test asserts every sport with a `MIN_EDGE_THRESHOLD_<SPORT>`
+  floor is reachable by a filter of that name. **Fix filter bugs in code, not in the
+  `.bat`** — schedulers are gitignored and do not survive a clone.
+  *CHANGELOG 2026-09-16 (S21c).*
 - **`won` is whether the PREDICTION was right, never whether the row profited.**
   `calculate_pnl` returned `revenue > cost`, which collapses to `0 > 0` on a zero-fill
   row, so every resting order that settled was logged as a loss whatever the outcome.
@@ -259,6 +302,33 @@ Standing rules — do not reverse them without new settled evidence.
   34 of its 435 rows have zero contracts and 5 were phantom losses feeding the very
   sample F3's lambda and S18's model-vs-market pair are computed from. Filled rows are
   unaffected -- the two expressions agree whenever contracts > 0. *CHANGELOG 2026-09-13 (S21).*
+- **A gate that reads the TICKER for a start time protects almost nothing.** Gate 4.8
+  used `is_game_started()`, which parses a time embedded in the ticker — and only
+  moneyline series carry one (`KXMLBGAME-26JUL21**1840**MINCLE`). Every spread, every
+  total and every football ticker is date-only, so it returned `False` whatever the
+  time of day, and **123 of 175 filled live-money bets ($128 of $211, 61%) sat on
+  markets the gate structurally could not see**. It let **10 NCAAF orders through
+  26–122 minutes after kickoff** on 2026-09-12, in two batches from the daily 11 AM
+  and 2 PM tasks, which run on Saturdays straight through the college slate. Split on
+  that line, NCAAF's book is **−36.5% post-kickoff (n=7) against +13.6% pre-game
+  (n=4)** — the whole loss is the live bets, which is a better explanation of the 2-9
+  record than S21's stdev ever was. The fix was already in the row: `details
+  ["event_start_time"]` (the Odds API `commence_time`) is on the opportunity at gate
+  time, and the executor was only using it afterwards to stamp the trade log.
+  `_game_has_started()` prefers it, falls back to the ticker, and **fails open** when
+  neither is dateable. **The limitation was documented in the comments at both call
+  sites for three months** — a known gap in a comment is not a tracked risk.
+  *CHANGELOG 2026-09-16 (S23).*
+- **A gate that fails open needs a detector behind it.** Gate 4.8 rejects post-kickoff
+  orders and fails open when nothing can name a start time — correct at gate time, and
+  exactly why the daily digest now also *reports* them.
+  `daily_summary.load_post_kickoff_orders()` separates **proven**
+  (`timestamp > event_start_time`, with minutes late) from **suspected** (no start time
+  *and* `close_capture_reason: "missed"`), and never counts the second as proof, because a
+  CLV capture task that simply did not run looks identical. Both tells sat in the trade log
+  from 09-12 with **no reader** while the 10 live NCAAF bets settled at −36.5%. The gate is
+  the control; this is the alarm that says the control failed open.
+  *CHANGELOG 2026-09-16 (S23b).*
 - **Never hold both sides of one game.** Gate 6b (S22) rejects a bet that is
   *arithmetically unable* to win alongside something already held or resting.
   Found in the book, not in review: 3 contracts of "Los Angeles R win" (63c,
@@ -418,7 +488,7 @@ Standing rules — do not reverse them without new settled evidence.
 
 ## Risk Limits
 
-Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.08` (S1b pilot since 2026-09-13; was the 1.0 S1 freeze — neither is in the code defaults)**.
+Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.08` (S1b pilot since 2026-09-13, ratified by the review on 2026-09-15) and `MIN_EDGE_THRESHOLD_NCAAF=0.08` (S21c pilot since 2026-09-16; was the 1.0 S21 freeze) — none of these are in the code defaults**.
 
 ```env
 UNIT_SIZE=1.00                  # Kelly floor per bet — the longshot knob (binds below ~30c)
@@ -459,11 +529,13 @@ MIN_EDGE_THRESHOLD_NFL=<unset>  # S1/S1b: live-only, code default unset. FROZEN 
                                 #   still returned BRANCH C. ~2.7x the global floor, so only strong
                                 #   NFL rows clear Gate 3; Gate 2b still caps NFL at 33% of equity.
                                 #   **Temporary either way**: remove when S10 ships.
-MIN_EDGE_THRESHOLD_NCAAF=<unset> # S21: FREEZE, live-only, code default unset. NCAAF is off in `.env`
-                                #   since 2026-09-13 -- 11 settled bets, ALL of them YES on "covers a big
-                                #   alternate spread", priced off an unfitted margin_stdev of 15.0 that
-                                #   Kalshi disagrees with at ~9.5. Same cold-start shape as the NFL
-                                #   freeze; **temporary**, remove it when S10 ships. See Sizing rules.
+MIN_EDGE_THRESHOLD_NCAAF=<unset> # S21/S21c: live-only, code default unset. FROZEN at 1.0 on
+                                #   2026-09-13 (11 settled bets, ALL YES on "covers a big alternate
+                                #   spread"); live `.env` now sets **0.08**, the S21c PILOT floor, since
+                                #   2026-09-16. That was an OPERATOR OVERRIDE -- the shadow book held
+                                #   zero settled rows. S21's "market implies 9.5" does NOT replicate
+                                #   pre-gate (94 fresh rows -> median 17.0); it was a selection artifact.
+                                #   ~2.7x the global floor. **Temporary**, remove when S10 ships.
 MIN_MARKET_PRICE=0.12           # R7 lottery-ticket floor; 0 disables. Pure reject threshold,
                                 #   independent of sizing. The live 0.10 is an OPEN EXPERIMENT
                                 #   re-opening the longshot lane — recheck after ~30 more settles.
