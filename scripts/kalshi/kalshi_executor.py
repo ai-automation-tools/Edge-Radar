@@ -23,12 +23,12 @@ import sys
 import math
 import json
 import uuid
-import logging
+import logging  # noqa: F401
 import argparse
 import re
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from dataclasses import dataclass, asdict
+from pathlib import Path  # noqa: F401
+from dataclasses import dataclass, asdict  # noqa: F401
 
 # Shared imports
 import paths  # noqa: F401 -- path constants -- configures sys.path
@@ -51,7 +51,8 @@ from app.config import get_config, reset_config
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 load_dotenv()
-from logging_setup import setup_logging
+from logging_setup import setup_logging  # noqa: E402
+
 log = setup_logging("kalshi_executor")
 console = Console()
 
@@ -142,9 +143,16 @@ ALLOW_PREDICTION_BETS = _cfg.gates.allow_prediction_bets
 # edges honest (current book odds, not a stale pre-game snapshot), which means
 # they can now pass the normal gates and execute through scheduled scans. Until
 # in-play betting is trusted, reject bets on games that have already started
-# unless ALLOW_LIVE_BETS=true. Mirrors the R25 opt-in pattern. Note: detection
-# uses is_game_started(), which only fires on tickers that embed a start time
-# (moneyline); date-only tickers (spreads/totals) are not caught here.
+# unless ALLOW_LIVE_BETS=true. Mirrors the R25 opt-in pattern.
+#
+# S23 (2026-09-16): detection goes through _game_has_started(), NOT
+# is_game_started() alone. The latter reads a start time embedded in the
+# TICKER, which only moneyline series carry -- every spread, total and football
+# game ticker is date-only, so it returned False unconditionally and this gate
+# had never once fired on them. 123 of 175 filled live-money bets ($128 of
+# $211) sat on markets it structurally could not protect. The Odds API
+# commence_time is already on the opportunity as details["event_start_time"];
+# the executor was only using it AFTER the fact, to stamp the trade row.
 ALLOW_LIVE_BETS = _cfg.gates.allow_live_bets
 REQUIRE_FRESH_CALIBRATION = _cfg.gates.require_fresh_calibration
 
@@ -226,10 +234,7 @@ def _liquidity_rejection(opp: "Opportunity") -> str | None:
             except (TypeError, ValueError):
                 spread = None
             if spread is not None and spread > MAX_BID_ASK_SPREAD:
-                return (
-                    f"illiquid_spread (${spread:.2f} wide > "
-                    f"${MAX_BID_ASK_SPREAD:.2f} max)"
-                )
+                return f"illiquid_spread (${spread:.2f} wide > " f"${MAX_BID_ASK_SPREAD:.2f} max)"
 
     if MIN_MARKET_VOLUME_24H > 0:
         raw = details.get("volume_24h")
@@ -294,9 +299,7 @@ def exposure_segment(opp: "Opportunity") -> str:
     single game, and it was one of the gates that passed the whole way while
     26 NFL positions accumulated across 26 different events.
     """
-    return (_detect_sport(opp.ticker)
-            or (opp.category or "").strip().lower()
-            or "unknown")
+    return _detect_sport(opp.ticker) or (opp.category or "").strip().lower() or "unknown"
 
 
 def exposure_from_positions(market_positions: list[dict]) -> tuple[float, dict[str, float]]:
@@ -327,8 +330,9 @@ def exposure_from_positions(market_positions: list[dict]) -> tuple[float, dict[s
     return total, by_segment
 
 
-def resting_exposure(client, trade_rows: list[dict] | None = None
-                     ) -> tuple[float, dict[str, float]]:
+def resting_exposure(
+    client, trade_rows: list[dict] | None = None
+) -> tuple[float, dict[str, float]]:
     """Cash committed to open resting orders (S21). Same shape as
     `exposure_from_positions`, and added to it before Gate 2b runs.
 
@@ -358,9 +362,12 @@ def resting_exposure(client, trade_rows: list[dict] | None = None
     """
     try:
         resp = client.get_orders(status="resting", limit=100)
-    except Exception as e:                      # noqa: BLE001 - never block a batch
-        log.warning("Resting-order exposure unavailable (%s); Gate 2b will "
-                    "under-count by any open resting order", e)
+    except Exception as e:  # noqa: BLE001 - never block a batch
+        log.warning(
+            "Resting-order exposure unavailable (%s); Gate 2b will "
+            "under-count by any open resting order",
+            e,
+        )
         return 0.0, {}
 
     orders = resp.get("orders", []) if isinstance(resp, dict) else []
@@ -376,8 +383,7 @@ def resting_exposure(client, trade_rows: list[dict] | None = None
     total = 0.0
     by_segment: dict[str, float] = {}
     for o in orders:
-        remaining = int(float(_order_field(o, "remaining_count",
-                                           "remaining_count_fp") or "0"))
+        remaining = int(float(_order_field(o, "remaining_count", "remaining_count_fp") or "0"))
         if remaining <= 0:
             continue
         ticker = o.get("ticker", "")
@@ -393,7 +399,10 @@ def resting_exposure(client, trade_rows: list[dict] | None = None
             log.warning(
                 "Resting order %s (%s) is not priceable from the trade log; "
                 "counting %d contract(s) at $1.00 worst case so Gate 2b errs "
-                "tight rather than blind", o.get("order_id"), ticker, remaining,
+                "tight rather than blind",
+                o.get("order_id"),
+                ticker,
+                remaining,
             )
         committed = round(remaining * price, 4)
         seg = _detect_sport(ticker) or "unknown"
@@ -402,8 +411,9 @@ def resting_exposure(client, trade_rows: list[dict] | None = None
     return total, by_segment
 
 
-def _exposure_rejection(opp: "Opportunity", open_exposure: float,
-                        segment_exposure: float, equity: float) -> str | None:
+def _exposure_rejection(
+    opp: "Opportunity", open_exposure: float, segment_exposure: float, equity: float
+) -> str | None:
     """Gate 2b (S4) -- reason string if the book is already at a ceiling.
 
     Checked BEFORE sizing, against exposure already standing, so this answers
@@ -464,9 +474,7 @@ _PER_SPORT_SERIES_DEDUP: dict[str, int] = dict(_cfg.per_sport.series_dedup_hours
 # on the same game to one bet (highest composite). Default off because cross-
 # category correlation varies by sport. Tests patch the module-level globals.
 CROSS_CATEGORY_DEDUP = _cfg.gates.cross_category_dedup
-_PER_SPORT_CROSS_CATEGORY_DEDUP: dict[str, bool] = dict(
-    _cfg.per_sport.cross_category_dedup
-)
+_PER_SPORT_CROSS_CATEGORY_DEDUP: dict[str, bool] = dict(_cfg.per_sport.cross_category_dedup)
 
 
 def _cross_category_sports() -> set[str]:
@@ -690,10 +698,13 @@ def preflight_gate_status(opp: "Opportunity") -> str:
 
     # Gate 4.6: R1 NO-side favorite guard
     if (
-        opp.side and opp.side.strip().lower() == "no"
+        opp.side
+        and opp.side.strip().lower() == "no"
         and opp.market_price < NO_SIDE_FAVORITE_THRESHOLD
-        and (opp.edge < NO_SIDE_MIN_EDGE
-             or _confidence_rank(opp.confidence) < _confidence_rank("high"))
+        and (
+            opp.edge < NO_SIDE_MIN_EDGE
+            or _confidence_rank(opp.confidence) < _confidence_rank("high")
+        )
     ):
         return "no-fav"
 
@@ -701,11 +712,39 @@ def preflight_gate_status(opp: "Opportunity") -> str:
     if not ALLOW_PREDICTION_BETS and opp.category in PREDICTION_CATEGORIES:
         return "pred-off"
 
-    # Gate 4.8: L1 live/in-play safety gate
-    if not ALLOW_LIVE_BETS and is_game_started(opp.ticker):
+    # Gate 4.8: L1 live/in-play safety gate (S23 detection)
+    if not ALLOW_LIVE_BETS and _game_has_started(opp):
         return "live-off"
 
     return "ok"
+
+
+def _game_has_started(opp, now: datetime | None = None) -> bool:
+    """Gate 4.8 detection, preferring the Odds API start time over the ticker.
+
+    `is_game_started()` parses a start time out of the ticker, which only
+    moneyline series embed (`KXMLBGAME-26JUL211840...`). Spreads, totals and
+    every football ticker are date-only, so it returns False for them no matter
+    what time it is -- which is how 7 NCAAF bets were placed 26-122 minutes
+    after kickoff on 2026-09-12 with ALLOW_LIVE_BETS=false (S23).
+
+    `details["event_start_time"]` is the Odds API `commence_time` for the
+    matched event and carries a real time. Prefer it; fall back to the ticker.
+
+    Fails OPEN (returns False) when neither source is dateable, matching Gates
+    3.6/3.7: an unknown start time is a sizing question, not a legality one.
+    """
+    start = (getattr(opp, "details", None) or {}).get("event_start_time")
+    if start:
+        try:
+            dt = datetime.fromisoformat(str(start).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            dt = None
+        if dt is not None:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt <= (now or datetime.now(timezone.utc))
+    return is_game_started(opp.ticker, now)
 
 
 def trusted_edge(edge: float, cap: float | None = None, decay: float | None = None) -> float:
@@ -768,7 +807,7 @@ def matchup_key(ticker: str) -> tuple[str, str] | None:
     m = _DATE_PREFIX_RE.match(middle)
     if not m:
         return None
-    teams = middle[m.end():]
+    teams = middle[m.end() :]
     if not teams:
         return None
     return (sport, teams)
@@ -822,8 +861,7 @@ def directional_claim(ticker: str, side: str) -> tuple[str, str, str, int] | Non
     return None
 
 
-def opposing_position(ticker: str, side: str,
-                      held: dict[str, str] | None) -> str | None:
+def opposing_position(ticker: str, side: str, held: dict[str, str] | None) -> str | None:
     """Gate 6b (S22): a held position this bet CONTRADICTS, or ``None``.
 
     Found 2026-09-13 from a real pair: 3 contracts of "Los Angeles R win"
@@ -855,7 +893,7 @@ def opposing_position(ticker: str, side: str,
     game, team, my_side, my_pts = claim
     for other_ticker, other_side in held.items():
         if other_ticker == ticker:
-            continue          # Gate 5 owns the same-market case
+            continue  # Gate 5 owns the same-market case
         other = directional_claim(other_ticker, other_side)
         if other is None:
             continue
@@ -988,14 +1026,18 @@ def cancel_stale_resting_orders(
             # "already gone" -- the janitor would log a clean sweep while the
             # order kept resting. `exchange_index` comes back on every order.
             client.cancel_order(order_id, exchange_index=o.get("exchange_index"))
-            cancelled.append({
-                "order_id": order_id,
-                "ticker": o.get("ticker", "?"),
-                "age_hours": round(age_hours, 1),
-            })
+            cancelled.append(
+                {
+                    "order_id": order_id,
+                    "ticker": o.get("ticker", "?"),
+                    "age_hours": round(age_hours, 1),
+                }
+            )
             log.info(
                 "Janitor: cancelled stale order %s (ticker=%s age=%.1fh)",
-                order_id, o.get("ticker"), age_hours,
+                order_id,
+                o.get("ticker"),
+                age_hours,
             )
         except KalshiAPIError as e:
             log.warning("Janitor: failed to cancel %s: %s", order_id, e)
@@ -1065,9 +1107,11 @@ def dedup_correlated_brackets(
 
 # ── Position Sizing ──────────────────────────────────────────────────────────
 
+
 @dataclass
 class SizedOrder:
     """An opportunity that has passed risk checks and been sized."""
+
     opportunity: Opportunity
     contracts: int
     price_cents: int
@@ -1093,18 +1137,23 @@ def unit_size_contracts(market_price: float, unit: float | None = None) -> int:
     return max(1, round(unit / market_price))
 
 
-def size_order(opp: Opportunity, bankroll: float, open_positions: int,
-               daily_pnl: float, unit_size: float = UNIT_SIZE,
-               open_tickers: set[str] | None = None,
-               event_counts: dict[str, int] | None = None,
-               max_per_event: int = MAX_PER_EVENT,
-               max_per_event_futures: int = MAX_PER_EVENT_FUTURES,
-               batch_size: int = 1,
-               recent_matchups: set[tuple[str, str]] | None = None,
-               open_exposure: float = 0.0,
-               segment_exposure: float = 0.0,
-               equity: float | None = None,
-               open_sides: dict[str, str] | None = None) -> SizedOrder:
+def size_order(
+    opp: Opportunity,
+    bankroll: float,
+    open_positions: int,
+    daily_pnl: float,
+    unit_size: float = UNIT_SIZE,
+    open_tickers: set[str] | None = None,
+    event_counts: dict[str, int] | None = None,
+    max_per_event: int = MAX_PER_EVENT,
+    max_per_event_futures: int = MAX_PER_EVENT_FUTURES,
+    batch_size: int = 1,
+    recent_matchups: set[tuple[str, str]] | None = None,
+    open_exposure: float = 0.0,
+    segment_exposure: float = 0.0,
+    equity: float | None = None,
+    open_sides: dict[str, str] | None = None,
+) -> SizedOrder:
     """
     Apply all risk checks and size the order.
 
@@ -1185,18 +1234,14 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
     #   1W-3L with claimed "+50% edge" — hard reject, no edge/confidence
     #   exception. MIN_MARKET_PRICE=0 disables.
     elif MIN_MARKET_PRICE > 0 and opp.market_price < MIN_MARKET_PRICE:
-        rejection = (
-            f"price_below_floor (${opp.market_price:.2f} < ${MIN_MARKET_PRICE:.2f})"
-        )
+        rejection = f"price_below_floor (${opp.market_price:.2f} < ${MIN_MARKET_PRICE:.2f})"
 
     # ── Risk Gate 3.55: Maximum cost/payout ratio (MAX_MARKET_PRICE=0 disables)
     #   A contract pays $1 if it wins, so the market price IS the cost/payout
     #   ratio. Reject bets priced above this ceiling, e.g. a 76c bet to win $1
     #   is a 76% ratio; 75c (75%) still passes. 1.0 disables the gate.
     elif MAX_MARKET_PRICE < 1.0 and opp.market_price > MAX_MARKET_PRICE:
-        rejection = (
-            f"price_above_ceiling (${opp.market_price:.2f} > ${MAX_MARKET_PRICE:.2f})"
-        )
+        rejection = f"price_above_ceiling (${opp.market_price:.2f} > ${MAX_MARKET_PRICE:.2f})"
 
     # ── Risk Gate 3.6: Hard liquidity floor
     #   Implements the CLAUDE.md Hard Stop "the market is clearly illiquid
@@ -1217,19 +1262,20 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
 
     # ── Risk Gate 4.5: Minimum confidence level (R3)
     elif _confidence_rank(opp.confidence) < _confidence_rank(MIN_CONFIDENCE):
-        rejection = (
-            f"confidence_below_minimum ({opp.confidence or 'unknown'} < {MIN_CONFIDENCE})"
-        )
+        rejection = f"confidence_below_minimum ({opp.confidence or 'unknown'} < {MIN_CONFIDENCE})"
 
     # ── Risk Gate 4.6: NO-side favorite guard (R1)
     #   Reject NO bets on heavy favorites unless both edge and confidence clear
     #   the higher bar. Observed 2026-04-21: all 13 high-edge losers in the
     #   14-day window were NO-side; NO at >=20% edge realized -33% ROI.
     elif (
-        opp.side and opp.side.strip().lower() == "no"
+        opp.side
+        and opp.side.strip().lower() == "no"
         and opp.market_price < NO_SIDE_FAVORITE_THRESHOLD
-        and (opp.edge < NO_SIDE_MIN_EDGE
-             or _confidence_rank(opp.confidence) < _confidence_rank("high"))
+        and (
+            opp.edge < NO_SIDE_MIN_EDGE
+            or _confidence_rank(opp.confidence) < _confidence_rank("high")
+        )
     ):
         rejection = (
             f"no_side_favorite (price ${opp.market_price:.2f} < "
@@ -1243,10 +1289,7 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
     #   2026-04-24 audit found those modules produce garbage fair values
     #   (crypto +80% on tail bets, weather $1.00 fair on 1-degree ranges)
     #   and have never produced a settled bet — no calibration exists.
-    elif (
-        not ALLOW_PREDICTION_BETS
-        and opp.category in PREDICTION_CATEGORIES
-    ):
+    elif not ALLOW_PREDICTION_BETS and opp.category in PREDICTION_CATEGORIES:
         rejection = (
             f"prediction_market_disabled (category={opp.category}; "
             f"set ALLOW_PREDICTION_BETS=true to enable)"
@@ -1256,13 +1299,14 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
     #   Reject bets on games that have already started unless ALLOW_LIVE_BETS=
     #   true. The L1 freshness fix makes in-play edges honest (current book
     #   odds, not a stale pre-game snapshot), so they can now reach order
-    #   placement; keep in-play opt-in until calibrated. Detection via
-    #   is_game_started() only fires on tickers that embed a start time
-    #   (moneyline); date-only spread/total tickers are not caught here.
-    elif not ALLOW_LIVE_BETS and is_game_started(opp.ticker):
+    #   placement; keep in-play opt-in until calibrated. S23: detection is
+    #   _game_has_started(), which prefers the Odds API commence_time carried
+    #   on the opportunity -- is_game_started() alone reads a ticker-embedded
+    #   time that only moneyline series have, so it never fired on a spread,
+    #   a total, or any football market.
+    elif not ALLOW_LIVE_BETS and _game_has_started(opp):
         rejection = (
-            "live_betting_disabled (game in progress; "
-            "set ALLOW_LIVE_BETS=true to enable)"
+            "live_betting_disabled (game in progress; " "set ALLOW_LIVE_BETS=true to enable)"
         )
 
     # ── Risk Gate 5: Duplicate ticker
@@ -1305,8 +1349,11 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
 
     if rejection:
         return SizedOrder(
-            opportunity=opp, contracts=0, price_cents=0,
-            cost_dollars=0, bankroll_pct=0,
+            opportunity=opp,
+            contracts=0,
+            price_cents=0,
+            cost_dollars=0,
+            bankroll_pct=0,
             risk_approval=f"REJECTED: {rejection}",
         )
 
@@ -1371,8 +1418,7 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
         effective_kelly *= NO_SIDE_KELLY_MULTIPLIER_GLOBAL
         if opp.market_price < NO_SIDE_KELLY_PRICE_FLOOR:
             effective_kelly *= NO_SIDE_KELLY_MULTIPLIER
-        elif (NO_SIDE_KELLY_PRICE_CEILING > 0
-                and opp.market_price >= NO_SIDE_KELLY_PRICE_CEILING):
+        elif NO_SIDE_KELLY_PRICE_CEILING > 0 and opp.market_price >= NO_SIDE_KELLY_PRICE_CEILING:
             effective_kelly *= NO_SIDE_KELLY_MULTIPLIER
 
     # C11 (2026-07-27): divide by (1 - price). Kelly for a binary contract is
@@ -1454,8 +1500,11 @@ def size_order(opp: Opportunity, bankroll: float, open_positions: int,
         bumped_cost = min_shares * opp.market_price
         if bumped_cost > MAX_BET_SIZE or bumped_cost > bankroll:
             return SizedOrder(
-                opportunity=opp, contracts=0, price_cents=0,
-                cost_dollars=0, bankroll_pct=0,
+                opportunity=opp,
+                contracts=0,
+                price_cents=0,
+                cost_dollars=0,
+                bankroll_pct=0,
                 risk_approval=(
                     f"REJECTED: below_venue_min_shares (sized {contracts} < "
                     f"min {min_shares}; bumping would cost ${bumped_cost:.2f})"
@@ -1502,9 +1551,11 @@ def resting_sides(client, trade_rows: list[dict] | None = None) -> dict[str, str
     """
     try:
         resp = client.get_orders(status="resting", limit=100)
-    except Exception as e:                      # noqa: BLE001 - never block a batch
-        log.warning("Resting-order sides unavailable (%s); Gate 6b will not see "
-                    "any open resting order", e)
+    except Exception as e:  # noqa: BLE001 - never block a batch
+        log.warning(
+            "Resting-order sides unavailable (%s); Gate 6b will not see " "any open resting order",
+            e,
+        )
         return {}
 
     orders = resp.get("orders", []) if isinstance(resp, dict) else []
@@ -1512,8 +1563,7 @@ def resting_sides(client, trade_rows: list[dict] | None = None) -> dict[str, str
     sides: dict[str, str] = {}
     unknown = 0
     for o in orders:
-        remaining = int(float(_order_field(o, "remaining_count",
-                                           "remaining_count_fp") or "0"))
+        remaining = int(float(_order_field(o, "remaining_count", "remaining_count_fp") or "0"))
         if remaining <= 0:
             continue
         ticker = o.get("ticker", "")
@@ -1524,9 +1574,12 @@ def resting_sides(client, trade_rows: list[dict] | None = None) -> dict[str, str
             continue
         sides[ticker] = side
     if unknown:
-        log.warning("Gate 6b: %d resting order(s) have no bet-side in the trade "
-                    "log (hand-placed, or a log gap) and are not checked for "
-                    "opposing sides", unknown)
+        log.warning(
+            "Gate 6b: %d resting order(s) have no bet-side in the trade "
+            "log (hand-placed, or a log gap) and are not checked for "
+            "opposing sides",
+            unknown,
+        )
     return sides
 
 
@@ -1689,12 +1742,16 @@ def _handle_structural(opp, raw_error: str, venue: str, remaining: int) -> bool:
     rprint("")
     rprint(f"[red bold]STRUCTURAL REJECTION -- {venue}/{product} disabled.[/red bold]")
     rprint(f"[red]{reason}[/red]")
-    rprint(f"[yellow]Stopping batch: {max(remaining - 1, 0)} order(s) not "
-           f"attempted -- this error is deterministic, so retrying only "
-           f"places identical failures.[/yellow]")
-    rprint(f"[dim]Future runs stay in dry-run for {venue}/{product} until "
-           f"eligibility is re-verified: "
-           f"python scripts/doctor.py --verify-eligibility[/dim]")
+    rprint(
+        f"[yellow]Stopping batch: {max(remaining - 1, 0)} order(s) not "
+        f"attempted -- this error is deterministic, so retrying only "
+        f"places identical failures.[/yellow]"
+    )
+    rprint(
+        f"[dim]Future runs stay in dry-run for {venue}/{product} until "
+        f"eligibility is re-verified: "
+        f"python scripts/doctor.py --verify-eligibility[/dim]"
+    )
     log.error("Structural venue rejection (%s/%s): %s", venue, product, raw_error)
     return True
 
@@ -1711,8 +1768,7 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
     """
     results: list = []
 
-    def _record_failure(ticker: str, side: str, message: str,
-                        venue: str = "kalshi") -> None:
+    def _record_failure(ticker: str, side: str, message: str, venue: str = "kalshi") -> None:
         """Append an error record for an order that didn't place, using the
         fresh-read-under-lock append so we don't clobber a concurrent writer."""
         error_record = {
@@ -1747,7 +1803,7 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
             try:
                 m = client.get_market(ticker)
                 shard_cache[ticker] = (m.get("market", m) or {}).get("exchange_index")
-            except Exception:                               # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 shard_cache[ticker] = None
         return shard_cache[ticker]
 
@@ -1760,7 +1816,9 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
             # or skip -- placing anyway just buys a `404 user_not_found`.
             if opp_venue == "kalshi":
                 funded, note = shard_funding.ensure_shard_funded(
-                    client, _shard_for(opp.ticker), s.cost_dollars,
+                    client,
+                    _shard_for(opp.ticker),
+                    s.cost_dollars,
                     enabled=AUTO_SHARD_TRANSFER,
                     source_shard=SHARD_FUNDING_SOURCE,
                     max_transfer=MAX_AUTO_SHARD_TRANSFER,
@@ -1772,8 +1830,7 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
                     rprint(f"  [cyan]shard:[/cyan] {note}")
                 if not funded:
                     log.warning("Skipping %s — %s", opp.ticker, note)
-                    _record_failure(opp.ticker, opp.side,
-                                    f"shard_underfunded: {note}", opp_venue)
+                    _record_failure(opp.ticker, opp.side, f"shard_underfunded: {note}", opp_venue)
                     continue
             # Determine price based on side
             kwargs = {
@@ -1797,8 +1854,11 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
             # it was refusing to do. A dry run returns `dry_run_blocked` and
             # deliberately does NOT count: it never reached the venue.
             if status != "dry_run_blocked":
-                vel.record_success(opp_venue, vel.product_for(opp.category),
-                                   evidence=f"order accepted ({opp.ticker})")
+                vel.record_success(
+                    opp_venue,
+                    vel.product_for(opp.category),
+                    evidence=f"order accepted ({opp.ticker})",
+                )
 
             record = log_trade(order_resp, s, trade_log)
             results.append(record)
@@ -1828,7 +1888,8 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
                 f"[dim](no response — may or may not have placed)[/dim]"
             )
             _record_failure(
-                opp.ticker, opp.side,
+                opp.ticker,
+                opp.side,
                 f"transport failure (placement UNKNOWN — reconcile): {e.message}",
                 venue=opp_venue,
             )
@@ -1845,11 +1906,11 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
             # A real HTTP status (4xx/5xx/429) — transport is fine, so reset the
             # network-failure counter and keep placing the rest of the batch.
             consecutive_conn_errors = 0
-            rprint(f"  [red]FAIL[/red] {opp.ticker}: "
-                   f"{vel.actionable_reason(e.message, limit=100)}")
+            rprint(
+                f"  [red]FAIL[/red] {opp.ticker}: " f"{vel.actionable_reason(e.message, limit=100)}"
+            )
             _record_failure(opp.ticker, opp.side, e.message, venue=opp_venue)
-            if _handle_structural(opp, e.message, opp_venue,
-                                  len(to_execute) - len(results)):
+            if _handle_structural(opp, e.message, opp_venue, len(to_execute) - len(results)):
                 break
 
         except Exception as e:
@@ -1859,17 +1920,18 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
             # here to keep the executor free of per-venue dependencies. The
             # conn-error counter is left untouched: we can't tell transport
             # from API, so neither reset nor short-circuit on it.
-            rprint(f"  [red]FAIL[/red] {opp.ticker}: "
-                   f"{vel.actionable_reason(str(e), limit=100)}")
+            rprint(
+                f"  [red]FAIL[/red] {opp.ticker}: " f"{vel.actionable_reason(str(e), limit=100)}"
+            )
             _record_failure(opp.ticker, opp.side, str(e), venue=opp_venue)
-            if _handle_structural(opp, str(e), opp_venue,
-                                  len(to_execute) - len(results)):
+            if _handle_structural(opp, str(e), opp_venue, len(to_execute) - len(results)):
                 break
 
     return results
 
 
 # ── Execution Pipeline ────────────────────────────────────────────────────────
+
 
 def load_opportunities_from_file(prediction: bool = False) -> list[Opportunity]:
     """Load opportunities from saved watchlist file(s).
@@ -1878,15 +1940,14 @@ def load_opportunities_from_file(prediction: bool = False) -> list[Opportunity]:
         prediction: If True, load prediction market opportunities.
                     If False, load sports opportunities.
     """
-    file_path = paths.PREDICTION_OPPORTUNITIES_PATH if prediction else paths.SPORTS_OPPORTUNITIES_PATH
+    file_path = (
+        paths.PREDICTION_OPPORTUNITIES_PATH if prediction else paths.SPORTS_OPPORTUNITIES_PATH
+    )
     if not file_path.exists():
         return []
     with open(file_path) as f:
         data = json.load(f)
-    return [
-        Opportunity(**{k: v for k, v in o.items()})
-        for o in data.get("opportunities", [])
-    ]
+    return [Opportunity(**{k: v for k, v in o.items()}) for o in data.get("opportunities", [])]
 
 
 def _parse_pick_rows(pick_str: str, total: int) -> list[int]:
@@ -1961,8 +2022,7 @@ def _apply_budget_cap(
 
     def _total_at(subset: list[SizedOrder], scale: float, use_floor: bool) -> float:
         return sum(
-            round(_count_at(s, scale, use_floor) * s.opportunity.market_price, 2)
-            for s in subset
+            round(_count_at(s, scale, use_floor) * s.opportunity.market_price, 2) for s in subset
         )
 
     # Drop bets only when the *floors alone* cannot fit. Shaving the legs that
@@ -1996,18 +2056,22 @@ def _apply_budget_cap(
     capped: list[SizedOrder] = []
     for s in working:
         n = _count_at(s, lo, use_floor)
-        capped.append(SizedOrder(
-            opportunity=s.opportunity,
-            contracts=n,
-            price_cents=s.price_cents,
-            cost_dollars=round(n * s.opportunity.market_price, 2),
-            bankroll_pct=s.bankroll_pct * (n / s.contracts) if s.contracts else 0.0,
-            risk_approval=s.risk_approval,
-        ))
+        capped.append(
+            SizedOrder(
+                opportunity=s.opportunity,
+                contracts=n,
+                price_cents=s.price_cents,
+                cost_dollars=round(n * s.opportunity.market_price, 2),
+                bankroll_pct=s.bankroll_pct * (n / s.contracts) if s.contracts else 0.0,
+                risk_approval=s.risk_approval,
+            )
+        )
     return capped
 
 
-def _apply_bet_ratio_cap(orders: list[SizedOrder], ratio: float = MAX_BET_RATIO) -> list[SizedOrder]:
+def _apply_bet_ratio_cap(
+    orders: list[SizedOrder], ratio: float = MAX_BET_RATIO
+) -> list[SizedOrder]:
     """Cap any single bet that exceeds ratio × the median batch cost.
 
     Prevents one high-edge, low-price bet from dominating a batch.
@@ -2028,15 +2092,21 @@ def _apply_bet_ratio_cap(orders: list[SizedOrder], ratio: float = MAX_BET_RATIO)
         if s.cost_dollars > cap:
             new_contracts = max(1, int(cap / s.opportunity.market_price))
             new_cost = round(new_contracts * s.opportunity.market_price, 2)
-            bankroll_pct = s.bankroll_pct * (new_cost / s.cost_dollars) if s.cost_dollars > 0 else s.bankroll_pct
-            capped.append(SizedOrder(
-                opportunity=s.opportunity,
-                contracts=new_contracts,
-                price_cents=s.price_cents,
-                cost_dollars=new_cost,
-                bankroll_pct=round(bankroll_pct, 4),
-                risk_approval="APPROVED_CAPPED_BET_RATIO",
-            ))
+            bankroll_pct = (
+                s.bankroll_pct * (new_cost / s.cost_dollars)
+                if s.cost_dollars > 0
+                else s.bankroll_pct
+            )
+            capped.append(
+                SizedOrder(
+                    opportunity=s.opportunity,
+                    contracts=new_contracts,
+                    price_cents=s.price_cents,
+                    cost_dollars=new_cost,
+                    bankroll_pct=round(bankroll_pct, 4),
+                    risk_approval="APPROVED_CAPPED_BET_RATIO",
+                )
+            )
         else:
             capped.append(s)
 
@@ -2059,6 +2129,7 @@ def _calibration_preflight(execute: bool) -> bool:
     """
     try:
         from model_calibration import calibration_drift, format_drift_warning
+
         health = calibration_drift()
     except Exception as e:  # diagnostics never block on their own bugs
         log.warning("Calibration preflight unavailable (%s) — continuing.", e)
@@ -2073,12 +2144,13 @@ def _calibration_preflight(execute: bool) -> bool:
         rprint(f"[yellow]  {line}[/yellow]")
 
     if execute and REQUIRE_FRESH_CALIBRATION:
-        rprint("[bold red]  Refusing to execute: REQUIRE_FRESH_CALIBRATION=true."
-               "[/bold red]")
+        rprint("[bold red]  Refusing to execute: REQUIRE_FRESH_CALIBRATION=true." "[/bold red]")
         return False
     if execute:
-        rprint("[dim]  Continuing anyway (set REQUIRE_FRESH_CALIBRATION=true to "
-               "make this a hard stop).[/dim]")
+        rprint(
+            "[dim]  Continuing anyway (set REQUIRE_FRESH_CALIBRATION=true to "
+            "make this a hard stop).[/dim]"
+        )
     return True
 
 
@@ -2154,7 +2226,7 @@ def execute_pipeline(
     # ── Gather portfolio state
     bal = client.get_balance_dollars()
     bankroll = bal["balance"]
-    rprint(f"\n[bold]Portfolio State[/bold]")
+    rprint(f"\n[bold]Portfolio State[/bold]")  # noqa: F541
     rprint(f"  Balance:    [green]${bankroll:,.2f}[/green]")
     rprint(f"  Portfolio:  [green]${bal['portfolio_value']:,.2f}[/green]")
 
@@ -2187,8 +2259,11 @@ def execute_pipeline(
         _resting_total, _resting_by_seg = resting_exposure(client, load_trade_log())
     else:
         _resting_total, _resting_by_seg = 0.0, {}
-        log.info("Resting-order exposure not measured on %s: the venue exposes no "
-                 "order listing. Gate 2b counts positions only.", venue)
+        log.info(
+            "Resting-order exposure not measured on %s: the venue exposes no "
+            "order listing. Gate 2b counts positions only.",
+            venue,
+        )
     if _resting_total > 0:
         equity += _resting_total
         open_exposure += _resting_total
@@ -2249,14 +2324,14 @@ def execute_pipeline(
     # which Kalshi already scopes by subaccount.
     trade_log = for_profile(load_trade_log())
     daily_pnl = get_today_pnl(trade_log)
-    recent_matchups = recent_matchups_from_log(
-        trade_log, per_sport_hours=_PER_SPORT_SERIES_DEDUP
-    )
+    recent_matchups = recent_matchups_from_log(trade_log, per_sport_hours=_PER_SPORT_SERIES_DEDUP)
     rprint(f"  Today P&L:  ${daily_pnl:,.2f} (limit: -${MAX_DAILY_LOSS:,.2f})")
     rprint(f"  Unit size:  ${unit_size:.2f}")
     rprint(f"  Per-game:   {MAX_PER_EVENT} max  (futures: {MAX_PER_EVENT_FUTURES} max)")
     if SERIES_DEDUP_HOURS > 0:
-        rprint(f"  Series dedup: blocking matchups bet within last {SERIES_DEDUP_HOURS}h ({len(recent_matchups)} active)")
+        rprint(
+            f"  Series dedup: blocking matchups bet within last {SERIES_DEDUP_HOURS}h ({len(recent_matchups)} active)"  # noqa: E501
+        )
 
     if daily_pnl <= -MAX_DAILY_LOSS:
         rprint("[red bold]DAILY LOSS LIMIT HIT -- no new bets allowed today[/red bold]")
@@ -2290,14 +2365,10 @@ def execute_pipeline(
                 continue
             cap = MAX_PER_EVENT_FUTURES if s.opportunity.category == "futures" else MAX_PER_EVENT
             if event_counts.get(evt, 0) >= cap:
-                replay_dropped.append(
-                    (tkr, f"per-event cap {cap} reached (gate 6)")
-                )
+                replay_dropped.append((tkr, f"per-event cap {cap} reached (gate 6)"))
                 continue
             if mkey and mkey in recent_matchups:
-                replay_dropped.append(
-                    (tkr, "matchup bet within series-dedup window (gate 7)")
-                )
+                replay_dropped.append((tkr, "matchup bet within series-dedup window (gate 7)"))
                 continue
             if s.opportunity.category != "futures":
                 clash = opposing_position(tkr, s.opportunity.side, open_sides)
@@ -2350,23 +2421,32 @@ def execute_pipeline(
         # ── Deduplicate correlated brackets (e.g., multiple totals lines on same game)
         before_dedup = len(opportunities)
         xcat_sports = _cross_category_sports()
-        opportunities = dedup_correlated_brackets(
-            opportunities, cross_category_sports=xcat_sports
-        )
+        opportunities = dedup_correlated_brackets(opportunities, cross_category_sports=xcat_sports)
         if len(opportunities) < before_dedup:
             xcat_note = f" (cross-category: {sorted(xcat_sports)})" if xcat_sports else ""
-            rprint(f"[dim]Deduped correlated brackets: {before_dedup} -> {len(opportunities)} opportunities{xcat_note}[/dim]")
+            rprint(
+                f"[dim]Deduped correlated brackets: {before_dedup} -> {len(opportunities)} opportunities{xcat_note}[/dim]"  # noqa: E501
+            )
 
         # ── Size all opportunities
         # Divide Kelly fraction by batch size so total exposure stays proportional
         batch_sz = min(len(opportunities), max_bets)
-        rprint(f"\n[bold]Risk-checking {len(opportunities)} opportunities (batch={batch_sz})...[/bold]")
+        rprint(
+            f"\n[bold]Risk-checking {len(opportunities)} opportunities (batch={batch_sz})...[/bold]"
+        )
         sized_orders: list[SizedOrder] = []
         for opp in opportunities:
             seg = exposure_segment(opp)
             sized = size_order(
-                opp, bankroll, open_count + len([s for s in sized_orders if s.risk_approval.startswith("APPROVED")]),
-                daily_pnl, unit_size, open_tickers, event_counts, MAX_PER_EVENT,
+                opp,
+                bankroll,
+                open_count
+                + len([s for s in sized_orders if s.risk_approval.startswith("APPROVED")]),
+                daily_pnl,
+                unit_size,
+                open_tickers,
+                event_counts,
+                MAX_PER_EVENT,
                 MAX_PER_EVENT_FUTURES,
                 open_sides=open_sides,
                 batch_size=batch_sz,
@@ -2416,9 +2496,11 @@ def execute_pipeline(
 
         # ── Min-bets gate: abort if too few approved to avoid over-concentration
         if min_bets is not None and len(approved) < min_bets:
-            rprint(f"[yellow bold]MIN-BETS GATE: only {len(approved)} approved but "
-                   f"--min-bets requires {min_bets}. Skipping execution to avoid "
-                   f"over-concentrating budget into too few positions.[/yellow bold]")
+            rprint(
+                f"[yellow bold]MIN-BETS GATE: only {len(approved)} approved but "
+                f"--min-bets requires {min_bets}. Skipping execution to avoid "
+                f"over-concentrating budget into too few positions.[/yellow bold]"
+            )
             return []
 
         # ── Preview table
@@ -2429,7 +2511,9 @@ def execute_pipeline(
         to_execute = _apply_bet_ratio_cap(to_execute)
         post_ratio_cost = sum(s.cost_dollars for s in to_execute)
         if post_ratio_cost < pre_ratio_cost:
-            rprint(f"  Bet ratio cap: [yellow]${pre_ratio_cost:.2f} -> ${post_ratio_cost:.2f}[/yellow] (max {MAX_BET_RATIO:.1f}x median)")
+            rprint(
+                f"  Bet ratio cap: [yellow]${pre_ratio_cost:.2f} -> ${post_ratio_cost:.2f}[/yellow] (max {MAX_BET_RATIO:.1f}x median)"  # noqa: E501
+            )
 
         # ── Budget cap: proportionally scale if total exceeds budget
         if budget is not None:
@@ -2437,11 +2521,11 @@ def execute_pipeline(
             pre_budget_cost = sum(s.cost_dollars for s in to_execute)
             if pre_budget_cost > budget_dollars:
                 pre_budget_tickers = {s.opportunity.ticker for s in to_execute}
-                to_execute = _apply_budget_cap(
-                    to_execute, budget_dollars, unit_size=unit_size
-                )
+                to_execute = _apply_budget_cap(to_execute, budget_dollars, unit_size=unit_size)
                 post_budget_cost = sum(s.cost_dollars for s in to_execute)
-                rprint(f"  Budget cap: [yellow]${pre_budget_cost:.2f} -> ${post_budget_cost:.2f}[/yellow] (limit ${budget_dollars:.2f})")
+                rprint(
+                    f"  Budget cap: [yellow]${pre_budget_cost:.2f} -> ${post_budget_cost:.2f}[/yellow] (limit ${budget_dollars:.2f})"  # noqa: E501
+                )
                 # C11b: the cap now drops whole bets rather than shaving every
                 # leg below its unit floor — say which ones went.
                 dropped = pre_budget_tickers - {s.opportunity.ticker for s in to_execute}
@@ -2452,29 +2536,39 @@ def execute_pipeline(
                         f"{', '.join(sorted(dropped))}[/dim]"
                     )
             else:
-                rprint(f"  Budget cap: [green]${pre_budget_cost:.2f} within ${budget_dollars:.2f} limit[/green]")
+                rprint(
+                    f"  Budget cap: [green]${pre_budget_cost:.2f} within ${budget_dollars:.2f} limit[/green]"  # noqa: E501
+                )
 
         # ── Venue minimum re-check (PM2c): the ratio/budget caps above can
         # scale a bumped order back below its venue's per-order minimum. Drop
         # those rows — restoring the count would defeat the cap, and a
         # sub-minimum order would just be rejected by the exchange.
         below_min = [
-            s for s in to_execute
+            s
+            for s in to_execute
             if 0 < s.contracts < int((s.opportunity.details or {}).get("min_order_shares") or 0)
         ]
         if below_min:
             to_execute = [s for s in to_execute if s not in below_min]
-            rprint(f"  [yellow]Dropped {len(below_min)} order(s) capped below "
-                   f"the venue share minimum:[/yellow]")
+            rprint(
+                f"  [yellow]Dropped {len(below_min)} order(s) capped below "
+                f"the venue share minimum:[/yellow]"
+            )
             for s in below_min:
-                rprint(f"    [dim]SKIP {s.opportunity.ticker}: {s.contracts} < "
-                       f"{(s.opportunity.details or {}).get('min_order_shares')} min[/dim]")
+                rprint(
+                    f"    [dim]SKIP {s.opportunity.ticker}: {s.contracts} < "
+                    f"{(s.opportunity.details or {}).get('min_order_shares')} min[/dim]"
+                )
             if not to_execute:
                 rprint("[yellow]No orders left after the venue-minimum check.[/yellow]")
                 return []
 
     from ticker_display import (
-        parse_game_datetime, format_bet_label, format_pick_label, sport_from_ticker,
+        parse_game_datetime,
+        format_bet_label,
+        format_pick_label,
+        sport_from_ticker,
     )
 
     dry_run = get_config().system.dry_run
@@ -2486,8 +2580,11 @@ def execute_pipeline(
         table_title = f"PREVIEW -- {len(to_execute)} orders"
     table = Table(title=table_title, show_lines=True)
     cat_labels = {
-        "game": "ML", "spread": "Spread", "total": "Total",
-        "player_prop": "Prop", "esports": "Esports",
+        "game": "ML",
+        "spread": "Spread",
+        "total": "Total",
+        "player_prop": "Prop",
+        "esports": "Esports",
     }
 
     table.add_column("#", justify="right", style="dim")
@@ -2527,6 +2624,7 @@ def execute_pipeline(
     if cached_rows is None and fingerprint is not None:
         try:
             from scan_cache import store as _scan_cache_store
+
             _scan_cache_store(fingerprint, to_execute, bankroll)
         except Exception as e:
             log.debug("scan_cache.store skipped: %s", e)
@@ -2569,7 +2667,7 @@ def execute_pipeline(
     #   eligibility is irrelevant to it, and blocking it would stop the
     #   dry-run evidence log that Polymarket's phase gate depends on.
     blocked_products: dict[tuple[str, str], tuple[str, str]] = {}
-    for s in ([] if dry_run else to_execute):
+    for s in [] if dry_run else to_execute:
         v = (s.opportunity.details or {}).get("venue", "kalshi")
         prod = vel.product_for(s.opportunity.category)
         if (v, prod) in blocked_products:
@@ -2580,14 +2678,17 @@ def execute_pipeline(
 
     if blocked_products:
         rprint("")
-        rprint("[red bold]ELIGIBILITY PREFLIGHT FAILED -- no live orders "
-               "will be placed.[/red bold]")
+        rprint(
+            "[red bold]ELIGIBILITY PREFLIGHT FAILED -- no live orders " "will be placed.[/red bold]"
+        )
         for (v, prod), (st, why) in sorted(blocked_products.items()):
             colour = "red" if st == "blocked" else "yellow"
             rprint(f"  [{colour}]{v}/{prod}: {st}[/{colour}] -- {why}")
-        rprint("[dim]`unknown` fails closed on purpose: a transient API or "
-               "config failure must never fall back to attempting real "
-               "orders in a barred product.[/dim]")
+        rprint(
+            "[dim]`unknown` fails closed on purpose: a transient API or "
+            "config failure must never fall back to attempting real "
+            "orders in a barred product.[/dim]"
+        )
         rprint("[dim]Verify with: python scripts/doctor.py --verify-eligibility[/dim]")
         return to_execute
 
@@ -2607,7 +2708,7 @@ def execute_pipeline(
     results = _place_order_batch(client, to_execute, trade_log)
 
     # ── Post-execution summary
-    rprint(f"\n[bold]Execution complete[/bold]")
+    rprint(f"\n[bold]Execution complete[/bold]")  # noqa: F541
     new_bal = client.get_balance_dollars()
     rprint(f"  Balance: ${bankroll:.2f} -> ${new_bal['balance']:.2f}")
     rprint(f"  Orders placed: {len(results)}")
@@ -2618,6 +2719,7 @@ def execute_pipeline(
 
 # ── Status Command ────────────────────────────────────────────────────────────
 
+
 def show_status(client: KalshiClient, save: bool = False):
     """Show current portfolio status, positions, and today's activity."""
     from ticker_display import parse_game_datetime, parse_matchup, parse_pick_team
@@ -2626,7 +2728,7 @@ def show_status(client: KalshiClient, save: bool = False):
     env = "DEMO" if client.is_demo else "LIVE"
     now = datetime.now(timezone.utc)
 
-    rprint(f"\n[bold]-- Kalshi Portfolio Status --[/bold]")
+    rprint(f"\n[bold]-- Kalshi Portfolio Status --[/bold]")  # noqa: F541
     rprint(f"  Environment:  {env}")
     rprint(f"  Balance:      [green]${bal['balance']:,.2f}[/green]")
     rprint(f"  Portfolio:    [green]${bal['portfolio_value']:,.2f}[/green]")
@@ -2675,6 +2777,7 @@ def show_status(client: KalshiClient, save: bool = False):
     today_trades = [t for t in trade_log if t.get("timestamp", "").startswith(today)]
     daily_pnl = get_today_pnl(trade_log)
     from trade_log import get_filled_cost
+
     total_wagered = sum(get_filled_cost(t) for t in today_trades)
 
     if today_trades:
@@ -2683,7 +2786,7 @@ def show_status(client: KalshiClient, save: bool = False):
         rprint(f"  Realized P&L: ${daily_pnl:,.2f}")
         rprint(f"  Loss limit:   ${daily_pnl:,.2f} / -${MAX_DAILY_LOSS:,.2f}")
     else:
-        rprint(f"\n  [dim]No trades today[/dim]")
+        rprint(f"\n  [dim]No trades today[/dim]")  # noqa: F541
 
     # Resting orders
     resting = []
@@ -2703,12 +2806,12 @@ def show_status(client: KalshiClient, save: bool = False):
     # Save markdown report
     if save:
         md = []
-        md.append(f"# Kalshi Portfolio Status")
-        md.append(f"")
+        md.append(f"# Kalshi Portfolio Status")  # noqa: F541
+        md.append(f"")  # noqa: F541
         md.append(f"*{now.strftime('%A, %B %d, %Y')} | {now.strftime('%I:%M %p UTC')} | {env}*")
-        md.append(f"")
-        md.append(f"| Metric | Value |")
-        md.append(f"|--------|-------|")
+        md.append(f"")  # noqa: F541
+        md.append(f"| Metric | Value |")  # noqa: F541
+        md.append(f"|--------|-------|")  # noqa: F541
         md.append(f"| Cash Balance | ${bal['balance']:,.2f} |")
         md.append(f"| Portfolio Value | ${bal['portfolio_value']:,.2f} |")
         md.append(f"| Open Positions | {len(market_pos)}/{MAX_OPEN_POSITIONS} |")
@@ -2719,11 +2822,11 @@ def show_status(client: KalshiClient, save: bool = False):
         if market_pos:
             total_exposure = 0.0
             total_pnl = 0.0
-            md.append(f"")
+            md.append(f"")  # noqa: F541
             md.append(f"## Open Positions ({len(market_pos)})")
-            md.append(f"")
-            md.append(f"| Bet | When | Pick | Qty | Cost | P&L |")
-            md.append(f"|-----|------|------|-----|------|-----|")
+            md.append(f"")  # noqa: F541
+            md.append(f"| Bet | When | Pick | Qty | Cost | P&L |")  # noqa: F541
+            md.append(f"|-----|------|------|-----|------|-----|")  # noqa: F541
             for p in market_pos:
                 ticker = p.get("ticker", "")
                 pnl = float(p.get("realized_pnl_dollars", "0"))
@@ -2744,20 +2847,23 @@ def show_status(client: KalshiClient, save: bool = False):
             md.append(f"| **TOTAL** | | | | **${total_exposure:.2f}** | **${total_pnl:+.2f}** |")
 
         if resting:
-            md.append(f"")
+            md.append(f"")  # noqa: F541
             md.append(f"## Resting Orders ({len(resting)})")
-            md.append(f"")
-            md.append(f"| Ticker | Side | Remaining | Price |")
-            md.append(f"|--------|------|-----------|-------|")
+            md.append(f"")  # noqa: F541
+            md.append(f"| Ticker | Side | Remaining | Price |")  # noqa: F541
+            md.append(f"|--------|------|-----------|-------|")  # noqa: F541
             for o in resting:
                 price = o.get("yes_price_dollars") or o.get("no_price_dollars") or "?"
-                md.append(f"| {o.get('ticker', '')[:35]} | {o.get('side', '').upper()} | {o.get('remaining_count_fp', '?')} | ${price} |")
+                md.append(
+                    f"| {o.get('ticker', '')[:35]} | {o.get('side', '').upper()} | {o.get('remaining_count_fp', '?')} | ${price} |"  # noqa: E501
+                )
 
-        md.append(f"")
-        md.append(f"---")
-        md.append(f"*Generated by Edge-Radar*")
+        md.append(f"")  # noqa: F541
+        md.append(f"---")  # noqa: F541
+        md.append(f"*Generated by Edge-Radar*")  # noqa: F541
 
-        from pathlib import Path
+        from pathlib import Path  # noqa: F811
+
         report_dir = Path(paths.PROJECT_ROOT) / "reports" / "Accounts" / "Kalshi"
         report_dir.mkdir(parents=True, exist_ok=True)
         report_path = report_dir / f"kalshi_status_{today}.md"
@@ -2768,49 +2874,92 @@ def show_status(client: KalshiClient, save: bool = False):
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
+
 def main():
     parser = argparse.ArgumentParser(description="Kalshi automated executor")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run_p = sub.add_parser("run", help="Scan markets and execute bets")
-    run_p.add_argument("--execute", action="store_true",
-                       help="Actually place orders (default: preview only)")
-    run_p.add_argument("--from-file", action="store_true",
-                       help="Use saved watchlist instead of fresh scan")
-    run_p.add_argument("--prediction", action="store_true",
-                       help="Use prediction market scanner (crypto, weather, S&P 500) instead of sports")
-    run_p.add_argument("--filter", dest="ticker_filter",
-                       help="Filter: ncaamb, nba, nhl, ... (sports) or crypto, btc, weather, spx (prediction)")
-    run_p.add_argument("--min-edge", type=float, default=MIN_EDGE_THRESHOLD,
-                       help="Minimum edge threshold")
-    run_p.add_argument("--unit-size", type=float, default=UNIT_SIZE,
-                       help=f"Dollar amount per bet (default ${UNIT_SIZE:.2f})")
-    run_p.add_argument("--max-bets", type=int, default=5,
-                       help="Max bets per run (default 5)")
-    run_p.add_argument("--top", type=int, default=20,
-                       help="Number of opportunities to scan")
-    run_p.add_argument("--pick", type=str, default=None,
-                       help="Execute only specific rows from preview (e.g., '1,3,5' or '1-3')")
-    run_p.add_argument("--ticker", type=str, nargs="+", default=None,
-                       help="Execute specific market ticker(s) from the scan results")
-    run_p.add_argument("--date", type=str, default=None,
-                       help="Only show games on this date (today, tomorrow, YYYY-MM-DD, mar31)")
-    run_p.add_argument("--budget", type=str, default=None,
-                       help="Max total cost for the batch. Percentage of bankroll (e.g. '10%%') "
-                            "or dollar amount (e.g. '15'). Bets are proportionally scaled down "
-                            "to stay within budget while preserving Kelly edge-weighting.")
-    run_p.add_argument("--exclude-open", action="store_true",
-                       help="Exclude markets where you already have an open position")
-    run_p.add_argument("--venue", type=str, default="kalshi", choices=VENUES,
-                       help="Execution venue (default kalshi). The run command scans Kalshi "
-                            "markets, so only kalshi is accepted here — Polymarket execution "
-                            "routes through `scan.py polymarket --execute` (PM2c)")
+    run_p.add_argument(
+        "--execute", action="store_true", help="Actually place orders (default: preview only)"
+    )
+    run_p.add_argument(
+        "--from-file", action="store_true", help="Use saved watchlist instead of fresh scan"
+    )
+    run_p.add_argument(
+        "--prediction",
+        action="store_true",
+        help="Use prediction market scanner (crypto, weather, S&P 500) instead of sports",
+    )
+    run_p.add_argument(
+        "--filter",
+        dest="ticker_filter",
+        help="Filter: ncaamb, nba, nhl, ... (sports) or crypto, btc, weather, spx (prediction)",
+    )
+    run_p.add_argument(
+        "--min-edge", type=float, default=MIN_EDGE_THRESHOLD, help="Minimum edge threshold"
+    )
+    run_p.add_argument(
+        "--unit-size",
+        type=float,
+        default=UNIT_SIZE,
+        help=f"Dollar amount per bet (default ${UNIT_SIZE:.2f})",
+    )
+    run_p.add_argument("--max-bets", type=int, default=5, help="Max bets per run (default 5)")
+    run_p.add_argument("--top", type=int, default=20, help="Number of opportunities to scan")
+    run_p.add_argument(
+        "--pick",
+        type=str,
+        default=None,
+        help="Execute only specific rows from preview (e.g., '1,3,5' or '1-3')",
+    )
+    run_p.add_argument(
+        "--ticker",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Execute specific market ticker(s) from the scan results",
+    )
+    run_p.add_argument(
+        "--date",
+        type=str,
+        default=None,
+        help="Only show games on this date (today, tomorrow, YYYY-MM-DD, mar31)",
+    )
+    run_p.add_argument(
+        "--budget",
+        type=str,
+        default=None,
+        help="Max total cost for the batch. Percentage of bankroll (e.g. '10%%') "
+        "or dollar amount (e.g. '15'). Bets are proportionally scaled down "
+        "to stay within budget while preserving Kelly edge-weighting.",
+    )
+    run_p.add_argument(
+        "--exclude-open",
+        action="store_true",
+        help="Exclude markets where you already have an open position",
+    )
+    run_p.add_argument(
+        "--venue",
+        type=str,
+        default="kalshi",
+        choices=VENUES,
+        help="Execution venue (default kalshi). The run command scans Kalshi "
+        "markets, so only kalshi is accepted here — Polymarket execution "
+        "routes through `scan.py polymarket --execute` (PM2c)",
+    )
 
     status_p = sub.add_parser("status", help="Show portfolio status")
-    status_p.add_argument("--save", action="store_true",
-                          help="Save status report to reports/Accounts/Kalshi/")
-    status_p.add_argument("--venue", type=str, default="kalshi", choices=VENUES,
-                          help="Venue to show portfolio status for (default kalshi)")
+    status_p.add_argument(
+        "--save", action="store_true", help="Save status report to reports/Accounts/Kalshi/"
+    )
+    status_p.add_argument(
+        "--venue",
+        type=str,
+        default="kalshi",
+        choices=VENUES,
+        help="Venue to show portfolio status for (default kalshi)",
+    )
 
     args = parser.parse_args()
 
@@ -2835,22 +2984,31 @@ def main():
 
     elif args.command == "run":
         if getattr(args, "venue", "kalshi") != "kalshi":
-            rprint("[red bold]Refused:[/red bold] `run` scans Kalshi markets — a "
-                   "non-Kalshi venue would price nothing it can execute. Use "
-                   "`python scripts/scan.py polymarket --execute` for Polymarket (PM2c).")
+            rprint(
+                "[red bold]Refused:[/red bold] `run` scans Kalshi markets — a "
+                "non-Kalshi venue would price nothing it can execute. Use "
+                "`python scripts/scan.py polymarket --execute` for Polymarket (PM2c)."
+            )
             sys.exit(2)
 
         # Get opportunities
         if args.from_file:
-            rprint(f"[bold]Loading {'prediction' if args.prediction else 'sports'} opportunities from file...[/bold]")
+            rprint(
+                f"[bold]Loading {'prediction' if args.prediction else 'sports'} opportunities from file...[/bold]"  # noqa: E501
+            )
             opportunities = load_opportunities_from_file(prediction=args.prediction)
-            src = paths.PREDICTION_OPPORTUNITIES_PATH if args.prediction else paths.SPORTS_OPPORTUNITIES_PATH
+            src = (
+                paths.PREDICTION_OPPORTUNITIES_PATH
+                if args.prediction
+                else paths.SPORTS_OPPORTUNITIES_PATH
+            )
             rprint(f"  Loaded {len(opportunities)} from {src}")
 
         elif args.prediction:
             # Use prediction market scanner
             rprint("[bold]Running prediction market scan...[/bold]")
             from prediction_scanner import scan_prediction_markets
+
             opportunities = scan_prediction_markets(
                 scan_client,
                 min_edge=args.min_edge,
@@ -2865,6 +3023,7 @@ def main():
             resolved_date = None
             if args.date:
                 from ticker_display import resolve_date_arg
+
                 resolved_date = resolve_date_arg(args.date)
             opportunities = scan_all_markets(
                 scan_client,
@@ -2881,18 +3040,24 @@ def main():
         # Apply date filter on opportunities (catches any edge cases the early filter missed)
         if args.date:
             from ticker_display import filter_by_date, resolve_date_arg
+
             target = resolve_date_arg(args.date)
             before = len(opportunities)
             opportunities = filter_by_date(opportunities, target)
             if len(opportunities) < before:
-                rprint(f"[dim]Date filter ({target}): {before} -> {len(opportunities)} opportunities[/dim]")
+                rprint(
+                    f"[dim]Date filter ({target}): {before} -> {len(opportunities)} opportunities[/dim]"  # noqa: E501
+                )
         if args.exclude_open:
             from ticker_display import filter_exclude_tickers
+
             positions = client.get_positions(limit=200, count_filter="position")
             open_tickers = {p.get("ticker", "") for p in positions.get("market_positions", [])}
             before = len(opportunities)
             opportunities = filter_exclude_tickers(opportunities, open_tickers)
-            rprint(f"[dim]Excluded open positions: {before} -> {len(opportunities)} opportunities[/dim]")
+            rprint(
+                f"[dim]Excluded open positions: {before} -> {len(opportunities)} opportunities[/dim]"  # noqa: E501
+            )
 
         if not opportunities:
             rprint("[yellow]No opportunities after filtering.[/yellow]")

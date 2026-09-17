@@ -11,14 +11,19 @@ from datetime import datetime, timedelta, timezone
 
 from opportunity import Opportunity
 from kalshi_executor import (
-    unit_size_contracts, size_order, SizedOrder,
-    trusted_edge, min_edge_for,
-    matchup_key, recent_matchups_from_log,
+    unit_size_contracts,
+    size_order,
+    SizedOrder,
+    trusted_edge,
+    min_edge_for,
+    matchup_key,
+    recent_matchups_from_log,
     cancel_stale_resting_orders,
     dedup_correlated_brackets,
     preflight_gate_status,
     _apply_budget_cap,
-    daily_loss_breached, positions_at_cap,
+    daily_loss_breached,
+    positions_at_cap,
 )
 from kalshi_client import KalshiAPIError
 
@@ -40,11 +45,13 @@ def sizing_defaults(monkeypatch):
     approvals should depend on this rather than inherit the .env of the day.
     """
     import kalshi_executor as ke
+
     monkeypatch.setattr(ke, "MAX_BET_SIZE", 100.0)
     monkeypatch.setattr(ke, "KELLY_FRACTION", 0.25)
 
 
 # ── unit_size_contracts ──────────────────────────────────────────────────────
+
 
 class TestUnitSizeContracts:
     def test_standard_price(self):
@@ -90,6 +97,7 @@ class TestUnitSizeContracts:
 
 # ── size_order risk gates ────────────────────────────────────────────────────
 
+
 class TestSizeOrderRiskGates:
     """Test that each risk gate correctly rejects or approves."""
 
@@ -113,8 +121,15 @@ class TestSizeOrderRiskGates:
             details={},
         )
 
-    @patch.dict(os.environ, {"MAX_DAILY_LOSS": "250", "MAX_OPEN_POSITIONS": "50",
-                              "MIN_EDGE_THRESHOLD": "0.03", "MIN_COMPOSITE_SCORE": "6.0"})
+    @patch.dict(
+        os.environ,
+        {
+            "MAX_DAILY_LOSS": "250",
+            "MAX_OPEN_POSITIONS": "50",
+            "MIN_EDGE_THRESHOLD": "0.03",
+            "MIN_COMPOSITE_SCORE": "6.0",
+        },
+    )
     def test_approved_when_all_gates_pass(self):
         opp = self._make_opp(edge=0.10, confidence="high", score=8.0)
         result = size_order(opp, bankroll=100.0, open_positions=5, daily_pnl=0.0)
@@ -130,6 +145,7 @@ class TestSizeOrderRiskGates:
 
     def test_rejected_max_positions(self):
         import kalshi_executor
+
         original = kalshi_executor.MAX_OPEN_POSITIONS
         try:
             kalshi_executor.MAX_OPEN_POSITIONS = 10
@@ -158,6 +174,7 @@ class TestSizeOrderRiskGates:
         # Very cheap price with tiny bankroll. Disable the R7 price floor so we're
         # exercising the bankroll cap rather than the lottery-ticket gate.
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MIN_MARKET_PRICE = 0.0
@@ -172,6 +189,7 @@ class TestSizeOrderRiskGates:
         # Price at extreme low. Disable the R7 price floor so we're exercising
         # the price-clamp logic rather than the lottery-ticket gate.
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MIN_MARKET_PRICE = 0.0
@@ -186,6 +204,7 @@ class TestSizeOrderRiskGates:
         # defaults so the test is independent of the developer's local .env
         # (which may set e.g. MAX_BET_SIZE=15 or KELLY_FRACTION=1.0 and trigger the cap).
         import kalshi_executor
+
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_kelly = kalshi_executor.KELLY_FRACTION
         orig_edge = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
@@ -197,7 +216,9 @@ class TestSizeOrderRiskGates:
             # approval under documented defaults — not whatever .env sets.
             kalshi_executor._PER_SPORT_MIN_EDGE.clear()
             opp = self._make_opp(price=0.50, edge=0.05, score=8.0)
-            result = size_order(opp, bankroll=500.0, open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                opp, bankroll=500.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor._PER_SPORT_MIN_EDGE.clear()
@@ -208,13 +229,16 @@ class TestSizeOrderRiskGates:
     def test_approved_capped_max_bet(self):
         # Big Kelly bet hits the max bet cap
         import kalshi_executor
+
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MAX_BET_SIZE = 5.0  # low cap
             kalshi_executor.MIN_MARKET_PRICE = 0.0  # this test exercises the cap, not the R7 floor
             opp = self._make_opp(price=0.10, edge=0.50, score=9.0)
-            result = size_order(opp, bankroll=500.0, open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                opp, bankroll=500.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             assert result.risk_approval == "APPROVED_CAPPED_MAX_BET"
             assert result.cost_dollars <= 5.0 + 0.11
         finally:
@@ -223,6 +247,7 @@ class TestSizeOrderRiskGates:
 
 
 # ── R7: Minimum market-price floor (Gate 3.5) ────────────────────────────────
+
 
 class TestMinMarketPriceGate:
     """Gate 3.5: reject opportunities whose market price is below MIN_MARKET_PRICE.
@@ -250,11 +275,17 @@ class TestMinMarketPriceGate:
 
     def test_rejected_below_floor(self):
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MIN_MARKET_PRICE = 0.10
-            result = size_order(self._opp(price=0.05), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.05),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert result.risk_approval.startswith("REJECTED")
             assert "price_below_floor" in result.risk_approval
             assert result.contracts == 0
@@ -264,11 +295,17 @@ class TestMinMarketPriceGate:
     def test_rejected_just_below_floor(self):
         # 9¢ is rejected; 10¢ is not (strict less-than, floor inclusive).
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MIN_MARKET_PRICE = 0.10
-            result = size_order(self._opp(price=0.09), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.09),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert "price_below_floor" in result.risk_approval
         finally:
             kalshi_executor.MIN_MARKET_PRICE = orig_floor
@@ -276,17 +313,26 @@ class TestMinMarketPriceGate:
     def test_approved_at_floor(self):
         # Exactly at floor should pass (user preference: "I like .10").
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MIN_MARKET_PRICE = 0.10
-            result = size_order(self._opp(price=0.10), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
-            assert result.risk_approval == "APPROVED" or result.risk_approval.startswith("APPROVED_CAPPED")
+            result = size_order(
+                self._opp(price=0.10),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
+            assert result.risk_approval == "APPROVED" or result.risk_approval.startswith(
+                "APPROVED_CAPPED"
+            )
         finally:
             kalshi_executor.MIN_MARKET_PRICE = orig_floor
 
     def test_approved_above_floor(self):
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_kelly = kalshi_executor.KELLY_FRACTION
@@ -294,8 +340,13 @@ class TestMinMarketPriceGate:
             kalshi_executor.MIN_MARKET_PRICE = 0.10
             kalshi_executor.MAX_BET_SIZE = 100.0
             kalshi_executor.KELLY_FRACTION = 0.25
-            result = size_order(self._opp(price=0.50), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.50),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor.MIN_MARKET_PRICE = orig_floor
@@ -305,11 +356,17 @@ class TestMinMarketPriceGate:
     def test_disabled_when_zero(self):
         # MIN_MARKET_PRICE=0 disables the gate entirely (preserve longshots).
         import kalshi_executor
+
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.MIN_MARKET_PRICE = 0.0
-            result = size_order(self._opp(price=0.03), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.03),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             # Gate 3.5 inactive — any rejection must come from another gate,
             # not from price_below_floor.
             assert "price_below_floor" not in result.risk_approval
@@ -341,11 +398,17 @@ class TestMaxMarketPriceGate:
 
     def test_rejected_above_ceiling(self):
         import kalshi_executor
+
         orig_ceiling = kalshi_executor.MAX_MARKET_PRICE
         try:
             kalshi_executor.MAX_MARKET_PRICE = 0.75
-            result = size_order(self._opp(price=0.76), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.76),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert result.risk_approval.startswith("REJECTED")
             assert "price_above_ceiling" in result.risk_approval
             assert result.contracts == 0
@@ -355,6 +418,7 @@ class TestMaxMarketPriceGate:
     def test_approved_at_ceiling(self):
         # Exactly at the ceiling should pass (75c bet on a $1 payout = 75%).
         import kalshi_executor
+
         orig_ceiling = kalshi_executor.MAX_MARKET_PRICE
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_kelly = kalshi_executor.KELLY_FRACTION
@@ -362,8 +426,13 @@ class TestMaxMarketPriceGate:
             kalshi_executor.MAX_MARKET_PRICE = 0.75
             kalshi_executor.MAX_BET_SIZE = 100.0
             kalshi_executor.KELLY_FRACTION = 0.25
-            result = size_order(self._opp(price=0.75), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.75),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert "price_above_ceiling" not in result.risk_approval
         finally:
             kalshi_executor.MAX_MARKET_PRICE = orig_ceiling
@@ -372,6 +441,7 @@ class TestMaxMarketPriceGate:
 
     def test_approved_below_ceiling(self):
         import kalshi_executor
+
         orig_ceiling = kalshi_executor.MAX_MARKET_PRICE
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_kelly = kalshi_executor.KELLY_FRACTION
@@ -379,8 +449,13 @@ class TestMaxMarketPriceGate:
             kalshi_executor.MAX_MARKET_PRICE = 0.75
             kalshi_executor.MAX_BET_SIZE = 100.0
             kalshi_executor.KELLY_FRACTION = 0.25
-            result = size_order(self._opp(price=0.50), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.50),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor.MAX_MARKET_PRICE = orig_ceiling
@@ -390,11 +465,17 @@ class TestMaxMarketPriceGate:
     def test_disabled_at_one(self):
         # MAX_MARKET_PRICE=1.0 disables the gate (no ceiling).
         import kalshi_executor
+
         orig_ceiling = kalshi_executor.MAX_MARKET_PRICE
         try:
             kalshi_executor.MAX_MARKET_PRICE = 1.0
-            result = size_order(self._opp(price=0.95), bankroll=500.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._opp(price=0.95),
+                bankroll=500.0,
+                open_positions=0,
+                daily_pnl=0.0,
+                unit_size=1.00,
+            )
             assert "price_above_ceiling" not in result.risk_approval
         finally:
             kalshi_executor.MAX_MARKET_PRICE = orig_ceiling
@@ -415,6 +496,7 @@ class TestSharedGatePredicates:
 
     def test_daily_loss_breached_uses_module_default(self):
         import kalshi_executor
+
         orig = kalshi_executor.MAX_DAILY_LOSS
         try:
             kalshi_executor.MAX_DAILY_LOSS = 30.0
@@ -433,12 +515,14 @@ class TestSharedGatePredicates:
         # Import guard: risk_check.py must call kalshi_executor's predicates
         # rather than re-deriving the comparison itself.
         import risk_check
+
         assert risk_check.is_daily_limit_breached is not None
         assert risk_check.is_daily_limit_breached(-risk_check.MAX_DAILY_LOSS) is True
         assert risk_check.is_daily_limit_breached(0.0) is False
 
 
 # ── R3: Minimum confidence gate ──────────────────────────────────────────────
+
 
 class TestMinConfidenceGate:
     """Gate 4.5: reject opportunities whose confidence falls below MIN_CONFIDENCE."""
@@ -450,19 +534,26 @@ class TestMinConfidenceGate:
     def _opp(self, confidence: str) -> Opportunity:
         return Opportunity(
             ticker="KXMLBGAME-26APR21NYYKAC-NYY",
-            title="Test", category="game", side="yes",
-            market_price=0.50, fair_value=0.60, edge=0.10,
-            edge_source="test", confidence=confidence,
-            liquidity_score=8.0, composite_score=8.0, details={},
+            title="Test",
+            category="game",
+            side="yes",
+            market_price=0.50,
+            fair_value=0.60,
+            edge=0.10,
+            edge_source="test",
+            confidence=confidence,
+            liquidity_score=8.0,
+            composite_score=8.0,
+            details={},
         )
 
     def test_rejects_low_when_min_is_medium(self):
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "medium"
-            result = size_order(self._opp("low"), bankroll=100.0,
-                                open_positions=0, daily_pnl=0.0)
+            result = size_order(self._opp("low"), bankroll=100.0, open_positions=0, daily_pnl=0.0)
             assert result.risk_approval.startswith("REJECTED")
             assert "confidence" in result.risk_approval.lower()
         finally:
@@ -470,34 +561,38 @@ class TestMinConfidenceGate:
 
     def test_approves_medium_when_min_is_medium(self):
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "medium"
-            result = size_order(self._opp("medium"), bankroll=100.0,
-                                open_positions=0, daily_pnl=0.0)
+            result = size_order(
+                self._opp("medium"), bankroll=100.0, open_positions=0, daily_pnl=0.0
+            )
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor.MIN_CONFIDENCE = orig
 
     def test_approves_high_when_min_is_medium(self):
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "medium"
-            result = size_order(self._opp("high"), bankroll=100.0,
-                                open_positions=0, daily_pnl=0.0)
+            result = size_order(self._opp("high"), bankroll=100.0, open_positions=0, daily_pnl=0.0)
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor.MIN_CONFIDENCE = orig
 
     def test_rejects_low_and_medium_when_min_is_high(self):
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "high"
             for conf in ("low", "medium"):
-                result = size_order(self._opp(conf), bankroll=100.0,
-                                    open_positions=0, daily_pnl=0.0)
+                result = size_order(
+                    self._opp(conf), bankroll=100.0, open_positions=0, daily_pnl=0.0
+                )
                 assert result.risk_approval.startswith("REJECTED"), conf
                 assert "confidence" in result.risk_approval.lower()
         finally:
@@ -505,22 +600,24 @@ class TestMinConfidenceGate:
 
     def test_allows_low_when_min_is_low(self):
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "low"
-            result = size_order(self._opp("low"), bankroll=100.0,
-                                open_positions=0, daily_pnl=0.0)
+            result = size_order(self._opp("low"), bankroll=100.0, open_positions=0, daily_pnl=0.0)
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor.MIN_CONFIDENCE = orig
 
     def test_unknown_confidence_treated_as_medium(self):
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "medium"
-            result = size_order(self._opp("garbage"), bankroll=100.0,
-                                open_positions=0, daily_pnl=0.0)
+            result = size_order(
+                self._opp("garbage"), bankroll=100.0, open_positions=0, daily_pnl=0.0
+            )
             # Unknown ranks as medium, so medium-floor should approve
             assert result.risk_approval == "APPROVED"
         finally:
@@ -529,16 +626,24 @@ class TestMinConfidenceGate:
 
 # ── R1: NO-side favorite guard + half-Kelly ──────────────────────────────────
 
+
 class TestNoSideFavoriteGate:
     """Gate 4.6: reject NO bets on heavy favorites unless edge + confidence clear."""
 
     def _opp(self, side="no", price=0.20, edge=0.30, confidence="high") -> Opportunity:
         return Opportunity(
             ticker="KXMLBGAME-26APR21NYYKAC-NYY",
-            title="Test", category="game", side=side,
-            market_price=price, fair_value=price + edge, edge=edge,
-            edge_source="test", confidence=confidence,
-            liquidity_score=8.0, composite_score=8.0, details={},
+            title="Test",
+            category="game",
+            side=side,
+            market_price=price,
+            fair_value=price + edge,
+            edge=edge,
+            edge_source="test",
+            confidence=confidence,
+            liquidity_score=8.0,
+            composite_score=8.0,
+            details={},
         )
 
     def test_no_below_threshold_insufficient_edge_rejected(self):
@@ -552,6 +657,7 @@ class TestNoSideFavoriteGate:
         # NO at 20¢ with 30% edge but medium confidence → still rejected
         # (MIN_CONFIDENCE default=medium would pass gate 4.5, but 4.6 needs high)
         import kalshi_executor
+
         orig = kalshi_executor.MIN_CONFIDENCE
         try:
             kalshi_executor.MIN_CONFIDENCE = "low"  # disable 4.5 to isolate 4.6
@@ -586,19 +692,28 @@ class TestNoSideFavoriteGate:
 class TestNoSideKellyMultiplier:
     """R1 sizing: NO bets priced below floor get half-Kelly (or configured multiplier)."""
 
-    def _opp(self, side: str, price: float, edge: float = 0.10,
-             confidence: str = "high") -> Opportunity:
+    def _opp(
+        self, side: str, price: float, edge: float = 0.10, confidence: str = "high"
+    ) -> Opportunity:
         return Opportunity(
             ticker="KXMLBGAME-26APR21NYYKAC-NYY",
-            title="Test", category="game", side=side,
-            market_price=price, fair_value=price + edge, edge=edge,
-            edge_source="test", confidence=confidence,
-            liquidity_score=8.0, composite_score=8.0, details={},
+            title="Test",
+            category="game",
+            side=side,
+            market_price=price,
+            fair_value=price + edge,
+            edge=edge,
+            edge_source="test",
+            confidence=confidence,
+            liquidity_score=8.0,
+            composite_score=8.0,
+            details={},
         )
 
     def test_no_bet_below_floor_is_halved(self):
         # Same price/edge for YES and NO; NO should size to ~half of YES
         import kalshi_executor
+
         orig_kelly = kalshi_executor.KELLY_FRACTION
         orig_max = kalshi_executor.MAX_BET_SIZE
         try:
@@ -609,10 +724,12 @@ class TestNoSideKellyMultiplier:
             no_opp = self._opp(side="no", price=0.30, edge=0.10, confidence="high")
             # Need an edge-friendly config where NO gate 4.6 doesn't reject —
             # price 0.30 >= threshold 0.25, so gate 4.6 leaves it alone.
-            y = size_order(yes_opp, bankroll=10000.0, open_positions=0,
-                           daily_pnl=0.0, unit_size=1.00)
-            n = size_order(no_opp, bankroll=10000.0, open_positions=0,
-                           daily_pnl=0.0, unit_size=1.00)
+            y = size_order(
+                yes_opp, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
+            n = size_order(
+                no_opp, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             assert y.risk_approval.startswith("APPROVED")
             assert n.risk_approval.startswith("APPROVED")
             # NO contracts should be roughly half of YES contracts (both well
@@ -626,6 +743,7 @@ class TestNoSideKellyMultiplier:
     def test_no_bet_above_floor_not_halved(self):
         # NO at 40¢ is above the 35¢ floor — same sizing as YES
         import kalshi_executor
+
         orig_kelly = kalshi_executor.KELLY_FRACTION
         orig_max = kalshi_executor.MAX_BET_SIZE
         try:
@@ -633,10 +751,12 @@ class TestNoSideKellyMultiplier:
             kalshi_executor.MAX_BET_SIZE = 10000.0
             yes_opp = self._opp(side="yes", price=0.40, edge=0.10, confidence="high")
             no_opp = self._opp(side="no", price=0.40, edge=0.10, confidence="high")
-            y = size_order(yes_opp, bankroll=10000.0, open_positions=0,
-                           daily_pnl=0.0, unit_size=1.00)
-            n = size_order(no_opp, bankroll=10000.0, open_positions=0,
-                           daily_pnl=0.0, unit_size=1.00)
+            y = size_order(
+                yes_opp, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
+            n = size_order(
+                no_opp, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             assert y.contracts == n.contracts
         finally:
             kalshi_executor.KELLY_FRACTION = orig_kelly
@@ -645,6 +765,7 @@ class TestNoSideKellyMultiplier:
     def test_yes_bet_below_floor_not_halved(self, no_fees):
         # YES at 20¢ should use full Kelly — multiplier is NO-only
         import kalshi_executor
+
         orig_kelly = kalshi_executor.KELLY_FRACTION
         orig_max = kalshi_executor.MAX_BET_SIZE
         try:
@@ -652,15 +773,17 @@ class TestNoSideKellyMultiplier:
             kalshi_executor.MAX_BET_SIZE = 10000.0
             yes_low = self._opp(side="yes", price=0.20, edge=0.10, confidence="high")
             yes_high = self._opp(side="yes", price=0.40, edge=0.10, confidence="high")
-            low = size_order(yes_low, bankroll=10000.0, open_positions=0,
-                             daily_pnl=0.0, unit_size=1.00)
+            low = size_order(
+                yes_low, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             # Cheaper price → more contracts. Just verify multiplier didn't apply:
             # with multiplier, low-price YES would collapse; without it, it's
             # comfortably above a half-Kelly baseline.
             # We can't compare to YES at 40c directly (different price) but we
             # can confirm sizing scales with the full Kelly shape, not half of it.
-            high = size_order(yes_high, bankroll=10000.0, open_positions=0,
-                              daily_pnl=0.0, unit_size=1.00)
+            high = size_order(
+                yes_high, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             # C11: contracts scale as 1 / ((1 - price) * price), so the expected
             # full-Kelly ratio is (1/(0.8*0.2)) / (1/(0.6*0.4)) = 6.25 / 4.167 = 1.5x.
             # (Pre-C11 this was 0.40/0.20 = 2x — the old assertion `>= high * 1.5`
@@ -675,6 +798,7 @@ class TestNoSideKellyMultiplier:
     def test_no_bet_multiplier_global_damps_sizing(self):
         # With global multiplier at 0.5, all NO bets are halved regardless of floor
         import kalshi_executor
+
         orig_kelly = kalshi_executor.KELLY_FRACTION
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_multiplier_global = kalshi_executor.NO_SIDE_KELLY_MULTIPLIER_GLOBAL
@@ -682,16 +806,18 @@ class TestNoSideKellyMultiplier:
             kalshi_executor.KELLY_FRACTION = 0.50
             kalshi_executor.MAX_BET_SIZE = 10000.0
             kalshi_executor.NO_SIDE_KELLY_MULTIPLIER_GLOBAL = 0.50
-            
-            # NO bet at 40¢ is above the price floor (35¢) but should still be halved due to global multiplier
+
+            # NO bet at 40¢ is above the price floor (35¢) but should still be halved due to global multiplier  # noqa: E501
             yes_opp = self._opp(side="yes", price=0.40, edge=0.10, confidence="high")
             no_opp = self._opp(side="no", price=0.40, edge=0.10, confidence="high")
-            
-            y = size_order(yes_opp, bankroll=10000.0, open_positions=0,
-                           daily_pnl=0.0, unit_size=1.00)
-            n = size_order(no_opp, bankroll=10000.0, open_positions=0,
-                           daily_pnl=0.0, unit_size=1.00)
-            
+
+            y = size_order(
+                yes_opp, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
+            n = size_order(
+                no_opp, bankroll=10000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
+
             assert y.risk_approval.startswith("APPROVED")
             assert n.risk_approval.startswith("APPROVED")
             assert n.contracts < y.contracts
@@ -704,21 +830,30 @@ class TestNoSideKellyMultiplier:
 
 # ── No-side global edge floor (R28) ──────────────────────────────────────────
 
+
 class TestNoSideGlobalEdgeFloor:
     """R28: elevated edge floor for all NO bets."""
 
     def _opp(self, side="no", edge=0.05, sport_ticker="KXMLBGAME-26APR21NYYKAC-NYY") -> Opportunity:
         return Opportunity(
             ticker=sport_ticker,
-            title="Test", category="game", side=side,
-            market_price=0.30, fair_value=0.30 + edge, edge=edge,
-            edge_source="test", confidence="high",
-            liquidity_score=8.0, composite_score=8.0, details={},
+            title="Test",
+            category="game",
+            side=side,
+            market_price=0.30,
+            fair_value=0.30 + edge,
+            edge=edge,
+            edge_source="test",
+            confidence="high",
+            liquidity_score=8.0,
+            composite_score=8.0,
+            details={},
         )
 
     def test_no_bet_below_global_no_edge_floor_rejected(self):
         # NO bet at 5% edge is below the 8% global NO floor -> rejected
         import kalshi_executor
+
         orig_global_no_edge = kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL
         try:
             kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL = 0.08
@@ -732,6 +867,7 @@ class TestNoSideGlobalEdgeFloor:
     def test_no_bet_above_global_no_edge_floor_approved(self):
         # NO bet at 10% edge clears the 8% global NO floor -> approved
         import kalshi_executor
+
         orig_global_no_edge = kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL
         try:
             kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL = 0.08
@@ -742,8 +878,9 @@ class TestNoSideGlobalEdgeFloor:
             kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL = orig_global_no_edge
 
     def test_yes_bet_below_global_no_edge_floor_approved(self):
-        # YES bet at 5% edge is not subject to global NO floor -> approved (since global floor is 3%)
+        # YES bet at 5% edge is not subject to global NO floor -> approved (since global floor is 3%)  # noqa: E501
         import kalshi_executor
+
         orig_global_no_edge = kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL
         try:
             kalshi_executor.NO_SIDE_MIN_EDGE_GLOBAL = 0.08
@@ -755,6 +892,7 @@ class TestNoSideGlobalEdgeFloor:
 
 
 # ── trusted_edge soft-cap ────────────────────────────────────────────────────
+
 
 class TestTrustedEdge:
     """Soft-cap on edge used for Kelly sizing."""
@@ -784,13 +922,16 @@ class TestTrustedEdge:
         # An opp with 30% edge should size SMALLER than raw edge would.
         # Pin KELLY_FRACTION and MAX_BET_SIZE so math is independent of local .env.
         import kalshi_executor
+
         orig_kelly = kalshi_executor.KELLY_FRACTION
         orig_max = kalshi_executor.MAX_BET_SIZE
         orig_floor = kalshi_executor.MIN_MARKET_PRICE
         try:
             kalshi_executor.KELLY_FRACTION = 0.25
             kalshi_executor.MAX_BET_SIZE = 1000.0  # high enough not to cap
-            kalshi_executor.MIN_MARKET_PRICE = 0.0  # this test exercises Kelly sizing, not the R7 floor
+            kalshi_executor.MIN_MARKET_PRICE = (
+                0.0  # this test exercises Kelly sizing, not the R7 floor
+            )
             opp = Opportunity(
                 ticker="KXMLBGAME-99MAR301840CWSMIA-MIA",
                 title="Test",
@@ -805,13 +946,15 @@ class TestTrustedEdge:
                 composite_score=9.0,
                 details={},
             )
-            result = size_order(opp, bankroll=400.0, open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                opp, bankroll=400.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             # cap=0.15, decay=0.5 → trusted_edge(0.30) = 0.225
             # C11: Kelly bet = 0.25 * 0.225 * 400 / (1 - 0.10) = $25.00 → 250 contracts at $0.10
             # Raw (untrusted) edge would give 0.25 * 0.30 * 400 / 0.90 = $33.33 → 333 contracts
             assert result.risk_approval == "APPROVED"
-            assert result.contracts < 333     # below what raw edge would give
-            assert result.contracts >= 200    # but still scales well above flat unit (10)
+            assert result.contracts < 333  # below what raw edge would give
+            assert result.contracts >= 200  # but still scales well above flat unit (10)
         finally:
             kalshi_executor.KELLY_FRACTION = orig_kelly
             kalshi_executor.MAX_BET_SIZE = orig_max
@@ -819,6 +962,7 @@ class TestTrustedEdge:
 
 
 # ── C11b: floor-aware budget cap ─────────────────────────────────────────────
+
 
 class TestBudgetCapUnitFloor:
     """C11b (2026-07-27): the budget cap scales proportionally but must not
@@ -831,13 +975,16 @@ class TestBudgetCapUnitFloor:
     """
 
     def _order(self, price, contracts, score=7.0, ticker=None):
-        opp = _opp(ticker=ticker or f"KXMLBTOTAL-26JUL27X{int(price * 100)}",
-                   price=price, score=score)
+        opp = _opp(
+            ticker=ticker or f"KXMLBTOTAL-26JUL27X{int(price * 100)}", price=price, score=score
+        )
         return SizedOrder(
-            opportunity=opp, contracts=contracts,
+            opportunity=opp,
+            contracts=contracts,
             price_cents=int(price * 100),
             cost_dollars=round(contracts * price, 2),
-            bankroll_pct=0.01, risk_approval="APPROVED",
+            bankroll_pct=0.01,
+            risk_approval="APPROVED",
         )
 
     def test_under_budget_is_untouched(self):
@@ -870,7 +1017,7 @@ class TestBudgetCapUnitFloor:
         ]
         out = _apply_budget_cap(orders, budget=2.20, unit_size=1.00)
         kept = {o.opportunity.ticker for o in out}
-        assert "KXMLBTOTAL-26JUL27-CCC" not in kept   # weakest dropped
+        assert "KXMLBTOTAL-26JUL27-CCC" not in kept  # weakest dropped
         assert len(out) == 2
         assert sum(o.cost_dollars for o in out) <= 2.20
         # survivors stay whole rather than all three being shaved to 1 contract
@@ -880,7 +1027,7 @@ class TestBudgetCapUnitFloor:
         # A MAX_BET_SIZE-capped order can sit below its unit floor; the budget
         # cap must not use the floor as an excuse to grow it.
         orders = [self._order(0.10, 3, score=8.0), self._order(0.80, 8, score=7.0)]
-        assert unit_size_contracts(0.10, 1.00) == 10   # floor well above 3
+        assert unit_size_contracts(0.10, 1.00) == 10  # floor well above 3
         out = _apply_budget_cap(orders, budget=2.00, unit_size=1.00)
         cheap = [o for o in out if o.opportunity.market_price == 0.10][0]
         assert cheap.contracts <= 3
@@ -909,6 +1056,7 @@ class TestBudgetCapUnitFloor:
 
 # ── C11: Kelly price-complement divisor ──────────────────────────────────────
 
+
 class TestKellyPriceComplement:
     """C11 (2026-07-27): Kelly for a binary contract is edge / (1 - price).
 
@@ -920,23 +1068,37 @@ class TestKellyPriceComplement:
 
     def _opp(self, price: float, edge: float = 0.10) -> Opportunity:
         return Opportunity(
-            ticker="KXMLBGAME-26APR24-LAD", title="Test", category="game",
-            side="yes", market_price=price, fair_value=price + edge, edge=edge,
-            edge_source="test", confidence="high",
-            liquidity_score=8.0, composite_score=9.0, details={},
+            ticker="KXMLBGAME-26APR24-LAD",
+            title="Test",
+            category="game",
+            side="yes",
+            market_price=price,
+            fair_value=price + edge,
+            edge=edge,
+            edge_source="test",
+            confidence="high",
+            liquidity_score=8.0,
+            composite_score=9.0,
+            details={},
         )
 
     @pytest.fixture(autouse=True)
     def _pin(self, monkeypatch, no_fees):
         import kalshi_executor as ke
+
         monkeypatch.setattr(ke, "KELLY_FRACTION", 0.50)
         monkeypatch.setattr(ke, "MAX_BET_SIZE", 100000.0)
         monkeypatch.setattr(ke, "MIN_MARKET_PRICE", 0.0)
         monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", {})
 
     def _contracts(self, price, edge=0.10, bankroll=100000.0):
-        r = size_order(self._opp(price, edge), bankroll=bankroll,
-                       open_positions=0, daily_pnl=0.0, unit_size=1.00)
+        r = size_order(
+            self._opp(price, edge),
+            bankroll=bankroll,
+            open_positions=0,
+            daily_pnl=0.0,
+            unit_size=1.00,
+        )
         assert r.risk_approval.startswith("APPROVED")
         return r.contracts
 
@@ -970,8 +1132,13 @@ class TestKellyPriceComplement:
 
     def test_extreme_price_does_not_divide_by_zero(self):
         # market_price is clamped upstream, but guard the complement anyway.
-        r = size_order(self._opp(0.99, edge=0.005), bankroll=100.0,
-                       open_positions=0, daily_pnl=0.0, unit_size=1.00)
+        r = size_order(
+            self._opp(0.99, edge=0.005),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            unit_size=1.00,
+        )
         assert r.contracts >= 0
         assert "REJECTED" in r.risk_approval or r.contracts >= 1
 
@@ -979,17 +1146,21 @@ class TestKellyPriceComplement:
         # C11 must not disturb R1/R28 damping: at equal price the NO multiplier
         # is the only difference, so the (1-p) term cancels and NO stays halved.
         import kalshi_executor as ke
-        yes = size_order(self._opp(0.40), bankroll=100000.0, open_positions=0,
-                         daily_pnl=0.0, unit_size=1.00)
+
+        yes = size_order(
+            self._opp(0.40), bankroll=100000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+        )
         no_opp = self._opp(0.40)
         no_opp.side = "no"
         with patch.object(ke, "NO_SIDE_KELLY_MULTIPLIER_GLOBAL", 0.50):
-            no = size_order(no_opp, bankroll=100000.0, open_positions=0,
-                            daily_pnl=0.0, unit_size=1.00)
+            no = size_order(
+                no_opp, bankroll=100000.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
         assert no.contracts == pytest.approx(yes.contracts // 2, abs=2)
 
 
 # ── Per-sport MIN_EDGE_THRESHOLD override ─────────────────────────────────────
+
 
 class TestPerSportMinEdge:
     """Sport-specific edge thresholds via _PER_SPORT_MIN_EDGE."""
@@ -1016,6 +1187,7 @@ class TestPerSportMinEdge:
 
     def test_min_edge_for_falls_back_to_global(self, no_fees):
         import kalshi_executor
+
         orig = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
         try:
             kalshi_executor._PER_SPORT_MIN_EDGE.clear()
@@ -1027,6 +1199,7 @@ class TestPerSportMinEdge:
 
     def test_min_edge_for_uses_sport_override(self, no_fees):
         import kalshi_executor
+
         orig = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
         try:
             # Control the full dict so the fallback case is independent of
@@ -1043,6 +1216,7 @@ class TestPerSportMinEdge:
 
     def test_gate_rejects_nba_below_sport_floor(self, no_fees):
         import kalshi_executor
+
         orig = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
         try:
             kalshi_executor._PER_SPORT_MIN_EDGE["nba"] = 0.08
@@ -1058,6 +1232,7 @@ class TestPerSportMinEdge:
 
     def test_gate_approves_other_sports_below_nba_floor(self):
         import kalshi_executor
+
         orig = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
         try:
             # Only NBA overridden here; clear first so MLB's real .env floor
@@ -1074,6 +1249,7 @@ class TestPerSportMinEdge:
 
     def test_gate_approves_nba_above_sport_floor(self):
         import kalshi_executor
+
         orig = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
         try:
             kalshi_executor._PER_SPORT_MIN_EDGE["nba"] = 0.08
@@ -1087,6 +1263,7 @@ class TestPerSportMinEdge:
 
 
 # ── C5: Series dedup ──────────────────────────────────────────────────────────
+
 
 class TestMatchupKey:
     """matchup_key() extracts a date-stripped sport+teams signature."""
@@ -1160,17 +1337,26 @@ class TestSeriesDedupGate:
 
     def _opp(self, ticker: str) -> Opportunity:
         return Opportunity(
-            ticker=ticker, title="Test", category="game", side="yes",
-            market_price=0.50, fair_value=0.60, edge=0.10,
-            edge_source="test", confidence="high",
-            liquidity_score=8.0, composite_score=8.0, details={},
+            ticker=ticker,
+            title="Test",
+            category="game",
+            side="yes",
+            market_price=0.50,
+            fair_value=0.60,
+            edge=0.10,
+            edge_source="test",
+            confidence="high",
+            liquidity_score=8.0,
+            composite_score=8.0,
+            details={},
         )
 
     def test_rejects_when_matchup_in_recent_set(self):
         opp = self._opp("KXMLBGAME-26APR15LAAANYY-NYY")
         recent = {("mlb", "LAAANYY")}
-        result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                            recent_matchups=recent)
+        result = size_order(
+            opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+        )
         assert result.risk_approval.startswith("REJECTED")
         assert "series_dedup" in result.risk_approval
         assert "LAAANYY" in result.risk_approval
@@ -1178,14 +1364,16 @@ class TestSeriesDedupGate:
     def test_approves_when_matchup_not_in_set(self):
         opp = self._opp("KXMLBGAME-26APR15LAAANYY-NYY")
         recent = {("mlb", "SOMEOTHERPAIR")}
-        result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                            recent_matchups=recent)
+        result = size_order(
+            opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+        )
         assert result.risk_approval == "APPROVED"
 
     def test_approves_when_recent_set_empty(self):
         opp = self._opp("KXMLBGAME-26APR15LAAANYY-NYY")
-        result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                            recent_matchups=set())
+        result = size_order(
+            opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=set()
+        )
         assert result.risk_approval == "APPROVED"
 
     def test_approves_when_recent_set_is_none(self):
@@ -1199,6 +1387,7 @@ class TestSeriesDedupGate:
         # Post-R9: must also clear _PER_SPORT_SERIES_DEDUP since per-sport
         # overrides can re-enable the gate independently of the global.
         import kalshi_executor
+
         orig_global = kalshi_executor.SERIES_DEDUP_HOURS
         orig_per_sport = kalshi_executor._PER_SPORT_SERIES_DEDUP
         try:
@@ -1206,8 +1395,9 @@ class TestSeriesDedupGate:
             kalshi_executor._PER_SPORT_SERIES_DEDUP = {}
             opp = self._opp("KXMLBGAME-26APR15LAAANYY-NYY")
             recent = {("mlb", "LAAANYY")}
-            result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                                recent_matchups=recent)
+            result = size_order(
+                opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+            )
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor.SERIES_DEDUP_HOURS = orig_global
@@ -1217,12 +1407,14 @@ class TestSeriesDedupGate:
         # Futures/prediction markets have no matchup key — should not be blocked
         opp = self._opp("KXBTC-28MAR26-T88000")
         recent = {("mlb", "LAAANYY")}
-        result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                            recent_matchups=recent)
+        result = size_order(
+            opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+        )
         assert result.risk_approval == "APPROVED"
 
 
 # ── R9: Per-sport SERIES_DEDUP_HOURS overrides ──────────────────────────────
+
 
 class TestPerSportSeriesDedupConstruction:
     """recent_matchups_from_log() uses each sport's specific window when given
@@ -1236,25 +1428,19 @@ class TestPerSportSeriesDedupConstruction:
     def test_mlb_at_49h_caught_with_72h_override(self):
         """The exact F12 case: MLB matchup 49h ago, MLB-specific window 72h."""
         log = [self._entry("KXMLBGAME-26APR14NYMLAD-NYM", hours_ago=49)]
-        result = recent_matchups_from_log(
-            log, hours=48, per_sport_hours={"mlb": 72}
-        )
+        result = recent_matchups_from_log(log, hours=48, per_sport_hours={"mlb": 72})
         assert ("mlb", "NYMLAD") in result
 
     def test_nba_at_49h_not_caught_when_nba_falls_back_to_48h_global(self):
         """NBA gets no per-sport override → falls back to 48h global → 49h slips."""
         log = [self._entry("KXNBAGAME-26APR14BOSMIL-BOS", hours_ago=49)]
-        result = recent_matchups_from_log(
-            log, hours=48, per_sport_hours={"mlb": 72}
-        )
+        result = recent_matchups_from_log(log, hours=48, per_sport_hours={"mlb": 72})
         assert result == set()
 
     def test_mlb_at_73h_not_caught_with_72h_override(self):
         """Just past the per-sport window: should NOT be in the recent set."""
         log = [self._entry("KXMLBGAME-26APR14NYMLAD-NYM", hours_ago=73)]
-        result = recent_matchups_from_log(
-            log, hours=48, per_sport_hours={"mlb": 72}
-        )
+        result = recent_matchups_from_log(log, hours=48, per_sport_hours={"mlb": 72})
         assert result == set()
 
     def test_per_sport_zero_disables_dedup_for_that_sport_only(self):
@@ -1263,9 +1449,7 @@ class TestPerSportSeriesDedupConstruction:
             self._entry("KXMLBGAME-26APR14NYMLAD-NYM", hours_ago=10),
             self._entry("KXNBAGAME-26APR14BOSMIL-BOS", hours_ago=10),
         ]
-        result = recent_matchups_from_log(
-            log, hours=48, per_sport_hours={"mlb": 0}
-        )
+        result = recent_matchups_from_log(log, hours=48, per_sport_hours={"mlb": 0})
         # MLB disabled → not in set; NBA falls back to global 48h → in set
         assert ("mlb", "NYMLAD") not in result
         assert ("nba", "BOSMIL") in result
@@ -1276,9 +1460,7 @@ class TestPerSportSeriesDedupConstruction:
             self._entry("KXMLBGAME-26APR14NYMLAD-NYM", hours_ago=10),
             self._entry("KXNBAGAME-26APR14BOSMIL-BOS", hours_ago=10),
         ]
-        result = recent_matchups_from_log(
-            log, hours=0, per_sport_hours={"mlb": 72}
-        )
+        result = recent_matchups_from_log(log, hours=0, per_sport_hours={"mlb": 72})
         # MLB has explicit 72h → in set; NBA inherits the 0 fallback → not in set
         assert ("mlb", "NYMLAD") in result
         assert ("nba", "BOSMIL") not in result
@@ -1305,22 +1487,32 @@ class TestPerSportSeriesDedupGate:
 
     def _opp(self, ticker: str) -> Opportunity:
         return Opportunity(
-            ticker=ticker, title="Test", category="game", side="yes",
-            market_price=0.50, fair_value=0.60, edge=0.10,
-            edge_source="test", confidence="high",
-            liquidity_score=8.0, composite_score=8.0, details={},
+            ticker=ticker,
+            title="Test",
+            category="game",
+            side="yes",
+            market_price=0.50,
+            fair_value=0.60,
+            edge=0.10,
+            edge_source="test",
+            confidence="high",
+            liquidity_score=8.0,
+            composite_score=8.0,
+            details={},
         )
 
     def test_mlb_per_sport_hours_appear_in_rejection_message(self):
         """When MLB rejects via per-sport 72h, the message says '72h' not '48h'."""
         import kalshi_executor
+
         orig = kalshi_executor._PER_SPORT_SERIES_DEDUP
         try:
             kalshi_executor._PER_SPORT_SERIES_DEDUP = {"mlb": 72}
             opp = self._opp("KXMLBGAME-26APR16NYMLAD-NYM")
             recent = {("mlb", "NYMLAD")}
-            result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                                recent_matchups=recent)
+            result = size_order(
+                opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+            )
             assert result.risk_approval.startswith("REJECTED")
             assert "series_dedup" in result.risk_approval
             assert "72h" in result.risk_approval
@@ -1330,13 +1522,15 @@ class TestPerSportSeriesDedupGate:
     def test_per_sport_zero_disables_gate_for_that_sport(self):
         """If MLB is mapped to 0 in the per-sport dict, MLB matchups bypass the gate."""
         import kalshi_executor
+
         orig = kalshi_executor._PER_SPORT_SERIES_DEDUP
         try:
             kalshi_executor._PER_SPORT_SERIES_DEDUP = {"mlb": 0}
             opp = self._opp("KXMLBGAME-26APR16NYMLAD-NYM")
             recent = {("mlb", "NYMLAD")}
-            result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                                recent_matchups=recent)
+            result = size_order(
+                opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+            )
             assert result.risk_approval == "APPROVED"
         finally:
             kalshi_executor._PER_SPORT_SERIES_DEDUP = orig
@@ -1346,6 +1540,7 @@ class TestPerSportSeriesDedupGate:
         Uses NHL because the test environment may set per-sport edge floors
         for NBA/NCAAB that would short-circuit Gate 3 before Gate 7."""
         import kalshi_executor
+
         orig_per = kalshi_executor._PER_SPORT_SERIES_DEDUP
         orig_global = kalshi_executor.SERIES_DEDUP_HOURS
         try:
@@ -1353,8 +1548,9 @@ class TestPerSportSeriesDedupGate:
             kalshi_executor.SERIES_DEDUP_HOURS = 48
             opp = self._opp("KXNHLGAME-26APR15BOSPHI-BOS")
             recent = {("nhl", "BOSPHI")}
-            result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                                recent_matchups=recent)
+            result = size_order(
+                opp, bankroll=100.0, open_positions=0, daily_pnl=0.0, recent_matchups=recent
+            )
             assert result.risk_approval.startswith("REJECTED")
             assert "series_dedup" in result.risk_approval
             assert "48h" in result.risk_approval  # global window used
@@ -1365,11 +1561,16 @@ class TestPerSportSeriesDedupGate:
 
 # ── R4: Resting-order janitor ────────────────────────────────────────────────
 
+
 class FakeKalshiClient:
     """Minimal stub exposing the two methods the janitor uses."""
 
-    def __init__(self, orders: list[dict], cancel_error_on: set[str] | None = None,
-                 list_raises: Exception | None = None):
+    def __init__(
+        self,
+        orders: list[dict],
+        cancel_error_on: set[str] | None = None,
+        list_raises: Exception | None = None,
+    ):
         self._orders = orders
         self._cancel_error_on = cancel_error_on or set()
         self._list_raises = list_raises
@@ -1389,9 +1590,14 @@ class FakeKalshiClient:
         return {"order_id": order_id, "status": "canceled"}
 
 
-def _order(order_id: str, hours_ago: float, fill_count: int = 0,
-           ticker: str = "KXMLB-TEST", created: str | None = None,
-           now: "datetime | None" = None) -> dict:
+def _order(
+    order_id: str,
+    hours_ago: float,
+    fill_count: int = 0,
+    ticker: str = "KXMLB-TEST",
+    created: str | None = None,
+    now: "datetime | None" = None,
+) -> dict:
     now = now or datetime.now(timezone.utc)
     ts = now - timedelta(hours=hours_ago)
     return {
@@ -1409,10 +1615,12 @@ class TestRestingOrderJanitor:
 
     def test_cancels_stale_zero_fill_orders(self):
         now = datetime.now(timezone.utc)
-        client = FakeKalshiClient([
-            _order("old-1", hours_ago=30, now=now),
-            _order("old-2", hours_ago=40, now=now),
-        ])
+        client = FakeKalshiClient(
+            [
+                _order("old-1", hours_ago=30, now=now),
+                _order("old-2", hours_ago=40, now=now),
+            ]
+        )
         result = cancel_stale_resting_orders(client, max_hours=24, now=now)
         assert len(result) == 2
         assert set(client.cancelled_ids) == {"old-1", "old-2"}
@@ -1439,10 +1647,12 @@ class TestRestingOrderJanitor:
 
     def test_skips_young_orders(self):
         now = datetime.now(timezone.utc)
-        client = FakeKalshiClient([
-            _order("young-1", hours_ago=5, now=now),
-            _order("young-2", hours_ago=23.5, now=now),
-        ])
+        client = FakeKalshiClient(
+            [
+                _order("young-1", hours_ago=5, now=now),
+                _order("young-2", hours_ago=23.5, now=now),
+            ]
+        )
         result = cancel_stale_resting_orders(client, max_hours=24, now=now)
         assert result == []
         assert client.cancelled_ids == []
@@ -1450,21 +1660,25 @@ class TestRestingOrderJanitor:
     def test_skips_partial_or_filled_orders(self):
         # Old but has fills — still an active position, let the settler handle it
         now = datetime.now(timezone.utc)
-        client = FakeKalshiClient([
-            _order("partial", hours_ago=48, fill_count=5, now=now),
-            _order("filled", hours_ago=100, fill_count=10, now=now),
-        ])
+        client = FakeKalshiClient(
+            [
+                _order("partial", hours_ago=48, fill_count=5, now=now),
+                _order("filled", hours_ago=100, fill_count=10, now=now),
+            ]
+        )
         result = cancel_stale_resting_orders(client, max_hours=24, now=now)
         assert result == []
         assert client.cancelled_ids == []
 
     def test_mixed_batch_cancels_only_stale_zero_fill(self):
         now = datetime.now(timezone.utc)
-        client = FakeKalshiClient([
-            _order("old-empty", hours_ago=30, fill_count=0, now=now),
-            _order("old-partial", hours_ago=30, fill_count=3, now=now),
-            _order("young-empty", hours_ago=5, fill_count=0, now=now),
-        ])
+        client = FakeKalshiClient(
+            [
+                _order("old-empty", hours_ago=30, fill_count=0, now=now),
+                _order("old-partial", hours_ago=30, fill_count=3, now=now),
+                _order("young-empty", hours_ago=5, fill_count=0, now=now),
+            ]
+        )
         result = cancel_stale_resting_orders(client, max_hours=24, now=now)
         assert len(result) == 1
         assert result[0]["order_id"] == "old-empty"
@@ -1472,9 +1686,11 @@ class TestRestingOrderJanitor:
 
     def test_zero_hours_disables_janitor(self):
         now = datetime.now(timezone.utc)
-        client = FakeKalshiClient([
-            _order("old-1", hours_ago=999, now=now),
-        ])
+        client = FakeKalshiClient(
+            [
+                _order("old-1", hours_ago=999, now=now),
+            ]
+        )
         result = cancel_stale_resting_orders(client, max_hours=0, now=now)
         assert result == []
         assert client.cancelled_ids == []
@@ -1532,14 +1748,17 @@ class TestRestingOrderJanitor:
     def test_default_max_hours_from_env(self):
         # When max_hours is None, use the module-level RESTING_ORDER_MAX_HOURS
         import kalshi_executor
+
         orig = kalshi_executor.RESTING_ORDER_MAX_HOURS
         try:
             kalshi_executor.RESTING_ORDER_MAX_HOURS = 24
             now = datetime.now(timezone.utc)
-            client = FakeKalshiClient([
-                _order("old", hours_ago=30, now=now),
-                _order("young", hours_ago=5, now=now),
-            ])
+            client = FakeKalshiClient(
+                [
+                    _order("old", hours_ago=30, now=now),
+                    _order("young", hours_ago=5, now=now),
+                ]
+            )
             result = cancel_stale_resting_orders(client, max_hours=None, now=now)
             assert len(result) == 1
             assert client.cancelled_ids == ["old"]
@@ -1548,6 +1767,7 @@ class TestRestingOrderJanitor:
 
 
 # ── dedup_correlated_brackets ────────────────────────────────────────────────
+
 
 def _dedup_opp(ticker: str, category: str, score: float) -> Opportunity:
     """Minimal Opportunity fixture for dedup tests — only the fields that matter."""
@@ -1700,8 +1920,16 @@ class TestDedupCorrelatedBrackets:
 
 # ── preflight_gate_status (R18) ──────────────────────────────────────────────
 
-def _opp(ticker="KXMLBGAME-26APR24-LAD", side="yes", price=0.50, edge=0.10,
-         confidence="medium", score=7.0, category="game") -> Opportunity:
+
+def _opp(
+    ticker="KXMLBGAME-26APR24-LAD",
+    side="yes",
+    price=0.50,
+    edge=0.10,
+    confidence="medium",
+    score=7.0,
+    category="game",
+) -> Opportunity:
     """Build an Opportunity fixture with defaults that pass every static gate."""
     return Opportunity(
         ticker=ticker,
@@ -1732,6 +1960,7 @@ class TestPreflightGateStatus:
     def test_flags_edge_gate(self):
         # NBA ticker + 0.05 edge is below the live 0.12 NBA floor
         import kalshi_executor
+
         orig = dict(kalshi_executor._PER_SPORT_MIN_EDGE)
         try:
             kalshi_executor._PER_SPORT_MIN_EDGE["nba"] = 0.12
@@ -1743,6 +1972,7 @@ class TestPreflightGateStatus:
 
     def test_flags_price_gate(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "MIN_MARKET_PRICE", 0.10)
         opp = _opp(price=0.08)
         assert preflight_gate_status(opp) == "price"
@@ -1750,18 +1980,21 @@ class TestPreflightGateStatus:
     def test_flags_score_gate(self, monkeypatch):
         # This is the user-observed case (composite 4.6 on LAD futures)
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "MIN_COMPOSITE_SCORE", 6.0)
         opp = _opp(score=4.6)
         assert preflight_gate_status(opp) == "score"
 
     def test_flags_confidence_gate(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "MIN_CONFIDENCE", "medium")
         opp = _opp(confidence="low")
         assert preflight_gate_status(opp) == "conf"
 
     def test_flags_no_favorite_gate_when_edge_insufficient(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "NO_SIDE_FAVORITE_THRESHOLD", 0.25)
         monkeypatch.setattr(kalshi_executor, "NO_SIDE_MIN_EDGE", 0.25)
         # NO + market below threshold + edge 10% + medium confidence → rejected
@@ -1770,6 +2003,7 @@ class TestPreflightGateStatus:
 
     def test_no_favorite_passes_with_high_conf_and_big_edge(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "NO_SIDE_FAVORITE_THRESHOLD", 0.25)
         monkeypatch.setattr(kalshi_executor, "NO_SIDE_MIN_EDGE", 0.25)
         # The R1 carve-out: edge >= 25% AND confidence = high → allowed
@@ -1778,6 +2012,7 @@ class TestPreflightGateStatus:
 
     def test_yes_side_never_hits_no_favorite_gate(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "NO_SIDE_FAVORITE_THRESHOLD", 0.25)
         # YES + same low price should NOT trigger the NO-favorite gate
         opp = _opp(side="yes", price=0.15, edge=0.10, confidence="medium", score=7.0)
@@ -1787,6 +2022,7 @@ class TestPreflightGateStatus:
         # If both score and confidence fail, check we return the earlier gate
         # in size_order's sequence (score is gate 4, conf is gate 4.5)
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "MIN_COMPOSITE_SCORE", 6.0)
         monkeypatch.setattr(kalshi_executor, "MIN_CONFIDENCE", "medium")
         opp = _opp(score=4.6, confidence="low")
@@ -1796,6 +2032,7 @@ class TestPreflightGateStatus:
         # R25 Gate 4.7: crypto/weather/spx/mentions/companies/politics
         # categories are blocked by default
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_PREDICTION_BETS", False)
         for cat in ("crypto", "weather", "spx", "mentions", "companies", "politics"):
             opp = _opp(category=cat, score=9.0, edge=0.20, confidence="high")
@@ -1803,12 +2040,14 @@ class TestPreflightGateStatus:
 
     def test_prediction_gate_opens_with_env_flag(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_PREDICTION_BETS", True)
         opp = _opp(category="crypto", score=9.0, edge=0.20, confidence="high")
         assert preflight_gate_status(opp) == "ok"
 
     def test_prediction_gate_does_not_affect_sports(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_PREDICTION_BETS", False)
         # Sports categories should be untouched regardless of the flag
         for cat in ("game", "spread", "total", "futures", "player_prop"):
@@ -1819,9 +2058,15 @@ class TestPreflightGateStatus:
         # End-to-end: Gate 4.7 actually rejects through size_order, not just
         # the preflight helper
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_PREDICTION_BETS", False)
-        opp = _opp(category="crypto", ticker="KXBTC-26MAY01-B80000",
-                   score=9.0, edge=0.20, confidence="high")
+        opp = _opp(
+            category="crypto",
+            ticker="KXBTC-26MAY01-B80000",
+            score=9.0,
+            edge=0.20,
+            confidence="high",
+        )
         result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0)
         assert result.risk_approval.startswith("REJECTED")
         assert "prediction_market_disabled" in result.risk_approval
@@ -1829,35 +2074,35 @@ class TestPreflightGateStatus:
 
     # ── L1 Gate 4.8: live/in-play safety gate ────────────────────────────────
     # A ticker with an embedded *past* start time is an in-progress game.
-    STARTED_TICKER = "KXMLBGAME-20JUN011840CWSMIA-MIA"   # Jun 1 2020 — long started
+    STARTED_TICKER = "KXMLBGAME-20JUN011840CWSMIA-MIA"  # Jun 1 2020 — long started
     UPCOMING_TICKER = "KXMLBGAME-99JUN011840CWSMIA-MIA"  # Jun 1 2099 — pre-game
 
     def test_flags_live_gate_when_disabled(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_LIVE_BETS", False)
-        opp = _opp(ticker=self.STARTED_TICKER, score=9.0, edge=0.20,
-                   confidence="high")
+        opp = _opp(ticker=self.STARTED_TICKER, score=9.0, edge=0.20, confidence="high")
         assert preflight_gate_status(opp) == "live-off"
 
     def test_live_gate_opens_with_flag(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_LIVE_BETS", True)
-        opp = _opp(ticker=self.STARTED_TICKER, score=9.0, edge=0.20,
-                   confidence="high")
+        opp = _opp(ticker=self.STARTED_TICKER, score=9.0, edge=0.20, confidence="high")
         assert preflight_gate_status(opp) == "ok"
 
     def test_live_gate_ignores_pregame(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_LIVE_BETS", False)
-        opp = _opp(ticker=self.UPCOMING_TICKER, score=9.0, edge=0.20,
-                   confidence="high")
+        opp = _opp(ticker=self.UPCOMING_TICKER, score=9.0, edge=0.20, confidence="high")
         assert preflight_gate_status(opp) == "ok"
 
     def test_size_order_rejects_live_when_flag_off(self, monkeypatch):
         import kalshi_executor
+
         monkeypatch.setattr(kalshi_executor, "ALLOW_LIVE_BETS", False)
-        opp = _opp(ticker=self.STARTED_TICKER, score=9.0, edge=0.20,
-                   confidence="high")
+        opp = _opp(ticker=self.STARTED_TICKER, score=9.0, edge=0.20, confidence="high")
         result = size_order(opp, bankroll=100.0, open_positions=0, daily_pnl=0.0)
         assert result.risk_approval.startswith("REJECTED")
         assert "live_betting_disabled" in result.risk_approval
@@ -1874,33 +2119,54 @@ class TestReloadRiskConfig:
 
     # Every config-derived module global reload_risk_config() refreshes.
     _NAMES = (
-        "MAX_BET_SIZE", "UNIT_SIZE", "MAX_DAILY_LOSS", "MAX_OPEN_POSITIONS",
-        "MIN_EDGE_THRESHOLD", "KELLY_FRACTION", "MAX_PER_EVENT", "MAX_BET_RATIO",
-        "MIN_COMPOSITE_SCORE", "KELLY_EDGE_CAP", "KELLY_EDGE_DECAY",
-        "SERIES_DEDUP_HOURS", "MIN_MARKET_PRICE", "MAX_MARKET_PRICE", "RESTING_ORDER_MAX_HOURS",
-        "MIN_CONFIDENCE", "NO_SIDE_FAVORITE_THRESHOLD", "NO_SIDE_MIN_EDGE",
-        "NO_SIDE_KELLY_PRICE_FLOOR", "NO_SIDE_KELLY_MULTIPLIER",
-        "ALLOW_PREDICTION_BETS", "CROSS_CATEGORY_DEDUP",
-        "_PER_SPORT_MIN_EDGE", "_PER_SPORT_SERIES_DEDUP",
+        "MAX_BET_SIZE",
+        "UNIT_SIZE",
+        "MAX_DAILY_LOSS",
+        "MAX_OPEN_POSITIONS",
+        "MIN_EDGE_THRESHOLD",
+        "KELLY_FRACTION",
+        "MAX_PER_EVENT",
+        "MAX_BET_RATIO",
+        "MIN_COMPOSITE_SCORE",
+        "KELLY_EDGE_CAP",
+        "KELLY_EDGE_DECAY",
+        "SERIES_DEDUP_HOURS",
+        "MIN_MARKET_PRICE",
+        "MAX_MARKET_PRICE",
+        "RESTING_ORDER_MAX_HOURS",
+        "MIN_CONFIDENCE",
+        "NO_SIDE_FAVORITE_THRESHOLD",
+        "NO_SIDE_MIN_EDGE",
+        "NO_SIDE_KELLY_PRICE_FLOOR",
+        "NO_SIDE_KELLY_MULTIPLIER",
+        "ALLOW_PREDICTION_BETS",
+        "CROSS_CATEGORY_DEDUP",
+        "_PER_SPORT_MIN_EDGE",
+        "_PER_SPORT_SERIES_DEDUP",
         "_PER_SPORT_CROSS_CATEGORY_DEDUP",
     )
 
     def _snapshot(self, ke):
         snap = {n: getattr(ke, n) for n in self._NAMES}
         # Copy the mutable per-sport dicts so restore is independent.
-        for n in ("_PER_SPORT_MIN_EDGE", "_PER_SPORT_SERIES_DEDUP",
-                  "_PER_SPORT_CROSS_CATEGORY_DEDUP"):
+        for n in (
+            "_PER_SPORT_MIN_EDGE",
+            "_PER_SPORT_SERIES_DEDUP",
+            "_PER_SPORT_CROSS_CATEGORY_DEDUP",
+        ):
             snap[n] = dict(snap[n])
         return snap
 
     def _restore(self, ke, snap):
         from app.config import reset_config
+
         for name, value in snap.items():
             setattr(ke, name, value)
         reset_config()  # drop the memoized Config primed from the simulated env
 
     def test_reload_picks_up_env_edits(self, monkeypatch):
         import kalshi_executor as ke
+
         # Don't let the real .env file override the simulated edits.
         monkeypatch.setattr(ke, "load_dotenv", lambda *a, **k: None)
         snap = self._snapshot(ke)
@@ -1917,6 +2183,7 @@ class TestReloadRiskConfig:
 
     def test_reload_idempotent_without_edits(self, monkeypatch):
         import kalshi_executor as ke
+
         monkeypatch.setattr(ke, "load_dotenv", lambda *a, **k: None)
         snap = self._snapshot(ke)
         try:
@@ -1930,6 +2197,7 @@ class TestReloadRiskConfig:
         # End-to-end: the bug we fixed. A $0.05 bet that would clear a low floor
         # is rejected by size_order once reload picks up a raised MIN_MARKET_PRICE.
         import kalshi_executor as ke
+
         monkeypatch.setattr(ke, "load_dotenv", lambda *a, **k: None)
         snap = self._snapshot(ke)
         try:
@@ -1945,6 +2213,7 @@ class TestReloadRiskConfig:
 
 
 # ── PM2c: venue minimum-order size ───────────────────────────────────────────
+
 
 class TestVenueMinShares:
     """PM2c: `size_order` bumps counts up to a venue's per-order share minimum
@@ -1964,6 +2233,7 @@ class TestVenueMinShares:
         broke on 2026-07-22 when KELLY_FRACTION went 0.25 -> 1 and Kelly
         started clearing the unit floor."""
         import kalshi_executor as ke
+
         monkeypatch.setattr(ke, "KELLY_FRACTION", 0.25)
 
     def _pm_opp(self, price=0.50, min_shares=5, **kw):
@@ -1975,22 +2245,29 @@ class TestVenueMinShares:
     def test_bumps_to_venue_minimum(self):
         # $0.50 x $1 unit → 2 contracts (quarter-Kelly at $20 bankroll gives
         # only 1), below the 5-share minimum → bumped.
-        result = size_order(self._pm_opp(), bankroll=20.0, open_positions=0,
-                            daily_pnl=0.0, unit_size=1.00)
+        result = size_order(
+            self._pm_opp(), bankroll=20.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+        )
         assert result.risk_approval == "APPROVED_BUMPED_MIN_SHARES"
         assert result.contracts == 5
         assert result.cost_dollars == 2.50
 
     def test_no_bump_when_already_at_minimum(self):
         # Flat sizing already reaches the 2-share minimum → normal approval.
-        result = size_order(self._pm_opp(min_shares=2), bankroll=20.0,
-                            open_positions=0, daily_pnl=0.0, unit_size=1.00)
+        result = size_order(
+            self._pm_opp(min_shares=2),
+            bankroll=20.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            unit_size=1.00,
+        )
         assert result.risk_approval == "APPROVED"
         assert result.contracts == 2
 
     def test_rejects_when_bump_exceeds_bankroll(self):
-        result = size_order(self._pm_opp(), bankroll=2.00, open_positions=0,
-                            daily_pnl=0.0, unit_size=1.00)
+        result = size_order(
+            self._pm_opp(), bankroll=2.00, open_positions=0, daily_pnl=0.0, unit_size=1.00
+        )
         assert result.risk_approval.startswith("REJECTED")
         assert "below_venue_min_shares" in result.risk_approval
         assert result.contracts == 0
@@ -2000,18 +2277,19 @@ class TestVenueMinShares:
         # caps that to 4 — below the 5-share minimum, and re-bumping would
         # breach the cap → reject (the check runs AFTER the caps).
         import kalshi_executor as ke
+
         original = ke.MAX_BET_SIZE
         try:
             ke.MAX_BET_SIZE = 2.00
-            result = size_order(self._pm_opp(), bankroll=100.0,
-                                open_positions=0, daily_pnl=0.0, unit_size=1.00)
+            result = size_order(
+                self._pm_opp(), bankroll=100.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+            )
             assert "below_venue_min_shares" in result.risk_approval
         finally:
             ke.MAX_BET_SIZE = original
 
     def test_kalshi_opp_without_details_key_unaffected(self):
-        result = size_order(_opp(), bankroll=20.0, open_positions=0,
-                            daily_pnl=0.0, unit_size=1.00)
+        result = size_order(_opp(), bankroll=20.0, open_positions=0, daily_pnl=0.0, unit_size=1.00)
         assert result.risk_approval == "APPROVED"
         assert result.contracts == 2  # flat $1 unit at $0.50 — no bump
 
@@ -2049,12 +2327,12 @@ class TestLiquidityGate:
         )
 
     def _size(self, opp):
-        return size_order(opp, bankroll=500.0, open_positions=0,
-                          daily_pnl=0.0, unit_size=1.00)
+        return size_order(opp, bankroll=500.0, open_positions=0, daily_pnl=0.0, unit_size=1.00)
 
     def test_rejects_wide_book(self):
         # The real CLEJAC-20 book: bid 0.77 / ask 0.97.
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.05
@@ -2068,6 +2346,7 @@ class TestLiquidityGate:
     def test_allows_spread_exactly_at_limit(self):
         # Documented rule is "spread > 5%", so 5c itself passes.
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.05
@@ -2077,6 +2356,7 @@ class TestLiquidityGate:
 
     def test_allows_tight_book(self):
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.05
@@ -2086,6 +2366,7 @@ class TestLiquidityGate:
 
     def test_zero_disables_spread_check(self):
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.0
@@ -2096,6 +2377,7 @@ class TestLiquidityGate:
     def test_rejects_dead_book_when_volume_floor_set(self):
         # Tolerable 4c spread, but nothing has traded in 24h.
         import kalshi_executor
+
         orig_s = kalshi_executor.MAX_BID_ASK_SPREAD
         orig_v = kalshi_executor.MIN_MARKET_VOLUME_24H
         try:
@@ -2110,6 +2392,7 @@ class TestLiquidityGate:
 
     def test_volume_floor_off_by_default(self):
         import kalshi_executor
+
         orig_v = kalshi_executor.MIN_MARKET_VOLUME_24H
         try:
             kalshi_executor.MIN_MARKET_VOLUME_24H = 0
@@ -2122,6 +2405,7 @@ class TestLiquidityGate:
         # Unknown must not mean rejected, or non-sports paths would be blocked
         # wholesale.
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.05
@@ -2131,6 +2415,7 @@ class TestLiquidityGate:
 
     def test_garbage_spread_does_not_crash(self):
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.05
@@ -2140,6 +2425,7 @@ class TestLiquidityGate:
 
     def test_preflight_reports_illiq(self):
         import kalshi_executor
+
         orig = kalshi_executor.MAX_BID_ASK_SPREAD
         try:
             kalshi_executor.MAX_BID_ASK_SPREAD = 0.05
@@ -2147,3 +2433,72 @@ class TestLiquidityGate:
             assert kalshi_executor.preflight_gate_status(self._opp(spread=0.02)) == "ok"
         finally:
             kalshi_executor.MAX_BID_ASK_SPREAD = orig
+
+
+class TestGate48LiveDetection:
+    """S23 (2026-09-16): Gate 4.8 had never fired on a spread, a total, or any
+    football market.
+
+    `is_game_started()` parses the start time out of the TICKER, and only
+    moneyline series embed one (`KXMLBGAME-26JUL211840MINCLE`). Every
+    `KXNCAAFSPREAD-26SEP12...` is date-only, so it returned False no matter the
+    time of day. Result: 7 NCAAF bets placed 26-122 minutes AFTER kickoff on
+    2026-09-12 with ALLOW_LIVE_BETS=false, going 1-6 for -36.5% ROI while the
+    pre-game book ran +13.6%. 123 of 175 filled live-money bets sat on markets
+    the gate could not protect.
+
+    The fix reads the Odds API commence_time already carried on the
+    opportunity as details["event_start_time"].
+    """
+
+    @staticmethod
+    def _opp(ticker, start=None):
+        from types import SimpleNamespace
+
+        details = {"event_start_time": start} if start else {}
+        return SimpleNamespace(ticker=ticker, details=details)
+
+    def test_date_only_ticker_alone_cannot_detect_kickoff(self):
+        # The original defect, pinned: the ticker carries no time to read.
+        from ticker_display import is_game_started
+
+        assert is_game_started("KXNCAAFSPREAD-26SEP12WSUKSU-KSU25") is False
+
+    def test_spread_after_kickoff_is_detected_via_odds_api_time(self):
+        from datetime import datetime, timezone
+        from kalshi_executor import _game_has_started
+
+        opp = self._opp("KXNCAAFSPREAD-26SEP12WSUKSU-KSU25", "2026-09-12T16:05:00Z")
+        now = datetime(2026, 9, 12, 18, 1, 33, tzinfo=timezone.utc)  # the real trade
+        assert _game_has_started(opp, now) is True
+
+    def test_spread_before_kickoff_still_passes(self):
+        from datetime import datetime, timezone
+        from kalshi_executor import _game_has_started
+
+        opp = self._opp("KXNCAAFSPREAD-26SEP12WSUKSU-KSU25", "2026-09-12T16:05:00Z")
+        now = datetime(2026, 9, 12, 12, 0, 0, tzinfo=timezone.utc)
+        assert _game_has_started(opp, now) is False
+
+    def test_falls_open_when_no_start_time_anywhere(self):
+        # Matches Gates 3.6/3.7: unknown start time is a sizing question.
+        from kalshi_executor import _game_has_started
+
+        opp = self._opp("KXNCAAFSPREAD-26SEP12WSUKSU-KSU25")
+        assert _game_has_started(opp) is False
+
+    def test_falls_back_to_ticker_when_details_empty(self):
+        from datetime import datetime, timezone
+        from kalshi_executor import _game_has_started
+
+        opp = self._opp("KXMLBGAME-26JUL211840MINCLE-MIN")
+        after = datetime(2026, 7, 21, 23, 0, tzinfo=timezone.utc)
+        before = datetime(2026, 7, 21, 20, 0, tzinfo=timezone.utc)
+        assert _game_has_started(opp, after) is True
+        assert _game_has_started(opp, before) is False
+
+    def test_unparseable_start_time_falls_back_not_crashes(self):
+        from kalshi_executor import _game_has_started
+
+        opp = self._opp("KXNCAAFSPREAD-26SEP12WSUKSU-KSU25", "not a date")
+        assert _game_has_started(opp) is False

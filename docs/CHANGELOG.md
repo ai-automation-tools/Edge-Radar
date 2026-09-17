@@ -2,6 +2,101 @@
 
 ---
 
+## 2026-09-16 (S23) -- Gate 4.8 had never fired on a spread, a total, or any football market
+
+Operator asked whether the first week of college football had been analysed for
+outstanding issues. It had not -- S21c reported bet-level P&L and never audited
+the pipeline behind it. Doing so found the actual cause of the NCAAF losses,
+and it is not `margin_stdev`.
+
+### 10 of 16 NCAAF orders were placed AFTER kickoff, with ALLOW_LIVE_BETS=false
+
+```
+                                              placed    kickoff   delta
+KXNCAAFSPREAD-26SEP12WSUKSU-KSU25            18:01:33   16:05Z   +117min
+KXNCAAFSPREAD-26SEP12APPECU-ECU8             18:01:33   16:00Z   +122min
+KXNCAAFSPREAD-26SEP12COLGCMU-CMU12           18:01:34   17:05Z    +57min
+KXNCAAFSPREAD-26SEP12OKLAMICH-OKLA5          18:01:35   16:14Z   +107min
+KXNCAAFSPREAD-26SEP12USFARMY-ARMY8           18:01:36   16:05Z   +117min
+KXNCAAFSPREAD-26SEP12ALAUK-UK5               21:01:16   19:45Z    +76min
+KXNCAAFTOTAL-26SEP12SHUMASS-55               21:01:17   19:30Z    +91min
+  (+3 more that never filled)
+```
+
+Two batches, 18:01Z and 21:01Z: `All-Sports-NoDateFilter-Midday-Execution`
+(daily 11:00 AM PT) and `All-Sports-SameDay-Late-Execution` (daily 2:00 PM PT).
+Both run **daily, including Saturdays** -- dead in the middle of the slate.
+
+Split the NCAAF book on that line and it stops being a sport problem:
+
+| | n | W-L | staked | P&L | ROI |
+|:--|--:|:--|--:|--:|--:|
+| **post-kickoff** | 7 | 1-6 | $8.62 | **-$3.15** | **-36.5%** |
+| pre-game | 4 | 1-3 | $4.20 | +$0.57 | **+13.6%** |
+
+**The entire NCAAF loss is the live bets.** An alt-spread model priced off
+pre-game consensus is catastrophically wrong two hours into a game, where much
+of the margin distribution has already resolved. This is a far better
+explanation of 11 one-sided YES bets going 2-9 than an unfitted stdev -- and it
+is consistent with S21c's finding that the stdev disagreement did not replicate
+on fresh pre-gate rows.
+
+### Why the gate could not see them
+
+`is_game_started()` parses the start time out of the **ticker**, and only
+moneyline series embed one (`KXMLBGAME-26JUL21`**`1840`**`MINCLE-MIN`). Every
+spread, every total, and every football ticker is date-only:
+
+```
+KXNCAAFSPREAD-26SEP12WSUKSU-KSU25   sched=None    started=False
+KXNCAAFTOTAL-26SEP12SHUMASS-55      sched=None    started=False
+KXNCAAFGAME-26SEP12WSUKSU-KSU       sched=None    started=False
+KXNFLSPREAD-26SEP13ARILAC-LAC28     sched=None    started=False
+KXMLBGAME-26JUL211840MINCLE-MIN     sched=2026-07-21 22:40Z   started=True
+```
+
+So Gate 4.8 returned False for them no matter the time of day. **123 of 175
+filled live-money bets -- $128 of $211 staked, 61% -- sat on markets it
+structurally could not protect**, led by KXWCSPREAD (36), KXMLSSPREAD (20),
+KXMLSTOTAL (18), KXNFLTOTAL (11), KXNFLSPREAD (10), KXNCAAFSPREAD (10). The
+limitation was *documented in the comments at both call sites* and never
+connected to the fix sitting next to it.
+
+### The fix
+
+`details["event_start_time"]` -- the Odds API `commence_time` for the matched
+event, carrying a real time -- was **already on the opportunity at gate time**.
+The executor only read it *after* the fact, to stamp the trade row (line 1638).
+New `_game_has_started(opp)` prefers it and falls back to the ticker; both Gate
+4.8 call sites now use it. Fails **open** when neither source is dateable,
+matching Gates 3.6/3.7 -- an unknown start time is a sizing question, not a
+legality one.
+
+Replaying all 16 real NCAAF orders through the fixed gate: **10 rejected
+`live_betting_disabled`** (the 7 filled ones staking $8.62 for -$3.15), and the
+**4-bet pre-game book survives untouched at +13.6%**.
+
+**This also protects the live NFL pilot.** No NFL row carries
+`event_start_time` (the S8 field postdates the whole NFL book), so no past NFL
+bet can be proven live -- but NFL tickers are all date-only too, so the gate
+never covered them either, and Sunday 1:00/4:25 PM ET kickoffs sit *before*
+both the 11 AM and 2 PM PT tasks.
+
+### Two open items, not fixed here
+
+- **`taker_fees` is 0.00 on all 52 rows that carry `fee_source: fills_api`** --
+  not one nonzero fee in the book. Kalshi charges no maker fee and the executor
+  posts limit orders, so passive fills legitimately cost 0; but 52/52 wants a
+  spot-check against a known taker fill before F1's "fees are now captured
+  post-trade" is trusted. Gating and sizing use the *modelled* fee and are
+  unaffected either way.
+- **`close_capture_reason: "missed"` on exactly the 7 live bets.** Not an
+  independent bug -- the t-minus-5 CLV window had already passed at order time.
+  Worth noting that this flag has been a post-kickoff tell sitting in the trade
+  log since 09-12.
+
+---
+
 ## 2026-09-16 (S21c) -- NCAAF to a 0.08 pilot floor, and S21's mechanism does not replicate
 
 Operator asked to re-enable college football. Checks first. The freeze came off

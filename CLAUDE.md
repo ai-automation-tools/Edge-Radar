@@ -181,7 +181,7 @@ Every gate runs before any trade executes:
 | 4.6 | NO bets below `NO_SIDE_FAVORITE_THRESHOLD` need edge >= `NO_SIDE_MIN_EDGE` AND confidence=high | Reject |
 | 4.6b | All NO bets: effective edge floor = max(per-sport floor, `NO_SIDE_MIN_EDGE_GLOBAL`) (R28) | Reject |
 | 4.7 | Prediction categories (crypto/weather/spx/mentions/companies/politics) off unless `ALLOW_PREDICTION_BETS=true` (R25) | Reject |
-| 4.8 | In-progress games (`is_game_started`) off unless `ALLOW_LIVE_BETS=true` (L1) | Reject |
+| 4.8 | In-progress games off unless `ALLOW_LIVE_BETS=true` (L1). Detection is `_game_has_started()` — the Odds API start time, **not** the ticker (S23) | Reject |
 | 5 | Not already holding this market | Reject |
 | 6 | Per-event cap not exceeded (`MAX_PER_EVENT`; futures use `MAX_PER_EVENT_FUTURES`, P1) | Reject |
 | 6b | No **opposing side** already held or resting on this game (S22). Futures exempt | Reject |
@@ -289,6 +289,23 @@ Standing rules — do not reverse them without new settled evidence.
   34 of its 435 rows have zero contracts and 5 were phantom losses feeding the very
   sample F3's lambda and S18's model-vs-market pair are computed from. Filled rows are
   unaffected -- the two expressions agree whenever contracts > 0. *CHANGELOG 2026-09-13 (S21).*
+- **A gate that reads the TICKER for a start time protects almost nothing.** Gate 4.8
+  used `is_game_started()`, which parses a time embedded in the ticker — and only
+  moneyline series carry one (`KXMLBGAME-26JUL21**1840**MINCLE`). Every spread, every
+  total and every football ticker is date-only, so it returned `False` whatever the
+  time of day, and **123 of 175 filled live-money bets ($128 of $211, 61%) sat on
+  markets the gate structurally could not see**. It let **10 NCAAF orders through
+  26–122 minutes after kickoff** on 2026-09-12, in two batches from the daily 11 AM
+  and 2 PM tasks, which run on Saturdays straight through the college slate. Split on
+  that line, NCAAF's book is **−36.5% post-kickoff (n=7) against +13.6% pre-game
+  (n=4)** — the whole loss is the live bets, which is a better explanation of the 2-9
+  record than S21's stdev ever was. The fix was already in the row: `details
+  ["event_start_time"]` (the Odds API `commence_time`) is on the opportunity at gate
+  time, and the executor was only using it afterwards to stamp the trade log.
+  `_game_has_started()` prefers it, falls back to the ticker, and **fails open** when
+  neither is dateable. **The limitation was documented in the comments at both call
+  sites for three months** — a known gap in a comment is not a tracked risk.
+  *CHANGELOG 2026-09-16 (S23).*
 - **Never hold both sides of one game.** Gate 6b (S22) rejects a bet that is
   *arithmetically unable* to win alongside something already held or resting.
   Found in the book, not in review: 3 contracts of "Los Angeles R win" (63c,
