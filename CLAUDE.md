@@ -413,6 +413,35 @@ Standing rules — do not reverse them without new settled evidence.
   **open** on a shard it cannot identify (pre-sharding behaviour; the venue's own error is
   the backstop) and **closed** on a transfer that did not settle. *CHANGELOG 2026-08-27 (X1).*
 
+- **A gate on placement is not a gate on lifetime.** Gate 4.8 rejects a
+  post-kickoff *order*, but a resting order placed pre-game keeps standing after
+  kickoff, and the market stays open through play (the 09-20 GB@NYJ spread's
+  `close_time` was two days past a Sunday kickoff). That is the same in-play
+  exposure by a route the gate never sees, and the fill is **adversely
+  selected** -- a resting bid is only lifted when sellers cross down to it,
+  which in-play means the position is already losing. **R4 covers neither
+  half**: it skips any order with a partial fill, and measures age, not kickoff.
+  `cancel_live_resting_orders` (S23c) keys only on kickoff, reading
+  `event_start_time` from the trade log joined on `order_id` — never the ticker,
+  which only moneyline series date. Fails open, and is a no-op under
+  `ALLOW_LIVE_BETS=true`. *CHANGELOG 2026-09-19 (S23c).*
+
+- **Bracket dedup picks a survivor that can actually clear the gates.** It runs
+  *before* the risk gates, so ranking a bracket on composite alone can hand the
+  gates a row they reject while the sibling that would have passed is already
+  gone — the bracket then places nothing. Found live on the MIN@CHI total
+  2026-09-20: `-40` (NO @ 24c) and `-43` (NO @ 32c) tied at composite **8.30
+  exactly**, the strict `>` left the tie to whichever row the scanner emitted
+  first, and Gate 4.6 then rejected `-40` for sitting under the 25c
+  `NO_SIDE_FAVORITE_THRESHOLD` without R1's 25% edge. `_bracket_rank` now ranks
+  `(clears every static gate, composite, edge, ticker)`, using the same
+  `preflight_gate_status` the scan table prints — so preview and executor agree
+  on the keeper, and `ticker` last makes the survivor independent of scan order.
+  **When every row in a bracket fails, the highest composite still wins**, so
+  this only ever converts a dead bracket into a live one. It predicts static
+  gates only; portfolio gates still reject an `ok` row as before.
+  *CHANGELOG 2026-09-19.*
+
 - **No correlation guard exists, deliberately.** It was measured and rejected: the naive pooled rho of +0.181 is Simpson's paradox, and judged against per-stratum base rates it is +0.048 overall and −0.187 for totals. Re-run `scripts/backtest/correlation_check.py` as settlements accumulate — this is "no evidence of correlation", not proof of independence. *CHANGELOG 2026-07-27 (C11b).*
 
 ### Scoring & confidence rules

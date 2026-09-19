@@ -19,6 +19,7 @@ from kalshi_executor import (
     matchup_key,
     recent_matchups_from_log,
     cancel_stale_resting_orders,
+    cancel_live_resting_orders,
     dedup_correlated_brackets,
     preflight_gate_status,
     _apply_budget_cap,
@@ -1766,6 +1767,151 @@ class TestRestingOrderJanitor:
             kalshi_executor.RESTING_ORDER_MAX_HOURS = orig
 
 
+class TestLiveRestingOrderJanitor:
+    """S23c: Gate 4.8 gates order PLACEMENT; nothing gated order LIFETIME.
+
+    A resting buy order is a standing offer, so once its game kicks off it is
+    exactly the in-play bet ALLOW_LIVE_BETS=false forbids -- entered through a
+    door the gate cannot see, because the gate only runs before an order is
+    sent. Found live on the 09-20 GB@NYJ spread: 6 contracts left resting at
+    14c on a market whose close_time was two days after a Sunday kickoff.
+    """
+
+    @staticmethod
+    def _resting(
+        order_id="o1", ticker="KXNFLSPREAD-26SEP20GBNYJ-NYJ8", remaining="6", fill="1", shard=None
+    ):
+        o = {
+            "order_id": order_id,
+            "ticker": ticker,
+            "status": "resting",
+            "fill_count_fp": fill,
+            "remaining_count_fp": remaining,
+            "created_time": "2026-09-19T20:31:59Z",
+        }
+        if shard is not None:
+            o["exchange_index"] = shard
+        return o
+
+    @staticmethod
+    def _log(order_id="o1", start="2026-09-20T17:00:00Z"):
+        return [{"order_id": order_id, "event_start_time": start}]
+
+    def test_cancels_remainder_once_the_game_has_started(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)  # 90 min after
+        client = FakeKalshiClient([self._resting()])
+
+        result = cancel_live_resting_orders(client, self._log(), now=now)
+
+        assert [r["order_id"] for r in result] == ["o1"]
+        assert client.cancelled_ids == ["o1"]
+        assert result[0]["remaining"] == 6
+        assert result[0]["minutes_late"] == 90
+
+    def test_r4_would_not_have_caught_it(self, monkeypatch):
+        """The gap, stated directly. R4 skips any order with a partial fill and
+        measures age, not kickoff -- so on the live shape (1 of 7 filled, placed
+        under 24h ago) it cancels nothing while the game is already underway."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        order = self._resting(fill="1")  # partial fill, ~22h old
+
+        assert cancel_stale_resting_orders(FakeKalshiClient([order]), max_hours=24, now=now) == []
+        assert cancel_live_resting_orders(FakeKalshiClient([order]), self._log(), now=now)
+
+    def test_leaves_pregame_orders_alone(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 15, 0, tzinfo=timezone.utc)  # 2h before
+        client = FakeKalshiClient([self._resting()])
+
+        assert cancel_live_resting_orders(client, self._log(), now=now) == []
+        assert client.cancelled_ids == []
+
+    def test_no_op_when_live_bets_allowed(self, monkeypatch):
+        """Opting into live bets makes a resting order surviving kickoff
+        intended, not a leak."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", True)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting()])
+
+        assert cancel_live_resting_orders(client, self._log(), now=now) == []
+        assert client.cancelled_ids == []
+
+    def test_fails_open_when_no_source_can_name_a_start_time(self, monkeypatch):
+        """Matches Gate 4.8 and Gates 3.6/3.7: an undateable start is not
+        grounds to act. A football ticker is date-only, so with no log row
+        there is nothing to read."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting()])
+
+        assert cancel_live_resting_orders(client, trade_rows=[], now=now) == []
+        assert client.cancelled_ids == []
+
+    def test_malformed_start_time_fails_open(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting()])
+
+        bad = self._log(start="not-a-timestamp")
+        assert cancel_live_resting_orders(client, bad, now=now) == []
+
+    def test_ignores_fully_filled_orders(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting(remaining="0", fill="7")])
+
+        assert cancel_live_resting_orders(client, self._log(), now=now) == []
+
+    def test_forwards_the_orders_shard_to_cancel(self, monkeypatch):
+        """Same sharding trap as R4: a bare 404 reads like "already gone"."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting(shard=3)])
+
+        cancel_live_resting_orders(client, self._log(), now=now)
+        assert client.cancelled_shards == [3]
+
+    def test_list_api_error_returns_empty_no_crash(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        client = FakeKalshiClient([], list_raises=KalshiAPIError(500, "API down"))
+        assert cancel_live_resting_orders(client, self._log()) == []
+
+    def test_cancel_error_skips_that_order_and_continues(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient(
+            [self._resting("good"), self._resting("bad")],
+            cancel_error_on={"bad"},
+        )
+        rows = self._log("good") + self._log("bad")
+
+        result = cancel_live_resting_orders(client, rows, now=now)
+        assert [r["order_id"] for r in result] == ["good"]
+        assert client.cancelled_ids == ["good"]
+
+
 # ── dedup_correlated_brackets ────────────────────────────────────────────────
 
 
@@ -1916,6 +2062,112 @@ class TestDedupCorrelatedBrackets:
         tickers = {o.ticker for o in result}
         assert {"KXNBA-26-LAL", "KXNBA-26-BOS", "KXNBA-26-OKC"} <= tickers
         assert "KXNBATOTAL-26APR24SASPOR-208" in tickers
+
+
+def _bracket_opp(ticker, side="no", price=0.32, edge=0.12, score=8.3, confidence="medium"):
+    """A totals-bracket row. Defaults clear every static gate."""
+    return Opportunity(
+        ticker=ticker,
+        title=ticker,
+        category="total",
+        side=side,
+        market_price=price,
+        fair_value=price + edge,
+        edge=edge,
+        edge_source="test",
+        confidence=confidence,
+        liquidity_score=5.0,
+        composite_score=score,
+        details={},
+    )
+
+
+@pytest.fixture
+def bracket_gates(monkeypatch):
+    """Pin the static gates `_bracket_rank` consults, so these tests don't
+    inherit the operator's .env of the day."""
+    import kalshi_executor as ke
+
+    monkeypatch.setattr(ke, "NO_SIDE_FAVORITE_THRESHOLD", 0.25)
+    monkeypatch.setattr(ke, "NO_SIDE_MIN_EDGE", 0.25)
+    monkeypatch.setattr(ke, "NO_SIDE_MIN_EDGE_GLOBAL", 0.0)
+    monkeypatch.setattr(ke, "MIN_EDGE_THRESHOLD", 0.03)
+    monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", {})
+    monkeypatch.setattr(ke, "MIN_MARKET_PRICE", 0.10)
+    monkeypatch.setattr(ke, "MAX_MARKET_PRICE", 1.0)
+    monkeypatch.setattr(ke, "MIN_COMPOSITE_SCORE", 6.0)
+    monkeypatch.setattr(ke, "MIN_CONFIDENCE", "medium")
+
+
+# Same game, same category -> one bracket. `-40` is the R1 trap: a NO priced
+# under NO_SIDE_FAVORITE_THRESHOLD, which Gate 4.6 rejects without a 25% edge.
+_TRAP = "KXMLBTOTAL-26APR24LADSF-40"
+_GOOD = "KXMLBTOTAL-26APR24LADSF-43"
+
+
+class TestDedupPrefersGatePassingRow:
+    """Dedup runs BEFORE the risk gates, so picking a bracket's survivor on
+    composite alone can hand the gates a row they reject while a sibling that
+    would have passed is already gone — the bracket then places nothing.
+
+    Live case, 2026-09-19 (MIN@CHI total): `-40` (NO @ 24c) and `-43` (NO @ 32c)
+    tied at composite 8.30 *exactly*, `-40` won on arbitrary scan order, Gate
+    4.6 rejected it for sitting at 24c under the 25c favorite threshold, and
+    `-43` — which cleared at 9.5% edge — had already been dropped.
+    """
+
+    def test_composite_tie_prefers_the_row_that_clears_the_gates(self, bracket_gates):
+        # The exact live shape: identical composites, one row gate-blocked.
+        opps = [
+            _bracket_opp(_TRAP, price=0.24, edge=0.1202, score=8.3),
+            _bracket_opp(_GOOD, price=0.32, edge=0.1171, score=8.3),
+        ]
+        assert preflight_gate_status(opps[0]) == "no-fav"
+        assert preflight_gate_status(opps[1]) == "ok"
+
+        result = dedup_correlated_brackets(opps)
+        assert len(result) == 1
+        assert result[0].ticker == _GOOD
+
+    def test_gate_passing_row_beats_a_higher_composite_that_fails(self, bracket_gates):
+        # Not just ties: a blocked row never wins, however well it scores,
+        # because its score buys nothing once the gate rejects it.
+        opps = [
+            _bracket_opp(_TRAP, price=0.24, edge=0.20, score=9.9),
+            _bracket_opp(_GOOD, price=0.32, edge=0.12, score=6.1),
+        ]
+        result = dedup_correlated_brackets(opps)
+        assert len(result) == 1
+        assert result[0].ticker == _GOOD
+
+    def test_when_every_row_fails_highest_composite_still_wins(self, bracket_gates):
+        # Unchanged behaviour: with no passing row to prefer, composite decides
+        # exactly as before. The bracket is still rejected downstream.
+        opps = [
+            _bracket_opp(_TRAP, price=0.24, edge=0.10, score=7.0),
+            _bracket_opp(_GOOD, price=0.24, edge=0.10, score=8.5),
+        ]
+        assert all(preflight_gate_status(o) == "no-fav" for o in opps)
+        result = dedup_correlated_brackets(opps)
+        assert len(result) == 1
+        assert result[0].composite_score == 8.5
+
+    def test_survivor_does_not_depend_on_scan_order(self, bracket_gates):
+        # The original defect was an arbitrary tiebreak, so the survivor has to
+        # be the same whichever order the scanner emitted the rows in.
+        a = _bracket_opp(_TRAP, price=0.24, edge=0.1202, score=8.3)
+        b = _bracket_opp(_GOOD, price=0.32, edge=0.1171, score=8.3)
+        assert dedup_correlated_brackets([a, b])[0].ticker == _GOOD
+        assert dedup_correlated_brackets([b, a])[0].ticker == _GOOD
+
+    def test_fully_tied_passing_rows_break_deterministically(self, bracket_gates):
+        # Two rows identical on every ranked field except the ticker: still a
+        # single, stable survivor rather than whichever arrived first.
+        a = _bracket_opp(_TRAP, price=0.32, edge=0.12, score=8.3)
+        b = _bracket_opp(_GOOD, price=0.32, edge=0.12, score=8.3)
+        assert dedup_correlated_brackets([a, b])[0].ticker == (
+            dedup_correlated_brackets([b, a])[0].ticker
+        )
 
 
 # ── preflight_gate_status (R18) ──────────────────────────────────────────────

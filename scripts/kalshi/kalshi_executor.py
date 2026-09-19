@@ -971,6 +971,125 @@ def recent_matchups_from_log(
     return keys
 
 
+def _resting_order_started(order: dict, logged: dict | None, now: datetime) -> datetime | None:
+    """Return the start time of a resting order's game if it has already begun.
+
+    Same precedence as Gate 4.8's `_game_has_started`, for the same reason: the
+    ticker carries a time only on moneyline series, so a ticker-only check is
+    blind to every spread, every total and every football market -- the exact
+    blindness S23 fixed at the gate. The executor already stamps the Odds API
+    `commence_time` onto the trade row as `event_start_time`, so join the venue's
+    resting order to our own log on `order_id` (the join S22 uses for sides) and
+    read it from there. Venue is authoritative for *which* orders rest; the log
+    is authoritative for when their game starts.
+
+    Fails OPEN -- returns None when neither source is dateable -- matching Gate
+    4.8 and Gates 3.6/3.7. Returns the start time rather than a bool so the
+    caller can report how late the order was still live.
+    """
+    raw = (logged or {}).get("event_start_time")
+    if raw:
+        try:
+            dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            dt = None
+        if dt is not None:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt if dt <= now else None
+    # Moneyline fallback: the ticker embeds HHMM on those series only, and
+    # `is_game_started` answers yes/no without surfacing the time it parsed --
+    # so report `now`, which makes `minutes_late` 0 rather than invented.
+    if is_game_started(order.get("ticker", ""), now):
+        return now
+    return None
+
+
+def cancel_live_resting_orders(
+    client: "KalshiClient",
+    trade_rows: list[dict] | None = None,
+    now: datetime | None = None,
+) -> list[dict]:
+    """Cancel resting remainders on games that have already kicked off (S23c).
+
+    **Gate 4.8 gates placement; nothing gated lifetime.** A resting buy order is
+    a standing offer, so once its game starts it becomes precisely the in-play
+    bet `ALLOW_LIVE_BETS=false` exists to forbid -- entered through a side door
+    the gate cannot see, because the gate only ever runs before an order is
+    sent. S23 measured that exposure at **-36.5% ROI (n=7) against +13.6%
+    pre-game (n=4)** on NCAAF.
+
+    Worse, the fill is **adversely selected**. A resting bid is only lifted when
+    sellers cross down to it, which in-play means the position is already going
+    against us; if it runs our way the price rises and we never fill. The order
+    fills mostly in the branch where the edge it was sized on is gone.
+
+    **R4 does not cover this, twice over.** `cancel_stale_resting_orders` skips
+    any order with `fill_count != 0`, and it measures age rather than kickoff --
+    on the 09-20 GB@NYJ spread its 24h cutoff landed 3.5h *after* the game ended.
+    R4's partial-fill exemption reasons about the **filled** portion ("real
+    exposure the settler will reconcile"), which is correct; the **unfilled
+    remainder** is not exposure yet, and leaving it resting is a live ungated
+    bet. That rationale was written in April, before Gate 4.8 existed.
+
+    So this janitor ignores both age and fill count, and keys only on kickoff.
+    Markets stay open through play -- the GB@NYJ spread had `close_time` two
+    days after a Sunday kickoff, with `expected_expiration_time` at the final
+    whistle -- so there is real time in which to fill.
+
+    No-op when `ALLOW_LIVE_BETS=true`: the operator has opted into live bets, so
+    a resting order surviving to kickoff is intended. Fails **open** on an order
+    whose start time nothing can name, matching Gate 4.8.
+    """
+    if ALLOW_LIVE_BETS:
+        return []
+    now = now or datetime.now(timezone.utc)
+    try:
+        resp = client.get_orders(status="resting", limit=100)
+    except KalshiAPIError as e:
+        log.warning("Live-order janitor: failed to list resting orders: %s", e)
+        return []
+    orders = resp.get("orders", []) if isinstance(resp, dict) else []
+    if not orders:
+        return []
+
+    by_order = {r["order_id"]: r for r in (trade_rows or []) if r.get("order_id")}
+    cancelled: list[dict] = []
+    for o in orders:
+        remaining = int(float(_order_field(o, "remaining_count", "remaining_count_fp") or "0"))
+        if remaining <= 0:
+            continue
+        order_id = o.get("order_id")
+        if not order_id:
+            continue
+        started = _resting_order_started(o, by_order.get(order_id), now)
+        if started is None:
+            continue
+        minutes_late = round((now - started).total_seconds() / 60)
+        try:
+            client.cancel_order(order_id, exchange_index=o.get("exchange_index"))
+        except KalshiAPIError as e:
+            log.warning("Live-order janitor: failed to cancel %s: %s", order_id, e)
+            continue
+        cancelled.append(
+            {
+                "order_id": order_id,
+                "ticker": o.get("ticker", "?"),
+                "remaining": remaining,
+                "minutes_late": minutes_late,
+            }
+        )
+        log.info(
+            "Live-order janitor: cancelled %s (ticker=%s remaining=%d " "started=%s, %d min ago)",
+            order_id,
+            o.get("ticker"),
+            remaining,
+            started.isoformat(),
+            minutes_late,
+        )
+    return cancelled
+
+
 def cancel_stale_resting_orders(
     client: "KalshiClient",
     max_hours: int | None = None,
@@ -1044,6 +1163,36 @@ def cancel_stale_resting_orders(
     return cancelled
 
 
+def _bracket_rank(opp: "Opportunity") -> tuple:
+    """Ranking key for choosing which row survives a correlated bracket.
+
+    **Gate-passing beats high-scoring.** Dedup runs BEFORE the risk gates, so a
+    survivor chosen on composite alone can be one the gates then reject -- and
+    the whole bracket contributes nothing, even though a sibling would have
+    passed. Observed live 2026-09-19 on the MIN@CHI total: `-40` (NO @ 24c) and
+    `-43` (NO @ 32c) tied at composite 8.30 exactly, `-40` won the tie on
+    arbitrary scan order, and Gate 4.6 then rejected it for sitting under
+    NO_SIDE_FAVORITE_THRESHOLD (24c < 25c) without the 25% edge R1 demands.
+    `-43` would have cleared at 9.5% edge. One bet became zero on a coin flip.
+
+    `preflight_gate_status` is the same static predictor the scan table prints,
+    so the preview and the executor now agree on which row is the keeper. It
+    only covers per-opportunity gates -- portfolio gates (daily loss, open
+    count, per-event cap, series dedup) still need live state and can still
+    reject an "ok" row, exactly as before. This is a strict improvement: when
+    every row in a bracket fails, the highest composite still wins, unchanged.
+
+    Ties break on composite, then edge, then ticker -- the last purely so the
+    result does not depend on the order the scanner happened to emit rows in.
+    """
+    return (
+        preflight_gate_status(opp) == "ok",
+        opp.composite_score,
+        opp.edge,
+        opp.ticker,
+    )
+
+
 def dedup_correlated_brackets(
     opportunities: list[Opportunity],
     cross_category_sports: set[str] | None = None,
@@ -1054,8 +1203,10 @@ def dedup_correlated_brackets(
     Over 228.5) are highly correlated — they win or lose together. Stacking them
     gives concentration risk, not diversification.
 
-    Groups opportunities by (event_key, category) and keeps only the highest
-    composite_score from each group. Different categories on the same game
+    Groups opportunities by (event_key, category) and keeps the best row from
+    each group, ranked by `_bracket_rank`: a row that clears every static risk
+    gate outranks one that does not, and composite score decides among equals.
+    Different categories on the same game
     (e.g., ML + totals) are kept by default since their correlation is weaker
     than alt-line brackets within a category.
 
@@ -1076,7 +1227,7 @@ def dedup_correlated_brackets(
     was deduping to 2.
     """
     cross_category_sports = cross_category_sports or set()
-    best: dict[tuple, Opportunity] = {}
+    best: dict[tuple, tuple[tuple, Opportunity]] = {}
     for opp in opportunities:
         if opp.category == "futures":
             key: tuple = (opp.ticker, "futures")
@@ -1097,11 +1248,12 @@ def dedup_correlated_brackets(
                     key = (_event_key(opp.ticker), opp.category)
             else:
                 key = (_event_key(opp.ticker), opp.category)
+        rank = _bracket_rank(opp)
         existing = best.get(key)
-        if existing is None or opp.composite_score > existing.composite_score:
-            best[key] = opp
+        if existing is None or rank > existing[0]:
+            best[key] = (rank, opp)
     # Preserve original sort order (by composite_score descending from scanner)
-    deduped_set = set(id(o) for o in best.values())
+    deduped_set = set(id(o) for _, o in best.values())
     return [o for o in opportunities if id(o) in deduped_set]
 
 
@@ -2208,6 +2360,26 @@ def execute_pipeline(
             )
             for c in cancelled:
                 rprint(f"  [dim]- {c['ticker']} (age {c['age_hours']}h)[/dim]")
+
+    # ── Live-order janitor (S23c): cancel resting remainders on games that have
+    # already kicked off. Deliberately NOT folded into R4 above -- R4 skips any
+    # order carrying a partial fill and measures age rather than kickoff, so it
+    # covers neither half of this. Runs regardless of RESTING_ORDER_MAX_HOURS:
+    # this is a legality question (ALLOW_LIVE_BETS), not housekeeping.
+    if venue == "kalshi" and execute and not dry_run_for_janitor and not ALLOW_LIVE_BETS:
+        live_cancelled = cancel_live_resting_orders(client, load_trade_log())
+        if live_cancelled:
+            rprint("")
+            rprint(
+                f"[bold yellow]Janitor: cancelled {len(live_cancelled)} resting "
+                f"order(s) on games already underway (ALLOW_LIVE_BETS=false)"
+                f"[/bold yellow]"
+            )
+            for c in live_cancelled:
+                rprint(
+                    f"  [dim]- {c['ticker']}: {c['remaining']} contract(s) still "
+                    f"live {c['minutes_late']} min after kickoff[/dim]"
+                )
 
     # ── Calibration preflight (2026-07-31).
     # The C8 stdev loop silently did nothing for its entire life: the weekly
