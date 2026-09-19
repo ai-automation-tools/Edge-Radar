@@ -86,10 +86,34 @@ SKIP KXNFLTOTAL-26SEP20MINCHI-40: REJECTED: no_side_favorite
 
 A NO at 24c got tested against R1's 25% bar while the 32c sibling that would
 have cleared at 9.5% was already gone. **Dedup runs BEFORE the gates, so it can
-hand a gate a row that fails where the row it discarded would have passed** --
-and a bracket straddling the 25c `NO_SIDE_FAVORITE_THRESHOLD` is exactly where
-that bites. Not yet investigated: whether the dedup ranks by composite or by
-strike proximity. If the latter, this recurs on every total bracket near 25c.
+hand a gate a row that fails where the row it discarded would have passed.**
+
+**Root cause, found by reproducing the bracket: the two rows tied at composite
+8.30 exactly.** It ranks by composite -- not by strike proximity, the other
+hypothesis -- and `opp.composite_score > existing.composite_score` is a strict
+comparison, so on a tie the first row the scanner emitted kept the slot. The
+survivor was decided by scan order, and scan order knows nothing about gates.
+
+Fixed in `_bracket_rank`, which ranks `(clears every static gate, composite,
+edge, ticker)` instead of composite alone:
+
+- a row that clears the static gates outranks one that does not, so a bracket
+  no longer places nothing when a passing sibling exists;
+- composite still decides among equals, so **when every row in a bracket fails,
+  the highest composite still wins exactly as before** -- this is a strict
+  improvement, not a re-ranking;
+- `ticker` last makes the survivor independent of the order the scanner emitted
+  rows in, which is what the original defect turned on.
+
+The predicate is `preflight_gate_status`, the same static predictor the scan
+table already prints, so the preview and the executor now agree on the keeper.
+It covers per-opportunity gates only -- portfolio gates (daily loss, open
+count, per-event cap, series dedup) still need live state and can still reject
+an "ok" row, unchanged.
+
+Five tests in `TestDedupPrefersGatePassingRow`; four fail on the old code and
+the fifth is the unchanged-behaviour guard. Verified against the live bracket:
+the survivor is now `-43` (`gate=ok`).
 
 ### Still an override, not a review
 

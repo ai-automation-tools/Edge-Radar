@@ -1044,6 +1044,36 @@ def cancel_stale_resting_orders(
     return cancelled
 
 
+def _bracket_rank(opp: "Opportunity") -> tuple:
+    """Ranking key for choosing which row survives a correlated bracket.
+
+    **Gate-passing beats high-scoring.** Dedup runs BEFORE the risk gates, so a
+    survivor chosen on composite alone can be one the gates then reject -- and
+    the whole bracket contributes nothing, even though a sibling would have
+    passed. Observed live 2026-09-19 on the MIN@CHI total: `-40` (NO @ 24c) and
+    `-43` (NO @ 32c) tied at composite 8.30 exactly, `-40` won the tie on
+    arbitrary scan order, and Gate 4.6 then rejected it for sitting under
+    NO_SIDE_FAVORITE_THRESHOLD (24c < 25c) without the 25% edge R1 demands.
+    `-43` would have cleared at 9.5% edge. One bet became zero on a coin flip.
+
+    `preflight_gate_status` is the same static predictor the scan table prints,
+    so the preview and the executor now agree on which row is the keeper. It
+    only covers per-opportunity gates -- portfolio gates (daily loss, open
+    count, per-event cap, series dedup) still need live state and can still
+    reject an "ok" row, exactly as before. This is a strict improvement: when
+    every row in a bracket fails, the highest composite still wins, unchanged.
+
+    Ties break on composite, then edge, then ticker -- the last purely so the
+    result does not depend on the order the scanner happened to emit rows in.
+    """
+    return (
+        preflight_gate_status(opp) == "ok",
+        opp.composite_score,
+        opp.edge,
+        opp.ticker,
+    )
+
+
 def dedup_correlated_brackets(
     opportunities: list[Opportunity],
     cross_category_sports: set[str] | None = None,
@@ -1054,8 +1084,10 @@ def dedup_correlated_brackets(
     Over 228.5) are highly correlated — they win or lose together. Stacking them
     gives concentration risk, not diversification.
 
-    Groups opportunities by (event_key, category) and keeps only the highest
-    composite_score from each group. Different categories on the same game
+    Groups opportunities by (event_key, category) and keeps the best row from
+    each group, ranked by `_bracket_rank`: a row that clears every static risk
+    gate outranks one that does not, and composite score decides among equals.
+    Different categories on the same game
     (e.g., ML + totals) are kept by default since their correlation is weaker
     than alt-line brackets within a category.
 
@@ -1076,7 +1108,7 @@ def dedup_correlated_brackets(
     was deduping to 2.
     """
     cross_category_sports = cross_category_sports or set()
-    best: dict[tuple, Opportunity] = {}
+    best: dict[tuple, tuple[tuple, Opportunity]] = {}
     for opp in opportunities:
         if opp.category == "futures":
             key: tuple = (opp.ticker, "futures")
@@ -1097,11 +1129,12 @@ def dedup_correlated_brackets(
                     key = (_event_key(opp.ticker), opp.category)
             else:
                 key = (_event_key(opp.ticker), opp.category)
+        rank = _bracket_rank(opp)
         existing = best.get(key)
-        if existing is None or opp.composite_score > existing.composite_score:
-            best[key] = opp
+        if existing is None or rank > existing[0]:
+            best[key] = (rank, opp)
     # Preserve original sort order (by composite_score descending from scanner)
-    deduped_set = set(id(o) for o in best.values())
+    deduped_set = set(id(o) for _, o in best.values())
     return [o for o in opportunities if id(o) in deduped_set]
 
 

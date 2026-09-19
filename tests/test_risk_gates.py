@@ -1918,6 +1918,112 @@ class TestDedupCorrelatedBrackets:
         assert "KXNBATOTAL-26APR24SASPOR-208" in tickers
 
 
+def _bracket_opp(ticker, side="no", price=0.32, edge=0.12, score=8.3, confidence="medium"):
+    """A totals-bracket row. Defaults clear every static gate."""
+    return Opportunity(
+        ticker=ticker,
+        title=ticker,
+        category="total",
+        side=side,
+        market_price=price,
+        fair_value=price + edge,
+        edge=edge,
+        edge_source="test",
+        confidence=confidence,
+        liquidity_score=5.0,
+        composite_score=score,
+        details={},
+    )
+
+
+@pytest.fixture
+def bracket_gates(monkeypatch):
+    """Pin the static gates `_bracket_rank` consults, so these tests don't
+    inherit the operator's .env of the day."""
+    import kalshi_executor as ke
+
+    monkeypatch.setattr(ke, "NO_SIDE_FAVORITE_THRESHOLD", 0.25)
+    monkeypatch.setattr(ke, "NO_SIDE_MIN_EDGE", 0.25)
+    monkeypatch.setattr(ke, "NO_SIDE_MIN_EDGE_GLOBAL", 0.0)
+    monkeypatch.setattr(ke, "MIN_EDGE_THRESHOLD", 0.03)
+    monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", {})
+    monkeypatch.setattr(ke, "MIN_MARKET_PRICE", 0.10)
+    monkeypatch.setattr(ke, "MAX_MARKET_PRICE", 1.0)
+    monkeypatch.setattr(ke, "MIN_COMPOSITE_SCORE", 6.0)
+    monkeypatch.setattr(ke, "MIN_CONFIDENCE", "medium")
+
+
+# Same game, same category -> one bracket. `-40` is the R1 trap: a NO priced
+# under NO_SIDE_FAVORITE_THRESHOLD, which Gate 4.6 rejects without a 25% edge.
+_TRAP = "KXMLBTOTAL-26APR24LADSF-40"
+_GOOD = "KXMLBTOTAL-26APR24LADSF-43"
+
+
+class TestDedupPrefersGatePassingRow:
+    """Dedup runs BEFORE the risk gates, so picking a bracket's survivor on
+    composite alone can hand the gates a row they reject while a sibling that
+    would have passed is already gone — the bracket then places nothing.
+
+    Live case, 2026-09-19 (MIN@CHI total): `-40` (NO @ 24c) and `-43` (NO @ 32c)
+    tied at composite 8.30 *exactly*, `-40` won on arbitrary scan order, Gate
+    4.6 rejected it for sitting at 24c under the 25c favorite threshold, and
+    `-43` — which cleared at 9.5% edge — had already been dropped.
+    """
+
+    def test_composite_tie_prefers_the_row_that_clears_the_gates(self, bracket_gates):
+        # The exact live shape: identical composites, one row gate-blocked.
+        opps = [
+            _bracket_opp(_TRAP, price=0.24, edge=0.1202, score=8.3),
+            _bracket_opp(_GOOD, price=0.32, edge=0.1171, score=8.3),
+        ]
+        assert preflight_gate_status(opps[0]) == "no-fav"
+        assert preflight_gate_status(opps[1]) == "ok"
+
+        result = dedup_correlated_brackets(opps)
+        assert len(result) == 1
+        assert result[0].ticker == _GOOD
+
+    def test_gate_passing_row_beats_a_higher_composite_that_fails(self, bracket_gates):
+        # Not just ties: a blocked row never wins, however well it scores,
+        # because its score buys nothing once the gate rejects it.
+        opps = [
+            _bracket_opp(_TRAP, price=0.24, edge=0.20, score=9.9),
+            _bracket_opp(_GOOD, price=0.32, edge=0.12, score=6.1),
+        ]
+        result = dedup_correlated_brackets(opps)
+        assert len(result) == 1
+        assert result[0].ticker == _GOOD
+
+    def test_when_every_row_fails_highest_composite_still_wins(self, bracket_gates):
+        # Unchanged behaviour: with no passing row to prefer, composite decides
+        # exactly as before. The bracket is still rejected downstream.
+        opps = [
+            _bracket_opp(_TRAP, price=0.24, edge=0.10, score=7.0),
+            _bracket_opp(_GOOD, price=0.24, edge=0.10, score=8.5),
+        ]
+        assert all(preflight_gate_status(o) == "no-fav" for o in opps)
+        result = dedup_correlated_brackets(opps)
+        assert len(result) == 1
+        assert result[0].composite_score == 8.5
+
+    def test_survivor_does_not_depend_on_scan_order(self, bracket_gates):
+        # The original defect was an arbitrary tiebreak, so the survivor has to
+        # be the same whichever order the scanner emitted the rows in.
+        a = _bracket_opp(_TRAP, price=0.24, edge=0.1202, score=8.3)
+        b = _bracket_opp(_GOOD, price=0.32, edge=0.1171, score=8.3)
+        assert dedup_correlated_brackets([a, b])[0].ticker == _GOOD
+        assert dedup_correlated_brackets([b, a])[0].ticker == _GOOD
+
+    def test_fully_tied_passing_rows_break_deterministically(self, bracket_gates):
+        # Two rows identical on every ranked field except the ticker: still a
+        # single, stable survivor rather than whichever arrived first.
+        a = _bracket_opp(_TRAP, price=0.32, edge=0.12, score=8.3)
+        b = _bracket_opp(_GOOD, price=0.32, edge=0.12, score=8.3)
+        assert dedup_correlated_brackets([a, b])[0].ticker == (
+            dedup_correlated_brackets([b, a])[0].ticker
+        )
+
+
 # ── preflight_gate_status (R18) ──────────────────────────────────────────────
 
 
