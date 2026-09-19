@@ -115,6 +115,51 @@ Five tests in `TestDedupPrefersGatePassingRow`; four fail on the old code and
 the fifth is the unchanged-behaviour guard. Verified against the live bracket:
 the survivor is now `-43` (`gate=ok`).
 
+### S23c -- Gate 4.8 gates placement; nothing gated lifetime
+
+Surfaced by the 6 contracts left resting at 14c on `GBNYJ-NYJ8` after the
+execution above (1 of 7 filled).
+
+**A resting buy order is a standing offer.** Once its game kicks off it is
+precisely the in-play bet `ALLOW_LIVE_BETS=false` forbids -- entered through a
+door Gate 4.8 cannot see, because the gate only ever runs *before* an order is
+sent. And the market stays open through play: that spread carried
+
+```
+kickoff                   Sun 09-20 10:00 AM PT
+expected_expiration_time  Sun 09-20 01:00 PM PT   <- "after a winner is declared"
+close_time                Tue 09-22 10:00 AM PT
+```
+
+so there were ~3 hours of live play in which to fill.
+
+**The fill is adversely selected.** A resting bid is lifted only when sellers
+cross down to it, which in-play means the position is already going against us;
+if it runs our way the price rises and we never fill. The order fills mostly in
+the branch where the edge it was sized on is gone. S23 measured that exposure at
+**-36.5% ROI (n=7) against +13.6% pre-game (n=4)** on NCAAF.
+
+**R4 does not cover this, twice over.** `cancel_stale_resting_orders` skips any
+order with `fill_count != 0`, and it measures age rather than kickoff -- its 24h
+cutoff here landed 3.5h *after* the game ended. The partial-fill exemption
+reasons about the **filled** portion ("real exposure the settler will
+reconcile"), which is right; the **unfilled remainder** is not exposure yet, and
+leaving it resting is a live ungated bet. That rationale was written in April,
+before Gate 4.8 existed.
+
+`cancel_live_resting_orders` therefore ignores both age and fill count and keys
+only on kickoff. Start times come from **our own trade log joined on
+`order_id`** -- the join S22 uses for sides -- because the executor already
+stamps the Odds API `commence_time` there as `event_start_time`, and reading the
+ticker instead would reproduce exactly the blindness S23 fixed (only moneyline
+tickers carry a time). Venue is authoritative for which orders rest; the log for
+when their game starts. Fails **open** on an order nothing can date, matching
+Gate 4.8, and is a **no-op** when `ALLOW_LIVE_BETS=true`.
+
+Ten tests in `TestLiveRestingOrderJanitor`, including
+`test_r4_would_not_have_caught_it`, which asserts the gap directly: on the live
+shape R4 returns `[]` while the new janitor cancels.
+
 ### Still an override, not a review
 
 No review fired for either change. This is the **third** hand-set NFL floor

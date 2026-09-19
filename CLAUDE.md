@@ -413,6 +413,19 @@ Standing rules — do not reverse them without new settled evidence.
   **open** on a shard it cannot identify (pre-sharding behaviour; the venue's own error is
   the backstop) and **closed** on a transfer that did not settle. *CHANGELOG 2026-08-27 (X1).*
 
+- **A gate on placement is not a gate on lifetime.** Gate 4.8 rejects a
+  post-kickoff *order*, but a resting order placed pre-game keeps standing after
+  kickoff, and the market stays open through play (the 09-20 GB@NYJ spread's
+  `close_time` was two days past a Sunday kickoff). That is the same in-play
+  exposure by a route the gate never sees, and the fill is **adversely
+  selected** -- a resting bid is only lifted when sellers cross down to it,
+  which in-play means the position is already losing. **R4 covers neither
+  half**: it skips any order with a partial fill, and measures age, not kickoff.
+  `cancel_live_resting_orders` (S23c) keys only on kickoff, reading
+  `event_start_time` from the trade log joined on `order_id` — never the ticker,
+  which only moneyline series date. Fails open, and is a no-op under
+  `ALLOW_LIVE_BETS=true`. *CHANGELOG 2026-09-19 (S23c).*
+
 - **Bracket dedup picks a survivor that can actually clear the gates.** It runs
   *before* the risk gates, so ranking a bracket on composite alone can hand the
   gates a row they reject while the sibling that would have passed is already

@@ -19,6 +19,7 @@ from kalshi_executor import (
     matchup_key,
     recent_matchups_from_log,
     cancel_stale_resting_orders,
+    cancel_live_resting_orders,
     dedup_correlated_brackets,
     preflight_gate_status,
     _apply_budget_cap,
@@ -1764,6 +1765,151 @@ class TestRestingOrderJanitor:
             assert client.cancelled_ids == ["old"]
         finally:
             kalshi_executor.RESTING_ORDER_MAX_HOURS = orig
+
+
+class TestLiveRestingOrderJanitor:
+    """S23c: Gate 4.8 gates order PLACEMENT; nothing gated order LIFETIME.
+
+    A resting buy order is a standing offer, so once its game kicks off it is
+    exactly the in-play bet ALLOW_LIVE_BETS=false forbids -- entered through a
+    door the gate cannot see, because the gate only runs before an order is
+    sent. Found live on the 09-20 GB@NYJ spread: 6 contracts left resting at
+    14c on a market whose close_time was two days after a Sunday kickoff.
+    """
+
+    @staticmethod
+    def _resting(
+        order_id="o1", ticker="KXNFLSPREAD-26SEP20GBNYJ-NYJ8", remaining="6", fill="1", shard=None
+    ):
+        o = {
+            "order_id": order_id,
+            "ticker": ticker,
+            "status": "resting",
+            "fill_count_fp": fill,
+            "remaining_count_fp": remaining,
+            "created_time": "2026-09-19T20:31:59Z",
+        }
+        if shard is not None:
+            o["exchange_index"] = shard
+        return o
+
+    @staticmethod
+    def _log(order_id="o1", start="2026-09-20T17:00:00Z"):
+        return [{"order_id": order_id, "event_start_time": start}]
+
+    def test_cancels_remainder_once_the_game_has_started(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)  # 90 min after
+        client = FakeKalshiClient([self._resting()])
+
+        result = cancel_live_resting_orders(client, self._log(), now=now)
+
+        assert [r["order_id"] for r in result] == ["o1"]
+        assert client.cancelled_ids == ["o1"]
+        assert result[0]["remaining"] == 6
+        assert result[0]["minutes_late"] == 90
+
+    def test_r4_would_not_have_caught_it(self, monkeypatch):
+        """The gap, stated directly. R4 skips any order with a partial fill and
+        measures age, not kickoff -- so on the live shape (1 of 7 filled, placed
+        under 24h ago) it cancels nothing while the game is already underway."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        order = self._resting(fill="1")  # partial fill, ~22h old
+
+        assert cancel_stale_resting_orders(FakeKalshiClient([order]), max_hours=24, now=now) == []
+        assert cancel_live_resting_orders(FakeKalshiClient([order]), self._log(), now=now)
+
+    def test_leaves_pregame_orders_alone(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 15, 0, tzinfo=timezone.utc)  # 2h before
+        client = FakeKalshiClient([self._resting()])
+
+        assert cancel_live_resting_orders(client, self._log(), now=now) == []
+        assert client.cancelled_ids == []
+
+    def test_no_op_when_live_bets_allowed(self, monkeypatch):
+        """Opting into live bets makes a resting order surviving kickoff
+        intended, not a leak."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", True)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting()])
+
+        assert cancel_live_resting_orders(client, self._log(), now=now) == []
+        assert client.cancelled_ids == []
+
+    def test_fails_open_when_no_source_can_name_a_start_time(self, monkeypatch):
+        """Matches Gate 4.8 and Gates 3.6/3.7: an undateable start is not
+        grounds to act. A football ticker is date-only, so with no log row
+        there is nothing to read."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting()])
+
+        assert cancel_live_resting_orders(client, trade_rows=[], now=now) == []
+        assert client.cancelled_ids == []
+
+    def test_malformed_start_time_fails_open(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting()])
+
+        bad = self._log(start="not-a-timestamp")
+        assert cancel_live_resting_orders(client, bad, now=now) == []
+
+    def test_ignores_fully_filled_orders(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting(remaining="0", fill="7")])
+
+        assert cancel_live_resting_orders(client, self._log(), now=now) == []
+
+    def test_forwards_the_orders_shard_to_cancel(self, monkeypatch):
+        """Same sharding trap as R4: a bare 404 reads like "already gone"."""
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient([self._resting(shard=3)])
+
+        cancel_live_resting_orders(client, self._log(), now=now)
+        assert client.cancelled_shards == [3]
+
+    def test_list_api_error_returns_empty_no_crash(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        client = FakeKalshiClient([], list_raises=KalshiAPIError(500, "API down"))
+        assert cancel_live_resting_orders(client, self._log()) == []
+
+    def test_cancel_error_skips_that_order_and_continues(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "ALLOW_LIVE_BETS", False)
+        now = datetime(2026, 9, 20, 18, 30, tzinfo=timezone.utc)
+        client = FakeKalshiClient(
+            [self._resting("good"), self._resting("bad")],
+            cancel_error_on={"bad"},
+        )
+        rows = self._log("good") + self._log("bad")
+
+        result = cancel_live_resting_orders(client, rows, now=now)
+        assert [r["order_id"] for r in result] == ["good"]
+        assert client.cancelled_ids == ["good"]
 
 
 # ── dedup_correlated_brackets ────────────────────────────────────────────────
