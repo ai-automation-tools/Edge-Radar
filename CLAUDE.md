@@ -18,7 +18,7 @@
 
 | Domain | Coverage | Data Sources |
 |:-------|:---------|:-------------|
-| **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup (F3) is OFF; NCAAF is on a 0.08 pilot floor (S21c)** | The Odds API, ESPN, NHL/MLB Stats, NWS |
+| **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup (F3) is OFF; NFL and NCAAF are both on a 0.06 pilot floor (S1b/S21c, lowered from 0.08 on 2026-09-19)** | The Odds API, ESPN, NHL/MLB Stats, NWS |
 | **Prediction markets** | Crypto (BTC, ETH, XRP, DOGE, SOL), weather (13 cities), S&P 500 | CoinGecko, Yahoo Finance, NWS |
 | **Championship futures** | NFL, NBA, NHL, MLB, PGA | Sportsbook futures odds |
 | **Execution pipeline** | Unified scan → risk-check → size → execute | Kalshi API (RSA-signed), Polymarket US (Ed25519) |
@@ -236,7 +236,9 @@ Standing rules — do not reverse them without new settled evidence.
   `MAX_BET_RATIO` / `--budget` each bound only a single batch. **The `.env` key is a tourniquet,
   not the rule**; the rule is that a cold-start segment runs in dry-run/pilot until it has
   evidence, and it becomes mechanical when `strategy_state.json` (S10) ships — at which point
-  the key comes out. **The 24 existing positions are held, not flattened** (S2): exiting a
+  the key comes out. **Lowered again to 0.06 on 2026-09-19**, a third operator
+  override, on volume rather than evidence: 1 of 30 NFL rows cleared Gate 3 at
+  0.08, 4 clear at 0.06. **The 24 existing positions are held, not flattened** (S2): exiting a
   5-20c-wide book pays exactly the illiquidity penalty Gate 3.6 exists to avoid. Exit a ticker
   only if its spread is <= 5c *and* the exit price beats hold-to-settlement EV.
   *CHANGELOG 2026-08-26 (S1).*
@@ -266,7 +268,11 @@ Standing rules — do not reverse them without new settled evidence.
   settles never could fit it. Market Brier 0.1538 vs model 0.1744, per the S18 pair.
   NCAAF was frozen on 2026-09-13 and moved to a **0.08 pilot floor on 2026-09-16
   by operator override**, with the S21b shadow book still holding **zero settled
-  rows**. Expiry unchanged: the key comes out when `strategy_state.json` (S10) ships.
+  rows**, then to **0.06 on 2026-09-19** — which admitted nothing, because the F1
+  fee puts the effective floor at ~0.074 and the best row on that slate was 0.0695.
+  **Lowering a nominal floor is not the same as lowering the effective one; check
+  against the fee before assuming a cut will admit anything.** NCAAF does not start
+  clearing until ~0.05. Expiry unchanged: the key comes out when `strategy_state.json` (S10) ships.
   *CHANGELOG 2026-09-13 (S21), 2026-09-16 (S21c).*
 - **A one-sided book is a diagnostic; the stdev it implies is not.** S21's `9.5`
   reproduces exactly on its own 10 filled spread bets — and nowhere else. Over 94
@@ -488,7 +494,7 @@ Standing rules — do not reverse them without new settled evidence.
 
 ## Risk Limits
 
-Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.08` (S1b pilot since 2026-09-13, ratified by the review on 2026-09-15) and `MIN_EDGE_THRESHOLD_NCAAF=0.08` (S21c pilot since 2026-09-16; was the 1.0 S21 freeze) — none of these are in the code defaults**.
+Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.06` (S1b pilot since 2026-09-13 at 0.08, lowered to 0.06 on 2026-09-19) and `MIN_EDGE_THRESHOLD_NCAAF=0.06` (S21c pilot since 2026-09-16 at 0.08, lowered to 0.06 on 2026-09-19; was the 1.0 S21 freeze) — none of these are in the code defaults**.
 
 ```env
 UNIT_SIZE=1.00                  # Kelly floor per bet — the longshot knob (binds below ~30c)
@@ -524,18 +530,21 @@ MIN_EDGE_THRESHOLD_WORLDCUP=1.0 # F3: World Cup OFF. A floor >= 1.0 can never be
                                 #   `doctor.py` prints every such sport on its own WARN line.
 MIN_EDGE_THRESHOLD_NFL=<unset>  # S1/S1b: live-only, code default unset. FROZEN at 1.0 on
                                 #   2026-08-26 (24 open positions, 31% of bankroll, ZERO settled
-                                #   history); live `.env` now sets **0.08**, the S1b PILOT floor,
-                                #   since 2026-09-13. That was an operator override — the review
-                                #   still returned BRANCH C. ~2.7x the global floor, so only strong
-                                #   NFL rows clear Gate 3; Gate 2b still caps NFL at 33% of equity.
-                                #   **Temporary either way**: remove when S10 ships.
+                                #   history); live `.env` now sets **0.06**, the S1b PILOT floor,
+                                #   lowered from 0.08 on 2026-09-19. Both settings were operator
+                                #   overrides — no review fired for either. 2x the global floor, so
+                                #   only strong NFL rows clear Gate 3; Gate 2b still caps NFL at 33%
+                                #   of equity. **Temporary either way**: remove when S10 ships.
 MIN_EDGE_THRESHOLD_NCAAF=<unset> # S21/S21c: live-only, code default unset. FROZEN at 1.0 on
                                 #   2026-09-13 (11 settled bets, ALL YES on "covers a big alternate
-                                #   spread"); live `.env` now sets **0.08**, the S21c PILOT floor, since
-                                #   2026-09-16. That was an OPERATOR OVERRIDE -- the shadow book held
-                                #   zero settled rows. S21's "market implies 9.5" does NOT replicate
-                                #   pre-gate (94 fresh rows -> median 17.0); it was a selection artifact.
-                                #   ~2.7x the global floor. **Temporary**, remove when S10 ships.
+                                #   spread"); live `.env` now sets **0.06**, the S21c PILOT floor, since
+                                #   2026-09-16 (0.08) and lowered 2026-09-19. Both were OPERATOR
+                                #   OVERRIDES -- the shadow book held zero settled rows. S21's
+                                #   "market implies 9.5" does NOT replicate pre-gate (94 fresh
+                                #   rows -> median 17.0); it was a selection artifact.
+                                #   2x the global floor. NOTE the fee (F1) is ADDED, so the effective
+                                #   floor is ~0.074 at 30c -- 0.06 admitted ZERO of 111 NCAAF rows on
+                                #   the 09-19 slate. **Temporary**, remove when S10 ships.
 MIN_MARKET_PRICE=0.12           # R7 lottery-ticket floor; 0 disables. Pure reject threshold,
                                 #   independent of sizing. The live 0.10 is an OPEN EXPERIMENT
                                 #   re-opening the longshot lane — recheck after ~30 more settles.

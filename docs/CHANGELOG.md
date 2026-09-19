@@ -2,6 +2,105 @@
 
 ---
 
+## 2026-09-19 -- football pilot floors 0.08 -> 0.06, and the fee gap between nominal and effective
+
+Operator override, prompted by "no NFL or college football bets are being
+placed." The investigation found **no defect** -- the drought is the two pilot
+floors plus S23's Gate 4.8 fix doing exactly what they were set up to do.
+
+### What the 09-19 slate actually looked like
+
+Re-scanned live with `min_edge=0.001` and tallied `preflight_gate_status`:
+
+```
+NCAAF  111 raw rows   0.08 -> ok=  0   edge-reject=98   price=3 live-off=6 no-fav=3 illiq=1
+                      0.03 -> ok=  9   edge-reject=82
+NFL     30 raw rows   0.08 -> ok=  1   edge-reject=26   no-fav=1 price=2
+                      0.03 -> ok= 11   edge-reject=16
+```
+
+The best NCAAF row on the board missed by **0.2 percentage points** (edge
+0.0952 against a floor of 0.0972). Six NCAAF rows rejected `live-off` -- Gate
+4.8 firing on football for the first time, which it structurally could not do
+before 2026-09-16 (S23).
+
+### Last week's volume was not a clean baseline
+
+The 09-12 NCAAF batch was 11 bets, and per S23 **10 of them were placed 26-122
+minutes after kickoff** by the ticker-blind gate. Split on that line NCAAF ran
+-36.5% post-kickoff (n=7) against +13.6% pre-game (n=4). "A lot was being
+placed last week" and "the gate was broken last week" are the same sentence.
+
+### The change, and the part that did not work
+
+Both floors went to **0.06**. NFL 1 row -> 4. NCAAF **0 rows -> 0 rows.**
+
+**The fee is added to the floor (F1), so the nominal floor is not the effective
+one.** At 30c the fee is ~0.0147, so 0.06 screens at ~0.0747, and NCAAF's best
+row was 0.0695. Sweeping the 9 rows that clear at the global 0.03:
+
+| Nominal floor | NCAAF rows admitted | NFL rows admitted |
+|:--|--:|--:|
+| 0.08 | 0 | 1 |
+| 0.06 | 0 | 4 |
+| 0.05 | 1 | 7 |
+| 0.04 | 7 | 9 |
+
+**Check a proposed floor against the fee before assuming a cut admits
+anything.** A floor cut of 2 points bought 3 NFL rows and nothing at all in
+NCAAF, because the fee eats roughly a quarter of the nominal move at typical
+longshot prices.
+
+### One piece of counter-evidence worth keeping
+
+S21c's OPEN RISK block justified 0.08 over 0.03 on the grounds that 20 of the
+26 rows clearing at 0.03 sat at px >= 0.51 -- F3's inversion band. On the 09-19
+slate the 9 NCAAF rows clearing at 0.03 are **17-43c, none of them at or above
+0.51**. That was measured on the shadow book on 09-16 and on the live gate
+population on 09-19, so the two are not directly comparable, but the price-band
+argument for keeping NCAAF high does not reproduce on this slate. Re-measure it
+before cutting further.
+
+### What actually got placed, and a dedup finding
+
+The 09-20 NFL slate was executed ad hoc the same evening, because
+`All-Sports-NextDay-Execution` is a **Sun-Thu** task and does not fire on a
+Saturday -- so nothing would have looked at Sunday's games until the 5:05 AM
+same-day run, ~5h before a 10:00 AM PT kickoff. 3 orders, $2.20 filled:
+
+```
+KXNFLSPREAD-26SEP20CINHOU-HOU8  YES 4/4 @ $0.29  edge +8.0%
+KXNFLSPREAD-26SEP20CARATL-CAR8  YES 3/3 @ $0.30  edge +7.7%
+KXNFLSPREAD-26SEP20GBNYJ-NYJ8   YES 1/7 @ $0.14  edge +7.4%   (6 resting)
+```
+
+**The best row on the board never reached the executor.**
+`KXNFLTOTAL-26SEP20MINCHI-43` (edge 11.7%, composite 8.3) was removed by
+bracket dedup, which collapsed 20 rows to 13 and kept the **-40 strike** from
+that bracket instead. The survivor then failed Gate 4.6:
+
+```
+SKIP KXNFLTOTAL-26SEP20MINCHI-40: REJECTED: no_side_favorite
+     (price $0.24 < $0.25; needs edge >= 25% and confidence=high)
+```
+
+A NO at 24c got tested against R1's 25% bar while the 32c sibling that would
+have cleared at 9.5% was already gone. **Dedup runs BEFORE the gates, so it can
+hand a gate a row that fails where the row it discarded would have passed** --
+and a bracket straddling the 25c `NO_SIDE_FAVORITE_THRESHOLD` is exactly where
+that bites. Not yet investigated: whether the dedup ranks by composite or by
+strike proximity. If the latter, this recurs on every total bracket near 25c.
+
+### Still an override, not a review
+
+No review fired for either change. This is the **third** hand-set NFL floor
+(1.0 -> 0.08 -> 0.06) and the **second** hand-set NCAAF floor. The S1b evidence
+still has a bootstrap CI of [-0.042, +0.031] straddling zero, and the S21b
+shadow book still has no settled rows. Lowering a floor does not add evidence;
+it spends the pilot budget faster. Both keys still come out when S10 ships.
+
+---
+
 ## 2026-09-16 (S23b) -- the fills endpoint calls it `fee_cost`, and nothing read the post-kickoff tell
 
 S23 closed with two items it deliberately did not fix. Both are now fixed, and
