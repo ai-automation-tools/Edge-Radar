@@ -2,6 +2,80 @@
 
 ---
 
+## 2026-09-21 -- S21c NCAAF pilot review: the Brier pair is a tie, and the 09-20 kickoff check passes with no exam taken
+
+One-shot pilot review. **Report only** -- no config touched, no floor moved, no
+parameter refit.
+
+### The Brier pair
+
+`shadow_book.py review --sport ncaaf` over **n = 510** settled shadow rows:
+
+| measure | value | role |
+|---|---:|---|
+| MARKET Brier (predicted = Kalshi price) | **0.1539** | the benchmark |
+| MODEL Brier (predicted = fair_value) | **0.1548** | the thing under test |
+| difference (market - model) | -0.0009 | leans market |
+| 95% CI on the difference | **[-0.0036, +0.0019]** | **straddles zero** |
+
+The market wins the pair by 0.0009 and the CI straddles zero, so this is
+**directional only**. Neither side is shown better than the other at this n.
+Calibration gap: model claimed 61.6% on average, 57.3% happened, market said
+58.0% -- the model over-claims ~4.3 points, the market is within 0.7.
+
+### Stdev sweep -- pre-gate, and still not a refit
+
+Best fit **13.0** over **474 rows**; shipped value is **15.0**. Flat across
+12-15 (0.1593 to 0.1599).
+
+These rows **are pre-gate**: `shadow_book.collect()` calls `scan_all_markets`
+with `min_edge=0.0`, so no edge floor selected the sample. That is what makes
+13.0 a different object from S21's 9.5, which was solved on *filled* bets --
+the gate harvests the lowest-implied-stdev rows by construction, so a value fit
+on fills restates the selection rule instead of measuring the sport.
+
+**No refit recommended.** The 12-15 spread is 0.0006, smaller than a Brier
+difference whose CI already straddles zero, and 15.0 sits inside the band fresh
+pre-gate rows imply (~17.0, 15.0 in its IQR). Moving it here is fitting noise.
+
+### The 09-20 kickoff check (first Saturday under S23)
+
+**Zero NCAAF orders were placed on 2026-09-20**, therefore zero sit after their
+`event_start_time`. Gate 4.8 passes -- but **vacuously**: it was never handed an
+NCAAF order to reject, so 09-20 is not yet evidence the fix works.
+
+The supporting evidence is historical, and it reproduces the 09-19 entry's
+finding independently: an all-time trade-log sweep finds **10 post-kickoff NCAAF
+orders, all on 2026-09-12** (pre-S23), and **none on or after 2026-09-16**.
+Signature present before the fix, absent after. No live defect.
+
+### Notes
+
+- `shadow_book.py settle` returned checked 204 / settled 0 / **204 open** --
+  benign. All 204 open rows are unplayed games (09-24: 4, 09-25: 8, 09-26: 173,
+  09-27: 19). The 0 means the 06:00 daily task had already settled Saturday.
+- Settled slate mix: 09-17 (7), 09-18 (7), **09-19 (419)**, 09-20 (77). The
+  first Saturday under S23 is the thinnest-sampled day in the book by a wide
+  margin -- a collector coverage question, not a model result.
+- `kalshi_settler.py settle`: no unsettled trades in log.
+- **Config drift vs. the review's own premise:** the review was scoped against
+  an 0.08 pilot floor; the live value is `MIN_EDGE_THRESHOLD_NCAAF=0.06` per the
+  09-19 operator override. Recorded so 09-20's zero volume is not later blamed
+  on a floor that was no longer in force.
+
+### What would settle the open questions
+
+More settled rows to narrow the CI (two to three more 09-19-sized Saturdays
+roughly halve the half-width); one NCAAF order actually reaching the board so
+Gate 4.8 is tested non-vacuously; and, for the stdev, a margin wide enough to
+clear the 12-15 flat zone.
+
+**Standing caveat:** the shadow book measures **calibration only** -- no
+slippage, no queue position, no fee drag. A model that wins on Brier is not
+thereby tradeable.
+
+---
+
 ## 2026-09-19 -- football pilot floors 0.08 -> 0.06, and the fee gap between nominal and effective
 
 Operator override, prompted by "no NFL or college football bets are being
