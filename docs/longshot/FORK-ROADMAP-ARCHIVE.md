@@ -47,7 +47,7 @@ needed:** individual-game longshots were already in scope and live alongside fut
 was futures-only. Previous header follows.</sub>
 
 <sub>Previous header — Last updated: 2026-09-07 — repaired the dry-run scheduled-task paths after the
-repo move: both tasks still referenced the retired `Repos/Draft/` location and
+repo move: both tasks still referenced the retired `Repos/Private/Draft/` location and
 were failing with Task Scheduler result `1`. The portable batch scripts are now
 tracked with the installer and the tasks were re-registered against this repo.
 **Verified same day:** both `Longshot-Scan` and `Email-Longshot-Scan` manually
@@ -56,7 +56,7 @@ fix holds rather than just looking right. The evidence window remains
 dry-run-only. Previous update follows.</sub>
 
 <sub>Previous header — Last updated: 2026-09-04 — repo graduated to its own remote (Section 6): moved
-`Repos/Draft/` → `Repos/Other_Apps/`, pushed to a new **private** GitHub repo
+`Repos/Private/Draft/` → `Repos/Private/Other_Apps/`, pushed to a new **private** GitHub repo
 (`michaelschecht/Edge-Radar-Longshot`), history squashed to one initial commit, Edge-Radar's
 public-site artifacts (`.claude/html/`, `.claude/backup/`, Pages deploy workflow) dropped as
 not-applicable. **🔴 NEXT UP:** unchanged from before — let the dry-run evidence window
@@ -95,7 +95,7 @@ the window accumulate (nothing to do here but wait/check in), then the still-ope
 
 Forked from `Live_Apps/Edge-Radar` (local `git clone`, `mike_desktop` branch, remote renamed
 `upstream` — points at the local Edge-Radar path for pulling in future fixes, not GitHub; this
-repo is un-pushed per `Repos/Draft/` convention). Goal: a strategy focused on longshot/futures
+repo is un-pushed per `Repos/Private/Draft/` convention). Goal: a strategy focused on longshot/futures
 bets (low-price, high-payoff outcomes and season-long championship markets) instead of
 Edge-Radar's current individual-game, short-horizon focus.
 
@@ -490,7 +490,7 @@ lands on, size small and prove it in dry-run/live-small before trusting it with 
       as-is (accurate index of shared infra). `docs/ROADMAP.md` and `docs/CHANGELOG.md` — upstream
       Edge-Radar's own history/priorities, not this fork's — each got a short banner marking them
       stale/reference-only and pointing back at this file.
-- [x] **Graduated (2026-09-04):** moved `Repos/Draft/` → `Repos/Other_Apps/`, remote created at
+- [x] **Graduated (2026-09-04):** moved `Repos/Private/Draft/` → `Repos/Private/Other_Apps/`, remote created at
       `github.com/michaelschecht/Edge-Radar-Longshot` (**private** — personal trading tool, no
       landing-page tile or subdomain). History **squashed to a fresh initial commit** (operator
       call) rather than kept as a lineage of Edge-Radar's own commits; the local `upstream` remote

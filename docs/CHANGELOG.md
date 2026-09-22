@@ -1355,7 +1355,7 @@ covered by tests. Only the reporting around the decision was wrong.
 
 ## 2026-09-10 -- P1: strategy profiles replace the forked Longshot repo
 
-`Repos/Other_Apps/Edge-Radar-Longshot` was a second checkout of this repo,
+`Repos/Private/Other_Apps/Edge-Radar-Longshot` was a second checkout of this repo,
 created 2026-09-04 to run a longshot/futures strategy whose results could be
 compared against this one over time. It is retired. The strategy lives here now,
 as a **profile**: `--profile longshot` overlays `.env.longshot` on the base
