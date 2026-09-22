@@ -893,6 +893,34 @@ def _save_report_file(lines: list[str], days: int | None = None):
 # ── Reconciliation ───────────────────────────────────────────────────────────
 
 
+def local_open_positions(trade_log: list[dict]) -> dict[str, dict]:
+    """Open Kalshi positions per ticker from the local log, signed like the API.
+
+    Keys on fills, not ``status``: the executor copies Kalshi's order status,
+    which has come back empty since 2026-06 and is logged as ``"unknown"`` -- a
+    ``status == "executed"`` filter here matched nothing for three months.
+    Errors are excluded explicitly because ``get_filled_contracts`` falls back
+    to the requested size for rows with no fill fields. Kalshi reports a NO
+    position as negative, so NO fills count negative.
+    """
+    positions: dict[str, dict] = {}
+    for t in trade_log:
+        if (
+            t.get("closed_at")
+            or t.get("status") == "error"
+            or (t.get("venue") or "kalshi") != "kalshi"
+        ):
+            continue
+        filled = int(get_filled_contracts(t))
+        if filled <= 0:
+            continue
+        ticker = t.get("ticker", "")
+        info = positions.setdefault(ticker, {"contracts": 0, "trades": []})
+        info["contracts"] += -filled if t.get("side") == "no" else filled
+        info["trades"].append(t.get("trade_id", "?")[:8])
+    return positions
+
+
 def reconcile_positions(client: KalshiClient):
     """
     Compare local trade log against Kalshi API positions.
@@ -900,17 +928,7 @@ def reconcile_positions(client: KalshiClient):
     """
     rprint("\n[bold]Reconciling local trade log vs Kalshi API...[/bold]")
 
-    trade_log = load_trade_log()
-    unsettled = [t for t in trade_log if not t.get("closed_at") and t.get("status") == "executed"]
-
-    # Local: unique tickers with open positions
-    local_tickers = {}
-    for t in unsettled:
-        ticker = t.get("ticker", "")
-        if ticker not in local_tickers:
-            local_tickers[ticker] = {"contracts": 0, "trades": []}
-        local_tickers[ticker]["contracts"] += int(get_filled_contracts(t))
-        local_tickers[ticker]["trades"].append(t.get("trade_id", "?")[:8])
+    local_tickers = local_open_positions(load_trade_log())
 
     # API: actual positions on Kalshi
     api_positions = client.get_positions(limit=200, count_filter="position")
