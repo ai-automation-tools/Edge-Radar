@@ -702,7 +702,7 @@ MSYS_NO_PATHCONV=1 schtasks /create /tn "\Edge-Radar\Email-Weekly-Futures" \
 **Install (one-time, from PowerShell):**
 ```powershell
 schtasks /Create /TN "\Edge-Radar-MikesAILab\Daily-Polymarket-Execution" `
-  /TR "D:\AI_Agents\Projects\Mikes_AI_Lab\Repos\Live_Apps\Edge-Radar\scripts\schedulers\polymarket_scans\daily_polymarket_scan.bat" `
+  /TR "D:\AI_Agents\Projects\Mikes_AI_Lab\Repos\AI-Automation-Tools\Live_Apps\Edge-Radar\scripts\schedulers\polymarket_scans\daily_polymarket_scan.bat" `
   /SC DAILY /ST 09:40 /F
 ```
 

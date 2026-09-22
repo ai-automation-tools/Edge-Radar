@@ -162,7 +162,7 @@ overwrite each other silently.
 
 ## History
 
-It began on 2026-09-04 as `Repos/Other_Apps/Edge-Radar-Longshot`, a second
+It began on 2026-09-04 as `Repos/Private/Other_Apps/Edge-Radar-Longshot`, a second
 checkout of this repo, so the two strategies' results could be compared over
 time. It was folded back in on 2026-09-10.
 
