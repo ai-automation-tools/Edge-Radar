@@ -12,6 +12,7 @@ from kalshi_settler import _compute_fair_value_yes, build_settlement_record
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 @pytest.fixture
 def filled_trade():
     """A fully-filled trade record with every R5 field populated."""
@@ -52,6 +53,7 @@ def pnl_won():
 
 
 # ── build_settlement_record — R5 schema ──────────────────────────────────────
+
 
 class TestBuildSettlementRecord:
     """The settlement record carries the full R5 trade-side context."""
@@ -150,18 +152,21 @@ class TestComputeFairValueYes:
 
 # ── print_reconciliation — join-health report ────────────────────────────────
 
+
 class TestPrintReconciliation:
     """The reconciliation report runs cleanly across the lifecycle states."""
 
     def _stub_logs(self, monkeypatch, trades, settlements):
         # Patch where risk_check imports them, not where they're defined
         import risk_check
+
         monkeypatch.setattr(risk_check, "load_trade_log", lambda: trades)
         monkeypatch.setattr(risk_check, "load_settlement_log", lambda: settlements)
 
     def test_runs_on_empty_logs(self, monkeypatch, capsys):
         self._stub_logs(monkeypatch, [], [])
         from risk_check import print_reconciliation
+
         print_reconciliation()  # should not raise
         out = capsys.readouterr().out
         assert "Trade log entries" in out
@@ -175,6 +180,7 @@ class TestPrintReconciliation:
         ]
         self._stub_logs(monkeypatch, [], settlements)
         from risk_check import print_reconciliation
+
         print_reconciliation()
         out = capsys.readouterr().out
         assert "5" in out  # 5 settlements
@@ -192,6 +198,7 @@ class TestPrintReconciliation:
         ]
         self._stub_logs(monkeypatch, trades, settlements)
         from risk_check import print_reconciliation
+
         print_reconciliation()
         out = capsys.readouterr().out
         # 100% join coverage
@@ -207,6 +214,7 @@ class TestPrintReconciliation:
         settlements = [{"trade_id": "t-2"}]
         self._stub_logs(monkeypatch, trades, settlements)
         from risk_check import print_reconciliation
+
         print_reconciliation()
         out = capsys.readouterr().out
         assert "Open trades" in out
@@ -219,12 +227,63 @@ class TestPrintReconciliation:
             # Pre-R5 record (legacy schema)
             {"trade_id": "old-1", "ticker": "T1"},
             # Post-R5 record (full schema)
-            {"trade_id": "new-1", "ticker": "T2", "composite_score": 8.0,
-             "risk_approval": "APPROVED", "bankroll_pct": 0.05},
+            {
+                "trade_id": "new-1",
+                "ticker": "T2",
+                "composite_score": 8.0,
+                "risk_approval": "APPROVED",
+                "bankroll_pct": 0.05,
+            },
         ]
         self._stub_logs(monkeypatch, [], settlements)
         from risk_check import print_reconciliation
+
         print_reconciliation()
         out = capsys.readouterr().out
         # composite_score populated 1/2 = 50%
         assert "50%" in out
+
+
+# ── local_open_positions — the local side of `reconcile` ─────────────────────
+
+
+class TestLocalOpenPositions:
+    """Open positions come from fills, not from Kalshi's (often empty) order status."""
+
+    def test_counts_filled_rows_whatever_their_status(self):
+        from kalshi_settler import local_open_positions
+
+        log = [
+            {"ticker": "A", "side": "yes", "status": "unknown", "filled_contracts": 4},
+            {"ticker": "B", "side": "yes", "status": "executed", "filled_contracts": 1},
+        ]
+        assert {k: v["contracts"] for k, v in local_open_positions(log).items()} == {"A": 4, "B": 1}
+
+    def test_no_side_is_negative_like_the_api(self):
+        from kalshi_settler import local_open_positions
+
+        log = [{"ticker": "N", "side": "no", "status": "unknown", "filled_contracts": 2}]
+        assert local_open_positions(log)["N"]["contracts"] == -2
+
+    def test_skips_closed_errors_unfilled_and_other_venues(self):
+        from kalshi_settler import local_open_positions
+
+        log = [
+            {
+                "ticker": "C",
+                "side": "yes",
+                "filled_contracts": 3,
+                "closed_at": "2026-09-01T00:00:00Z",
+            },
+            {"ticker": "E", "side": "yes", "status": "error", "contracts": 5},
+            {
+                "ticker": "R",
+                "side": "yes",
+                "status": "unknown",
+                "fill_status": "resting",
+                "filled_contracts": 0,
+            },
+            {"ticker": "D", "side": "yes", "status": "dry_run_blocked", "filled_contracts": 0},
+            {"ticker": "P", "side": "yes", "venue": "polymarket", "filled_contracts": 3},
+        ]
+        assert local_open_positions(log) == {}

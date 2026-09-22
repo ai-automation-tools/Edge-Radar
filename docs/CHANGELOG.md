@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-09-22 -- `reconcile` was blind to every open position since June
+
+`kalshi_settler.py reconcile` only counted local trades with `status == "executed"`.
+The executor copies Kalshi's order status into that field, and it has come back
+empty since 2026-06-13, so all 191 trades since then are logged as `"unknown"`.
+Reconcile therefore saw **0** local positions and reported every live Kalshi
+position as "placed manually". Found during the Repos-reorg scheduler
+spot-check: 4 real positions were flagged even though all 4 were in the log.
+
+- New `local_open_positions()` keys on **fills**, not status. It skips closed rows,
+  `error` rows (whose missing fill fields would otherwise fall back to the
+  requested size), unfilled resting and dry-run rows, and non-Kalshi venues.
+- NO fills count negative, matching the API's signed `position`. Without that, the
+  first NO position to reach the quantity check would read as a mismatch.
+- Settle and the risk check's open-exposure count were never affected; they
+  filter on `status != "error"`.
+- Live run afterwards: 4 local / 4 Kalshi, all match. Three tests are added
+  in `tests/test_reconciliation.py`; the suite is 1266 passed.
+
+---
+
 ## 2026-09-21 -- S21c NCAAF pilot review: the Brier pair is a tie, and the 09-20 kickoff check passes with no exam taken
 
 One-shot pilot review. **Report only** -- no config touched, no floor moved, no
