@@ -148,7 +148,7 @@ overwrite each other silently.
   books** and need `for_profile()` or a per-profile split first.
 - **Settlement and reconciliation only ever see subaccount 0.** `KalshiClient()`
   takes its subaccount from the *active* profile, and every settle/reconcile
-  task (`Hourly-Settle`, `NightlySettle`, `Reconcile`) runs unprofiled — so
+  task (`Hourly-Settle`, `Reconcile`) runs unprofiled — so
   they run as `main`. Harmless today: longshot is `DRY_RUN=true`, never fills,
   and so has nothing to settle. **The day `DRY_RUN=false` is set, subaccount 1
   needs its own settle + reconcile tasks** (`EDGE_RADAR_PROFILE=longshot`) or
