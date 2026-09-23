@@ -8,7 +8,7 @@ allowed-tools: Read, Bash, Glob, Grep
 
 # Edge-Radar Analysis Skill
 
-You are executing `/edge-radar-analysis`. This skill produces a **comprehensive post-hoc performance report** for a rolling window of settled bets, pulled from local data (`data/history/kalshi_settlements.json` — populated by `kalshi_settler.py`, which runs **hourly at :35** (U1, 2026-07-20) plus the 11 PM `NightlySettle` backstop).
+You are executing `/edge-radar-analysis`. This skill produces a **comprehensive post-hoc performance report** for a rolling window of settled bets, pulled from local data (`data/history/kalshi_settlements.json` — populated by `kalshi_settler.py`, which runs **hourly at :35** (U1, 2026-07-20); the 11 PM `NightlySettle` backstop was retired 2026-09-23).
 
 Use this for weekly reviews, ad-hoc "how am I doing" checks, and calibration attribution after risk-gate changes ship.
 
@@ -96,7 +96,7 @@ Full CLI flags:
 | Task | Cadence | Note |
 |---|---|---|
 | `Hourly-Settle` | every hour at **:35** | U1 (2026-07-20). Enabled by M2's cross-process trade-log lock, which made concurrent settle+execute merge-safe. Sharpens Gate 1 daily-loss accuracy intraday. |
-| `NightlySettle` | 11:00 PM | Original backstop (`install_windows_task.py install settle`). Was slated for retirement ~1 week after U1; still live as of 2026-07-23. |
+| ~~`NightlySettle`~~ | — | **Retired 2026-09-23** — duplicated `Hourly-Settle`. `install_windows_task.py install settle` now registers the hourly task. |
 
 - Freshness is now much better than it used to be — worst case the data is ~1 hour stale, not ~24. If the user asks about games that finished within the hour, suggest `make settle` (or `python scripts/kalshi/kalshi_settler.py settle`) before generating.
 - **Schema changed 2026-04-27 (R5).** Settlements written from this point carry `composite_score`, `risk_approval`, `bankroll_pct`, `category`, `title`, `closing_price`, `clv`, `edge_source`, `unit_size`, `fill_status` in addition to the legacy fields. Pre-R5 settlements (**190 of the current 354** — recount before quoting, it only grows as a share denominator) carry only the legacy schema, show as `null` for the new fields, and are excluded from any slicing on those dimensions. They still contribute to win rate / Brier / edge-bucket math (which only need `won`, `cost`, `revenue`, `edge_estimated`, `confidence`).

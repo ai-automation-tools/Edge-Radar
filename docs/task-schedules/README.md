@@ -27,6 +27,7 @@
 - **2026-07-23** — **`Daily-Polymarket-DryRun` now places real orders.** Added `--execute` plus batch caps (`--max-bets 2 --budget 10%`) after `POLYMARKET_DRY_RUN` was set to `false` in `.env`. The task keeps writing the evidence log either way (`--save` runs outside the execute branch). **Renamed to `Daily-Polymarket-Execution`** the same day (re-registered from exported XML, preserving trigger + principal; old task unregistered; re-validated `LastTaskResult=0`). The paired `Email-Polymarket-DryRun` job keeps its name for now — it only emails the report and is unaffected. Only futures are orderable; Gamma games are auto-excluded. Verified end-to-end same day: 4 opportunities risk-checked, **0 orders placed** (all rejected on `edge_below_threshold`, 1.1–2.6% vs the 3.0% floor), evidence log still written, exit 0.
 - **2026-07-23** — **`Weekly-Futures-Execution` disabled.** C10 (futures composite recalibration) made Kalshi futures clear Gate 4 for the first time — the task had never been capable of placing a bet before, so its next Saturday run would have been the first-ever live futures order through an unexercised path. Disabled pending a manual futures cycle in preview. Re-enable with `Enable-ScheduledTask -TaskPath "\Edge-Radar-MikesAILab\" -TaskName "Weekly-Futures-Execution"`.
 - **2026-07-21** — added `Email-Polymarket-DryRun` (daily 10:00 AM, 20-min buffer after the 9:40 scan) — pairs the Polymarket dry-run scan with an email like every other daily task. Emails the day's `reports/Polymarket/` report; on 0-opportunity days (no report written) it checks `logs/polymarket_dryrun_scan.log` and sends a short no-opportunities proof-of-life instead. Script: `Run-Reports/Polymarket-DryRun-Report.sh`, log: `logs/email_polymarket_dryrun.log`.
+- **2026-09-23** — **`NightlySettle` retired** (unregistered). It ran the same `kalshi_settler.py settle` as `Hourly-Settle`, whose 10:35/11:35 PM passes already cover 11 PM ahead of `Reconcile`; it was slated to retire after a validation week in July and `Hourly-Settle` has run clean since. `install_windows_task.py install settle` now registers `Hourly-Settle` (hourly at :35) instead. Consolidation audit 2026-09-23 #8.
 - **2026-07-20** — added `Hourly-Settle` (every hour at :35) — U1: hourly `kalshi_settler.py settle`, enabled by the M2 cross-process trade-log lock (concurrent settle+execute now merge-safe). Sharpens Gate 1 daily-loss accuracy intraday. `NightlySettle` kept as belt-and-suspenders during a validation week, then retire. Validated live (`LastTaskResult=0`).
 - **2026-07-20** — added `Daily-Polymarket-DryRun` (daily 9:40 AM) — read-only Polymarket championship-futures scan appending to the PM2 edge-proving evidence log (`data/polymarket/dryrun_log.jsonl`). Places no orders; no paired email (output logs to `logs/polymarket_dryrun_scan.log`). Validated live (`LastTaskResult=0`).
 - **2026-06-20** — added `Weekly-Futures-Execution` (Sat 9:00 AM, first futures automation) + paired `Email-Weekly-Futures` (Sat 9:20 AM); `futures_edge.py` now always writes a report on `--save` for 0-order-week proof-of-life. Both validated live (`LastTaskResult=0`, 0 bets, all gated).
@@ -54,7 +55,7 @@
 | 6 | `Email-SameDay-Late` | **Daily** 2:20 PM | Emails the late same-day report |
 | 7 | `All-Sports-NextDay-Execution` | **Sun-Thu** 8:30 PM | Scans for **tomorrow's** games (`--date tomorrow`, budget 12%, max 6 bets). Shifted from 6:00 PM 2026-05-17 — more next-day lines posted by 11:30 PM ET |
 | 8 | `Email-NextDay` | **Sun-Thu** 8:50 PM | Emails the next-day execution report |
-| 9 | `NightlySettle` | Daily 11:00 PM | Fetches settlement data from Kalshi API, updates trade log, calculates realized P&L |
+| ~~9~~ | ~~`NightlySettle`~~ | — | **REMOVED 2026-09-23.** Duplicate of #22 (`Hourly-Settle`), which runs the same command and covers the 11 PM slot at 10:35 and 11:35 PM |
 | 10 | `Reconcile` | Daily 11:30 PM | Compares local trade log against Kalshi API positions, flags any drift |
 | 11 | `Calibration` | **Sun** 7:00 PM | Weekly Brier-score refresh + calibration-curve report **+ the C8 stdev recalibration** (`model_calibration.py --days 30 --save`). **Window widened 7 → 30 on 2026-07-31** — at `--days 7` the C8 loop was a silent no-op (see the changelog note below). |
 | 12 | `Backtest` | **Sun** 7:30 PM | Weekly equity curve, drawdown, Sharpe, strategy-comparison report |
@@ -66,7 +67,7 @@
 | 19 | `Weekly-Futures-Execution` ⚠️ **RE-ENABLED 2026-08-24** | **Sat** 9:00 AM | ⚠️ **PLACES REAL ORDERS.** Scans + executes championship/outright **futures** (NFL Super Bowl, NBA/NHL/MLB titles, NCAAB MOP, golf majors) via `scan.py futures --execute` (budget 10%, max 3, unit $1, `--exclude-open`). Offseason series with no Odds API outright data are skipped; golf only prices the 4 majors during their weeks. First futures automation (added 2026-06-20) |
 | 20 | `Email-Weekly-Futures` | **Sat** 9:20 AM | Emails the weekly futures execution report (20-min buffer after task #19). Sends even on 0-order weeks as proof-of-life. Subject `Edge-Radar \| Weekly Futures Execution Report` |
 | 21 | `Daily-Polymarket-Execution` | Daily 9:40 AM | ⚠️ **PLACES REAL ORDERS since 2026-07-23** (renamed from `Daily-Polymarket-DryRun` same day). Polymarket scan — championship futures **+ per-game ML/spread/total (PM1d)** — `scan.py polymarket --filter all --min-edge 0.01 --top 40 --max-bets 2 --budget 10% --save --execute`. Still appends the full funnel to `data/polymarket/dryrun_log.jsonl` + markdown to `reports/Polymarket/`. **Only futures are orderable** — Gamma-sourced games carry no US `market_slug` and are auto-excluded from execution. Full risk-gate chain applies; batch capped at 2 bets / 10% of bankroll. Halt this venue with `POLYMARKET_DRY_RUN=true` |
-| 22 | `Hourly-Settle` | **Every hour** at :35 | U1: runs `kalshi_settler.py settle` hourly (direct python, same pattern as NightlySettle). Keeps the trade log fresh all day → Gate 1 daily-loss checks see intraday settlements. Safe alongside the execute tasks via the M2 cross-process lock. Subsumes `NightlySettle` (kept during validation week) |
+| 22 | `Hourly-Settle` | **Every hour** at :35 | U1: runs `kalshi_settler.py settle` hourly (direct python, no .bat wrapper). Keeps the trade log fresh all day → Gate 1 daily-loss checks see intraday settlements. Safe alongside the execute tasks via the M2 cross-process lock. Replaced `NightlySettle`, retired 2026-09-23 |
 | 23 | `Email-Polymarket-Execution` | Daily 10:00 AM | Emails the daily Polymarket scan + execution report (20-min buffer after task #21), led by whether any order was placed. On 0-opportunity days (no report written) sends a short no-opportunities proof-of-life after confirming the scan ran in `logs/polymarket_dryrun_scan.log`. Subject `Edge-Radar \| Daily Polymarket Execution Report` |
 | 27 | `CLV-Capture` | **Every 5 min** | S8: samples the market book shortly before each open position's event starts and writes the whole closing book + CLV to the trade row. **Read-only at the venue** — calls `get_market()` only, never places/cancels/modifies an order. A pass with nothing due makes **zero API calls**, which is what makes the 5-minute cadence affordable; cadence buys capture coverage, and coverage is what makes a mean CLV trustworthy. Safe alongside the execute tasks: venue reads happen outside the M2 lock and captures are re-applied by `trade_id` against a fresh read inside it. Runs the gitignored `maintenance/clv_capture.bat`, log `logs/clv_capture.log`. **Added 2026-09-10** — CLV had returned nothing across 426 settlements because the settler derived it from a market that had already settled. |
 | 28 | `Shadow-Book-NCAAF` | Daily 6:00 AM | **S21b: the exit ramp for the S21 NCAAF freeze.** **PLACES NO ORDERS AND RISKS NO MONEY** — `shadow_book.py settle` then `collect --filter ncaafb`. A freeze stops orders, so it also stops the settlements that would ever justify lifting it; NFL escaped that only because 19 positions were already in flight when S1 landed, while NCAAF was frozen holding nothing, pinning it at 11 settled forever against `nfl_week1_review`'s bar of 20. A Brier head-to-head needs only (model probability, market price, outcome) and **never needed a filled order**, so the model keeps scoring the sport and Kalshi settles the markets anyway. Taps **upstream of the risk gates** on purpose — `last_scan.json` is written post-gate and holds nothing at a 1.0 floor, while `scan_all_markets()` applies only the global min-edge. ~96 rows/scan. Read it with `shadow_book.py review --sport ncaaf --save`, which prints the S18 Brier pair plus a **margin-stdev sweep** — the direct read on S21's finding that the whole NCAAF edge was one uncalibrated parameter. Runs the gitignored `maintenance/shadow_book.bat`, log `logs/shadow_book.log`. **Added 2026-09-13.** |
@@ -108,7 +109,6 @@
  6:00 PM  Sun      ─ WeeklyOddsKeyProbe   (live Odds API quota refresh)
  7:00 PM  Sun      ─ Calibration
  7:30 PM  Sun      ─ Backtest
-11:00 PM  Daily    ─ NightlySettle
 11:30 PM  Daily    ─ Reconcile
 11:45 PM  Sun      ─ Weekly-Analysis       (end-of-week 7-day report)
 11:55 PM  Sun      ─ Email-Weekly-Analysis (emails the weekly report)
@@ -120,10 +120,10 @@
 
 | Day | Morning | Midday | Afternoon | Evening | Nightly | Day total |
 |:----|:-------:|:------:|:---------:|:-------:|:-------:|:---------:|
-| Mon-Thu | 4 (same-day + email + Polymarket-DryRun @ 9:40 + email @ 10:00) | 2 (Midday-NoDateFilter + email) | 2 (Late-SameDay + email) | 2 (NextDay + email) | 2 | **12** |
-| Fri | 4 (same-day + email + Polymarket-DryRun + email) | 2 | 2 | 0 | 2 | **10** |
-| Sat | 6 (same-day + email + Futures-Execution + email @ 9:00/9:20 + Polymarket-DryRun @ 9:40 + email @ 10:00) | 2 | 2 | 0 | 2 | **12** |
-| Sun | 4 (same-day + email + Polymarket-DryRun + email) + WeeklyAccountGraph @ 9:00 | 2 | 2 | 4 (NextDay + email + Calibration + Backtest) | 4 (Settle + Reconcile + Weekly-Analysis + Email) | **17** |
+| Mon-Thu | 4 (same-day + email + Polymarket-DryRun @ 9:40 + email @ 10:00) | 2 (Midday-NoDateFilter + email) | 2 (Late-SameDay + email) | 2 (NextDay + email) | 1 | **11** |
+| Fri | 4 (same-day + email + Polymarket-DryRun + email) | 2 | 2 | 0 | 1 | **9** |
+| Sat | 6 (same-day + email + Futures-Execution + email @ 9:00/9:20 + Polymarket-DryRun @ 9:40 + email @ 10:00) | 2 | 2 | 0 | 1 | **11** |
+| Sun | 4 (same-day + email + Polymarket-DryRun + email) + WeeklyAccountGraph @ 9:00 | 2 | 2 | 4 (NextDay + email + Calibration + Backtest) | 3 (Reconcile + Weekly-Analysis + Email) | **16** |
 
 **Monthly add-on:** none. `MonthlyCalibration` was removed 2026-07-31 — the weekly Sunday `Calibration` (#11) covers it.
 
@@ -303,16 +303,16 @@ schtasks /Create /TN "\Edge-Radar\Email-SameDay" `
 Settle can use direct python (no wrapper) if you prefer:
 
 ```powershell
-schtasks /Create /TN "\Edge-Radar\NightlySettle" `
+schtasks /Create /TN "\Edge-Radar\Hourly-Settle" `
   /TR "<REPO_ROOT>\.venv\Scripts\python.exe <REPO_ROOT>\scripts\kalshi\kalshi_settler.py settle" `
-  /SC DAILY /ST 23:00 /F
+  /SC HOURLY /ST 00:35 /F
 ```
 
 > **Running this from Git Bash instead of PowerShell?** Prefix every `schtasks` call with `MSYS_NO_PATHCONV=1` or Git Bash mangles the `/TN` path into a filesystem path. See [Setup Gotchas](#setup-gotchas-for-future-reference).
 
 ### Minimal viable automation
 
-The full pipeline is ~20 tasks; you don't need them all. **Minimal core = `All-Sports-SameDay-Execution` + `NightlySettle`** (execute today's games, settle them at night). Add the weekly `Calibration` for model health, then layer in the emails and the midday/late/next-day runs as you trust the pipeline. Always run the [Dry-Run Testing Workflow](#dry-run-testing-workflow) before any execute task can place real money.
+The full pipeline is ~20 tasks; you don't need them all. **Minimal core = `All-Sports-SameDay-Execution` + `Hourly-Settle`** (execute today's games, settle them as they finish). Add the weekly `Calibration` for model health, then layer in the emails and the midday/late/next-day runs as you trust the pipeline. Always run the [Dry-Run Testing Workflow](#dry-run-testing-workflow) before any execute task can place real money.
 
 ---
 
@@ -329,7 +329,7 @@ The full pipeline is ~20 tasks; you don't need them all. **Minimal core = `All-S
 | **Report output** | `reports\Performance\daily_summary_YYYY-MM-DD.md` |
 | **Empty-day behavior** | Still produces a report — proof-of-life pattern matches the SameDay email policy |
 
-**Why 4:50 AM PST:** After the 11:00 PM PST `NightlySettle` (yesterday's bets are settled in the log) and before the 5:05 AM PST `All-Sports-SameDay-Execution` (so the "Open Exposure" view reflects overnight carry rather than today's new fills mixing in). Sets up the 5:00 AM Email-Daily-Summary 10 minutes later.
+**Why 4:50 AM PST:** After the overnight `Hourly-Settle` passes (yesterday's bets are settled in the log) and before the 5:05 AM PST `All-Sports-SameDay-Execution` (so the "Open Exposure" view reflects overnight carry rather than today's new fills mixing in). Sets up the 5:00 AM Email-Daily-Summary 10 minutes later.
 
 ---
 
@@ -472,22 +472,9 @@ Sun-Thu only — Fri + Sat still skipped so the Sunday-morning 5:05 AM run handl
 
 ---
 
-### 9. `NightlySettle` — Daily 11:00 PM PST (2:00 AM ET next day)
+### ~~9. `NightlySettle`~~ — REMOVED 2026-09-23
 
-| Property | Value |
-|:---------|:------|
-| **Schedule** | Daily |
-| **Executable** | `.venv\Scripts\python.exe` |
-| **Arguments** | `scripts\kalshi\kalshi_settler.py settle` |
-| **Purpose** | Updates trade log with settled game results, calculates P&L |
-| **Dependencies** | Kalshi API reachable; open positions file writable |
-
-**Why 11:00 PM PST (2:00 AM ET):**
-- Catches all late west-coast NBA/NHL games (typically end by 10:00 PM PST)
-- Runs after the day's final East Coast events have settled on Kalshi
-- Earlier settle times would miss late games
-
-**Output:** Updates `data/positions/open_positions.json`, `data/history/YYYY-MM-DD_trades.json`. Closed positions moved to history file.
+Ran `kalshi_settler.py settle` daily at 11:00 PM — the same command as [#22 `Hourly-Settle`](#22-hourly-settle--every-hour-at-35), whose 10:35 and 11:35 PM passes cover the slot. Kept after 2026-07-20 only as a validation-week backstop. Recreate the settle job with `python scripts/schedulers/automation/install_windows_task.py install settle` (which now registers the hourly task).
 
 ---
 
@@ -499,10 +486,10 @@ Sun-Thu only — Fri + Sat still skipped so the Sunday-morning 5:05 AM run handl
 | **Script** | `scripts\schedulers\maintenance\reconcile.bat` |
 | **Runs** | `kalshi_settler.py reconcile` |
 | **Purpose** | Compares local trade log against Kalshi API, flags discrepancies |
-| **Dependencies** | Runs AFTER NightlySettle (30-min buffer) |
+| **Dependencies** | Runs AFTER the 10:35 PM `Hourly-Settle` pass (55-min buffer) |
 
-**Why 30 min after settle:**
-- Lets NightlySettle fully complete (typical 2-5 min runtime)
+**Why after the 10:35 PM settle:**
+- Lets that settle fully complete (typical 2-5 min runtime)
 - Reconcile checks for drift that settle would have fixed — better data if settle ran first
 - Any drift caught here signals either: missed settlement, API lag, or local-log corruption
 
@@ -556,12 +543,12 @@ Sun-Thu only — Fri + Sat still skipped so the Sunday-morning 5:05 AM run handl
 | **Runs** | `betting_analysis.py --days 7 --save` |
 | **Purpose** | End-of-week 7-day performance review driving the `/edge-radar-analysis` skill output |
 | **Output** | `reports\Performance\betting_analysis_YYYY-MM-DD_7d.md` |
-| **Dependencies** | Runs AFTER `NightlySettle` (11:00 PM) + `Reconcile` (11:30 PM) — 15-min buffer |
+| **Dependencies** | Runs AFTER `Reconcile` (11:30 PM) + the 11:35 PM `Hourly-Settle` — 10-min buffer |
 
 **What it reports:** Headline stats, by-sport / by-category / by-side (YES/NO) / edge buckets / confidence / market price breakdowns, calibration, longshots, win-loss streaks, daily P&L, and full trade ledger.
 
 **Why Sun 11:45 PM:**
-- NightlySettle + Reconcile have just completed — trade log is fresh and drift-checked
+- Reconcile + Hourly-Settle have just completed — trade log is fresh and drift-checked
 - Captures the full week including Sunday NFL/NBA/MLB
 - Sets up the `Email-Weekly-Analysis` send 10 minutes later, before end-of-day UTC rollover
 
@@ -618,7 +605,7 @@ schtasks /Create /TN "\Edge-Radar-MikesAILab\MonthlyCalibration" /SC MONTHLY /D 
 | **Output** | `docs/my-documents/account-graph/latest/` (local, gitignored); log at `logs/account_graph_refresh.log` |
 | **Install** | `python scripts/schedulers/automation/install_windows_task.py install account-graph` |
 
-**Why Sunday 9:00 AM PST:** Weekend morning, after Saturday's slate has settled (NightlySettle 11 PM Sat) and well clear of the Sun 5:05 AM SameDay execute. Once-a-week is plenty for a balance chart.
+**Why Sunday 9:00 AM PST:** Weekend morning, after Saturday's slate has settled (overnight `Hourly-Settle` passes) and well clear of the Sun 5:05 AM SameDay execute. Once-a-week is plenty for a balance chart.
 
 **Why a `gh` push instead of a normal commit:** generation must run locally (needs the `.env` Kalshi keys + the gitignored local settlements ledger), but the Pages deploy only watches `master`. Pushing the single file via `gh api PUT .../contents/...` updates `master` directly without touching the `mike_desktop` working branch or requiring a PR. `.claude/html/account-*.html` is gitignored so the file is managed solely by this task and never collides with branch PRs. The push is best-effort — if `gh` is unavailable the local graph still regenerates and the failure is logged.
 
@@ -717,12 +704,12 @@ schtasks /Create /TN "\Edge-Radar-MikesAILab\Daily-Polymarket-Execution" `
 | Property | Value |
 |:---------|:------|
 | **Schedule** | Hourly (`/SC HOURLY /MO 1 /ST 00:35`) |
-| **Executable** | `.venv\Scripts\python.exe` (direct invocation — no .bat wrapper, same pattern as NightlySettle) |
+| **Executable** | `.venv\Scripts\python.exe` (direct invocation — no .bat wrapper) |
 | **Arguments** | `scripts\kalshi\kalshi_settler.py settle` |
 | **Purpose** | U1: settle throughout the day instead of once at 11 PM. Keeps `data/history` fresh so **Gate 1 (daily loss limit)** sees intraday settlements, positions clear as games end, and R4 resting-order cleanup runs timely |
 | **Why now** | Enabled by **M2** (2026-07-20): the cross-process trade-log lock + merge-safe `append_trades` make a settle that overlaps an execute task merge instead of clobber — exactly the race that made hourly settling unsafe before |
 | **Why :35** | The only minute slot clear of every existing task (:00 executes, :05 SameDay, :20/:25 emails, :30 Reconcile/NextDay, :40 Polymarket, :45 Weekly-Analysis, :50 Daily-Summary, :55 email) |
-| **NightlySettle** | Kept as belt-and-suspenders during a ~1-week validation (settle is idempotent — the 11:00 PM run just finds nothing new after the 10:35 PM sweep). Retire it once Hourly-Settle shows a week of `LastTaskResult=0` |
+| **NightlySettle** | Kept as belt-and-suspenders during validation, **retired 2026-09-23** — settle is idempotent, so its 11:00 PM run only ever found nothing new after the 10:35 PM sweep |
 
 **Install (one-time, from PowerShell):**
 ```powershell
@@ -853,7 +840,6 @@ Keep these in place — useful reference for how to structure per-sport scans if
 02:20 PM  Email-SameDay-Late                   → email late same-day report
 08:30 PM  All-Sports-NextDay-Execution         → bets tomorrow's games
 08:50 PM  Email-NextDay                        → email next-day report
-11:00 PM  NightlySettle                        → settle today's completed bets
 11:30 PM  Reconcile                            → verify local vs API
 ```
 
@@ -871,7 +857,6 @@ Keep these in place — useful reference for how to structure per-sport scans if
 07:30 PM  Backtest                      (weekly strategy review)
 08:30 PM  All-Sports-NextDay-Execution  (Monday's games)
 08:50 PM  Email-NextDay
-11:00 PM  NightlySettle
 11:30 PM  Reconcile
 11:45 PM  Weekly-Analysis
 11:55 PM  Email-Weekly-Analysis
@@ -888,7 +873,6 @@ Keep these in place — useful reference for how to structure per-sport scans if
 02:00 PM  All-Sports-SameDay-Late-Execution
 02:20 PM  Email-SameDay-Late
           (All-Sports-NextDay-Execution skipped — Sunday morning run will handle Sunday NFL)
-11:00 PM  NightlySettle
 11:30 PM  Reconcile
 ```
 
@@ -905,7 +889,6 @@ Keep these in place — useful reference for how to structure per-sport scans if
 02:00 PM  All-Sports-SameDay-Late-Execution
 02:20 PM  Email-SameDay-Late
           (All-Sports-NextDay-Execution skipped — Sunday morning run will handle Sunday NFL)
-11:00 PM  NightlySettle
 11:30 PM  Reconcile
 ```
 
@@ -951,7 +934,6 @@ MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Email-Polymarket-Execution"
 
 # Maintenance
 MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Hourly-Settle"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\NightlySettle"
 MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Reconcile"
 MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Calibration"
 MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Backtest"
@@ -1029,7 +1011,7 @@ Created 2026-04-22 for maintenance tasks that need consistent CWD + venv python:
 | `r8_review.bat` | Runs `r8_cross_category_review.py` (one-shot, scheduled 2026-05-29) |
 | `u2_2week_review.bat` | Runs `u2_2week_review.py` (one-shot, scheduled 2026-05-14) |
 
-**Note:** `NightlySettle` is set up with direct python invocation (no .bat wrapper). The wrappers exist for manual invocation convenience and to keep CWD + venv python consistent.
+**Note:** `Hourly-Settle` is set up with direct python invocation (no .bat wrapper). The wrappers exist for manual invocation convenience and to keep CWD + venv python consistent.
 
 ---
 
@@ -1154,7 +1136,7 @@ Before letting scheduled tasks place live bets:
    | 1 | `Reconcile` | Read-only, quickest sanity check |
    | 2 | `Calibration` | Read-only, generates calibration report |
    | 3 | `Backtest` | Read-only, generates backtest report |
-   | 4 | `NightlySettle` | Writes to local files but no external bets |
+   | 4 | `Hourly-Settle` | Writes to local files but no external bets |
    | 5 | `All-Sports-NextDay-Execution` | Would place bets but dry-run blocks |
    | 6 | `All-Sports-NoDateFilter-Execution` | Biggest unknown, the new weekly broad |
    | 7 | `Email-SameDay` | Verify email pickup of existing report |

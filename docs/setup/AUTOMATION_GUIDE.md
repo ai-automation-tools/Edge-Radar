@@ -102,10 +102,10 @@ If you prefer to create tasks manually via `schtasks`:
 schtasks /Create /TN "Edge-Radar\MorningExecute" /TR "<REPO_ROOT>\scripts\schedulers\same_day_executions\same_day_execute.bat" /SC DAILY /ST 08:00
 ```
 
-### Nightly Settlement (11 PM)
+### Hourly Settlement (:35)
 
 ```powershell
-schtasks /Create /TN "Edge-Radar\NightlySettle" /TR "<REPO_ROOT>\.venv\Scripts\python.exe <REPO_ROOT>\scripts\kalshi\kalshi_settler.py settle" /SC DAILY /ST 23:00
+schtasks /Create /TN "Edge-Radar\Hourly-Settle" /TR "<REPO_ROOT>\.venv\Scripts\python.exe <REPO_ROOT>\scripts\kalshi\kalshi_settler.py settle" /SC HOURLY /ST 00:35
 ```
 
 ### Next-Day Execution (9 PM, optional)

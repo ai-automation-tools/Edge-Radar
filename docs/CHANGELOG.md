@@ -2,6 +2,25 @@
 
 ---
 
+## 2026-09-23 -- `NightlySettle` retired; `install settle` now registers `Hourly-Settle`
+
+`NightlySettle` (daily 11 PM) ran the same `kalshi_settler.py settle` as
+`Hourly-Settle` (every hour at :35). It was kept after U1 (2026-07-20) as a
+validation-week backstop and never retired. `Hourly-Settle` shows 30 of 30
+recent runs at `0` and no missed runs, and its 10:35/11:35 PM passes cover the
+11 PM slot ahead of `Reconcile` at 11:30. Settle is idempotent, so the nightly
+run only ever found nothing new. Flagged as #8 in the 2026-09-23 consolidation
+audit.
+
+- Task unregistered from `\AI-Projects\Edge-Radar-MikesAILab\`.
+- `install_windows_task.py`'s `settle` profile now creates `Hourly-Settle`
+  (`/SC HOURLY /ST 00:35`) instead of the nightly task, so a fresh install gets
+  the cadence that keeps Gate 1's daily-loss view current intraday.
+- Task-schedules doc, both skills, the automation guide, the longshot doc and
+  the roadmap updated to match.
+
+---
+
 ## 2026-09-22 -- `reconcile` was blind to every open position since June
 
 `kalshi_settler.py reconcile` only counted local trades with `status == "executed"`.

@@ -85,12 +85,17 @@ TASK_PROFILES = {
         "script": SCHEDULERS / "same_day_executions" / "same_day_execute.bat",
         "description": "Morning scan + live execution at 8 AM",
     },
+    # 2026-09-23: was NightlySettle (daily 23:00). Hourly-Settle (U1, 07-20)
+    # subsumed it -- settle is idempotent and the 22:35/23:35 passes cover
+    # 23:00 -- so the nightly task was retired and the template now teaches
+    # the hourly cadence that keeps Gate 1's daily-loss view fresh intraday.
     "settle": {
-        "leaf": "NightlySettle",
-        "time": "23:00",
+        "leaf": "Hourly-Settle",
+        "time": "00:35",
+        "schedule": "HOURLY",
         "script": PROJECT_ROOT / ".venv" / "Scripts" / "python.exe",
         "args": f'"{PROJECT_ROOT / "scripts" / "kalshi" / "kalshi_settler.py"}" settle',
-        "description": "Nightly settlement + P&L update at 11 PM",
+        "description": "Hourly settlement + P&L update at :35",
     },
     "next-day": {
         "leaf": "NextDayExecute",
@@ -269,7 +274,8 @@ def install(profile_name: str, force: bool = False):
         tr = f'"{script}"'
 
     # Schedule — default is DAILY. MONTHLY supplies /D for the day of month;
-    # WEEKLY supplies /D for the weekday (e.g. SUN).
+    # WEEKLY supplies /D for the weekday (e.g. SUN). HOURLY repeats every hour
+    # from /ST (schtasks' /MO defaults to 1).
     schedule = profile.get("schedule", "DAILY")
     sc_args = ["/SC", schedule]
     if schedule == "MONTHLY":
@@ -299,6 +305,8 @@ def install(profile_name: str, force: bool = False):
             cadence = f"{profile['time']} daily"
         elif schedule == "WEEKLY":
             cadence = f"{profile['time']} weekly ({profile.get('day', 'SUN')})"
+        elif schedule == "HOURLY":
+            cadence = f"hourly from {profile['time']}"
         else:
             cadence = f"{profile['time']} monthly (day {profile.get('day', '1')})"
         print(f"  [OK] {profile_name}: {profile['description']}")

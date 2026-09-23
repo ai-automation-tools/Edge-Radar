@@ -648,7 +648,7 @@ As of 2026-07-23 the live execution cadence is four Kalshi runs a day plus one P
 | 2:00 PM | `All-Sports-SameDay-Late-Execution` | |
 | 8:30 PM | `All-Sports-NextDay-Execution` | `--date tomorrow` |
 | hourly :35 | `Hourly-Settle` | U1 (2026-07-20) |
-| 11:00 PM | `NightlySettle` + `Reconcile` | nightly backstop |
+| 11:30 PM | `Reconcile` | nightly drift check (`NightlySettle` retired 2026-09-23 — `Hourly-Settle` covers it) |
 | weekly/monthly | `Backtest`, `Weekly-Analysis`, `Calibration`, `MonthlyCalibration`, `WeeklyAccountGraph` | |
 
 `Weekly-Futures-Execution` is **Disabled** (the paired `Email-Weekly-Futures` report still runs). `R8-Review` and `U2-Review` are registered with one-shot triggers whose start boundaries have passed — they have **never run and will never fire** until re-registered.
