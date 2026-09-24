@@ -677,7 +677,7 @@ python scripts/schedulers/automation/install_windows_task.py install
 # Makefile: scan-mlb, scan-all, status, settle, report, backtest, test, hooks
 ```
 
-Full CLI reference: `docs/scripts/SCRIPTS_REFERENCE.md`. Scheduled tasks: `docs/task-schedules/README.md` — notably `Daily-Summary` at 4:50 AM PT (yesterday's P&L + open exposure + today's pending + 7d rolling), emailed at 5:00 AM PT.
+Full CLI reference: `docs/scripts/SCRIPTS_REFERENCE.md`. Scheduled tasks: `docs/task-schedules/README.md` — notably `Daily-Summary` at 4:50 AM PT (yesterday's P&L + open exposure + today's pending + 7d rolling), emailed by the same task as soon as it finishes (report emails are `render_report_email.py`, no model — *CHANGELOG 2026-09-23*).
 
 ---
 

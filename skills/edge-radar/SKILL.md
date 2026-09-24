@@ -235,7 +235,7 @@ Morning P&L digest. Joins yesterday's settlements (rolling 24h window) with curr
 
 Sections: **Yesterday** (W-L, P&L, ROI, per-sport table, top-win/top-loss), **Open Exposure** ($ at risk + per-sport split), **Pending Today** (open positions whose game datetime lands today PST), **Context** (live Kalshi balance + 7-day rolling line: WR, P&L, Brier).
 
-**Automated cadence (U2, 2026-04-30):** `\Edge-Radar\Daily-Summary` runs daily at 4:50 AM PT and `\Edge-Radar\Email-Daily-Summary` emails it at 5:00 AM PT. The digest lands before the 5:05 AM same-day execute so "Open Exposure" reflects overnight carry rather than today's new fills.
+**Automated cadence (U2, 2026-04-30):** `\Edge-Radar\Daily-Summary` runs daily at 4:50 AM PT and emails it as the same task's second action (`render_report_email.py daily-summary`; the separate `Email-Daily-Summary` task was merged in 2026-09-23). The digest lands before the 5:05 AM same-day execute so "Open Exposure" reflects overnight carry rather than today's new fills.
 
 ---
 
@@ -651,7 +651,7 @@ As of 2026-07-23 the live execution cadence is four Kalshi runs a day plus one P
 | 11:30 PM | `Reconcile` | nightly drift check (`NightlySettle` retired 2026-09-23 — `Hourly-Settle` covers it) |
 | weekly/monthly | `Backtest`, `Weekly-Analysis`, `Calibration`, `MonthlyCalibration`, `WeeklyAccountGraph` | |
 
-`Weekly-Futures-Execution` is **Disabled** (the paired `Email-Weekly-Futures` report still runs). `R8-Review` and `U2-Review` are registered with one-shot triggers whose start boundaries have passed — they have **never run and will never fire** until re-registered.
+`Weekly-Futures-Execution` has been live again since 2026-08-24 and emails its own report as a second action. `R8-Review` and `U2-Review` are registered with one-shot triggers whose start boundaries have passed — they have **never run and will never fire** until re-registered.
 
 > **The three intraday Kalshi executes each pass `--budget 12%` — this is deliberate** (operator-confirmed 2026-07-23). Stale `.bat` headers had long described a de-escalating 12% → 8% → 5% ladder that was never implemented and is not wanted; the headers were corrected to match the flags. **Don't "fix" these back down to the ladder.** The shared ceiling is ~36% of bankroll per day in theory, but `--budget` is a per-batch cap and Gate 5 (`--exclude-open`) plus series dedup keep real deployment to a few dollars a day.
 

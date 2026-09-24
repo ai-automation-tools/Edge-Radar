@@ -2,6 +2,39 @@
 
 ---
 
+## 2026-09-23 -- Report emails are scripted, and each one rides on its own scan task
+
+Every scheduled report email was a headless `claude --dangerously-skip-permissions -p`
+session that read a file a script had already written, restyled it as HTML and called
+`send_report_email.py`. That was ~42 sessions a week, about half of all scheduled Claude
+sessions on the machine, and the prompts had to ask the model not to drop columns from a
+real-money Orders table. Each email was also its own task, fired 10-20 minutes after its
+scan and trusting the scan had finished. Consolidation audit 2026-09-23, #6 and #7.
+
+- New `scripts/schedulers/automation/render_report_email.py <preset>` renders the report
+  markdown to inline-styled HTML (`markdown-it-py`, now pinned in `requirements.txt`; it
+  was already installed as a `rich` dependency) and sends through the unchanged
+  `send_report_email.py`. Tables come out byte-exact. Subjects, tags and `logs/email_*.log`
+  files are unchanged.
+- It takes the **newest report modified in the last 3h**, not "today's date". Report
+  filenames carry the UTC date, so the 8:30 PM NextDay and 11:45 PM Weekly-Analysis runs
+  write tomorrow's name, and a local-date match misses them.
+- No fresh report means exit 2 and no send. Polymarket is the exception: no report is its
+  normal zero-opportunity case, so it sends proof-of-life, and it always leads with the
+  scan log's last run (gate verdicts, whether an order was placed).
+- The 13 scan->email pairs are now one task each with two actions (9 main, 4 in the
+  Edge-Radar-Agy fork's folder). Task Scheduler runs the second action even when the
+  first exits non-zero (checked with a probe task), so a failed scan still emails. The
+  email can't drift from its scan across DST any more. 13 `Email-*` tasks unregistered;
+  pre-change XML is in `.claude/temp/task-backup-2026-09-23/`.
+- The eight `Run-Reports/*.sh` prompts (gitignored) moved to `_retired-2026-09-23/`.
+  Weekly-Analysis loses its model-written summary bullets. Everything else is the same
+  report, rendered deterministically.
+- Checked: all 8 presets render; a live `same-day` send and a Task Scheduler run of
+  `Daily-Summary` (`LastTaskResult=0`) both delivered.
+
+---
+
 ## 2026-09-23 -- `NightlySettle` retired; `install settle` now registers `Hourly-Settle`
 
 `NightlySettle` (daily 11 PM) ran the same `kalshi_settler.py settle` as

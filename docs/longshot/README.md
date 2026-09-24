@@ -10,7 +10,7 @@ Full reasoning for the merge: **[CHANGELOG 2026-09-10 (P1)](../CHANGELOG.md)**.
 | | |
 |:--|:--|
 | Overlay template | [`.env.longshot.example`](../../.env.longshot.example) |
-| Scheduled tasks | `Longshot-Scan` 08:00, `Email-Longshot-Scan` 08:20 (see [task-schedules](../task-schedules/README.md)) |
+| Scheduled tasks | `Longshot` 08:00 — scan, then email as its second action (see [task-schedules](../task-schedules/README.md)) |
 | Trade rows | tagged `"profile": "longshot"` in the shared `data/history/kalshi_trades.json` |
 
 ---
