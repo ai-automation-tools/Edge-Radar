@@ -20,10 +20,18 @@ from ticker_display import _detect_sport, _SPORT_PREFIXES
 
 def _opp(ticker: str, price: float = 0.16, edge: float = 0.30) -> Opportunity:
     return Opportunity(
-        ticker=ticker, title="", category="spread", side="yes",
-        market_price=price, fair_value=price + edge, edge=edge,
-        edge_source="test", confidence="high", liquidity_score=9.0,
-        composite_score=9.9, details={"bid_ask_spread": 0.01},
+        ticker=ticker,
+        title="",
+        category="spread",
+        side="yes",
+        market_price=price,
+        fair_value=price + edge,
+        edge=edge,
+        edge_source="test",
+        confidence="high",
+        liquidity_score=9.0,
+        composite_score=9.9,
+        details={"bid_ask_spread": 0.01},
     )
 
 
@@ -52,15 +60,19 @@ class TestUnreachableFloorDisablesTheSport:
     @pytest.fixture
     def wc_off(self, monkeypatch):
         import kalshi_executor as ke
+
         patched = dict(ke._PER_SPORT_MIN_EDGE)
         patched["worldcup"] = 1.0
         monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", patched)
 
-    @pytest.mark.parametrize("ticker", [
-        "KXWCSPREAD-26JUN10ARGBRA-ARG2",
-        "KXWCGAME-26JUN10ARGBRA-ARG",
-        "KXWCTOTAL-26JUN10ARGBRA-3",
-    ])
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXWCSPREAD-26JUN10ARGBRA-ARG2",
+            "KXWCGAME-26JUN10ARGBRA-ARG",
+            "KXWCTOTAL-26JUN10ARGBRA-3",
+        ],
+    )
     def test_every_wc_market_type_is_rejected(self, ticker, wc_off):
         result = size_order(_opp(ticker), bankroll=92.0, open_positions=0, daily_pnl=0.0)
         assert result.risk_approval.startswith("REJECTED")
@@ -68,8 +80,9 @@ class TestUnreachableFloorDisablesTheSport:
         assert result.contracts == 0
 
     def test_rejection_names_the_sport_not_a_bogus_edge_comparison(self, wc_off):
-        r = size_order(_opp("KXWCSPREAD-26JUN10ARGBRA-ARG2"),
-                       bankroll=92.0, open_positions=0, daily_pnl=0.0)
+        r = size_order(
+            _opp("KXWCSPREAD-26JUN10ARGBRA-ARG2"), bankroll=92.0, open_positions=0, daily_pnl=0.0
+        )
         assert "worldcup" in r.risk_approval
         assert "edge_below_threshold" not in r.risk_approval
 
@@ -81,16 +94,60 @@ class TestUnreachableFloorDisablesTheSport:
         assert preflight_gate_status(_opp("KXWCSPREAD-26JUN10ARGBRA-ARG2")) == "off"
 
     def test_even_an_enormous_edge_cannot_clear_it(self, wc_off):
-        r = size_order(_opp("KXWCGAME-26JUN10ARGBRA-ARG", price=0.05, edge=0.94),
-                       bankroll=92.0, open_positions=0, daily_pnl=0.0)
+        r = size_order(
+            _opp("KXWCGAME-26JUN10ARGBRA-ARG", price=0.05, edge=0.94),
+            bankroll=92.0,
+            open_positions=0,
+            daily_pnl=0.0,
+        )
         assert "sport_disabled" in r.risk_approval
 
-    @pytest.mark.parametrize("ticker", [
-        "KXMLSSPREAD-26AUG19TORCLT-CLT2",
-        "KXNFLSPREAD-26SEP13BALIND-IND5",
-        "KXMLBGAME-99APR171900NYYKAC-NYY",
-    ])
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXMLSSPREAD-26AUG19TORCLT-CLT2",
+            "KXNFLSPREAD-26SEP13BALIND-IND5",
+            "KXMLBGAME-99APR171900NYYKAC-NYY",
+        ],
+    )
     def test_other_sports_are_untouched(self, ticker, wc_off):
         r = size_order(_opp(ticker), bankroll=92.0, open_positions=0, daily_pnl=0.0)
         assert r.risk_approval.startswith("APPROVED"), r.risk_approval
         assert min_edge_for(_opp(ticker)) < 1.0
+
+
+class TestCategoryScopedFloor:
+    """2026-09-27: `MIN_EDGE_THRESHOLD_<SPORT>_<CATEGORY>` narrows a floor to one
+    market type. MLB spreads went 0-9 while MLB totals went 11-2 over 30 days,
+    and a sport-wide floor could not tighten one without the other.
+    """
+
+    @pytest.fixture
+    def mlb_spread_tight(self, monkeypatch):
+        import kalshi_executor as ke
+
+        patched = dict(ke._PER_SPORT_MIN_EDGE)
+        patched["mlb"] = 0.03
+        patched["mlb_spread"] = 0.08
+        monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", patched)
+
+    def test_env_key_is_read(self, monkeypatch):
+        monkeypatch.setenv("MIN_EDGE_THRESHOLD_MLB_SPREAD", "0.08")
+        assert PerSportOverrides.from_env().min_edge.get("mlb_spread") == 0.08
+
+    def test_category_floor_beats_sport_floor(self, mlb_spread_tight, no_fees):
+        opp = _opp("KXMLBSPREAD-26SEP251840TBPHI-TB3", price=0.17, edge=0.06)
+        assert min_edge_for(opp) == pytest.approx(0.08)
+        r = size_order(opp, bankroll=92.0, open_positions=0, daily_pnl=0.0)
+        assert r.risk_approval.startswith("REJECTED"), r.risk_approval
+
+    def test_other_categories_keep_the_sport_floor(self, mlb_spread_tight, no_fees):
+        opp = _opp("KXMLBTOTAL-26SEP222040AZCOL-15", price=0.40, edge=0.06)
+        opp.category = "total"
+        assert min_edge_for(opp) == pytest.approx(0.03)
+
+    def test_category_floor_can_switch_one_market_type_off(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", {"mlb_spread": 1.0})
+        assert min_edge_for(_opp("KXMLBSPREAD-26SEP251840TBPHI-TB3")) == 1.0

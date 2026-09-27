@@ -523,7 +523,7 @@ Standing rules — do not reverse them without new settled evidence.
 
 ## Risk Limits
 
-Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.06` (S1b pilot since 2026-09-13 at 0.08, lowered to 0.06 on 2026-09-19) and `MIN_EDGE_THRESHOLD_NCAAF=0.06` (S21c pilot since 2026-09-16 at 0.08, lowered to 0.06 on 2026-09-19; was the 1.0 S21 freeze) — none of these are in the code defaults**.
+Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_EDGE_THRESHOLD_MLB_SPREAD=0.08` (category-scoped floor, 2026-09-27: MLB spreads 0-9 while totals ran 11-2 — *CHANGELOG 2026-09-27*), `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.06` (S1b pilot since 2026-09-13 at 0.08, lowered to 0.06 on 2026-09-19) and `MIN_EDGE_THRESHOLD_NCAAF=0.06` (S21c pilot since 2026-09-16 at 0.08, lowered to 0.06 on 2026-09-19; was the 1.0 S21 freeze) — none of these are in the code defaults**.
 
 ```env
 UNIT_SIZE=1.00                  # Kelly floor per bet — the longshot knob (binds below ~30c)
@@ -552,6 +552,9 @@ KALSHI_FEE_RATE=0.07            # F1: exchange taker fee, folded into the Gate 3
 MIN_EDGE_THRESHOLD_NBA=0.04     # Per-sport overrides. NBA/NCAAB/MLB lowered 0.06->0.04 on
 MIN_EDGE_THRESHOLD_NCAAB=0.04   #   2026-06-14, once the edge-matching fixes removed the
 MIN_EDGE_THRESHOLD_MLB=0.04     #   model over-claim the higher floor was double-correcting.
+                                # `MIN_EDGE_THRESHOLD_<SPORT>_<CATEGORY>` (game|spread|total)
+                                #   narrows a floor to one market type and beats the sport-wide
+                                #   one, e.g. MIN_EDGE_THRESHOLD_MLB_SPREAD (2026-09-27).
 MIN_EDGE_THRESHOLD_WORLDCUP=1.0 # F3: World Cup OFF. A floor >= 1.0 can never be cleared, so
                                 #   it is the idiom for switching a sport off — the executor
                                 #   reports `sport_disabled`, the scan preview shows `off`.
