@@ -4,9 +4,17 @@ Path setup is handled by [tool.pytest.ini_options] pythonpath in
 pyproject.toml.  This file only provides shared fixtures.
 """
 
-import pytest
-import trade_log
-from opportunity import Opportunity
+import os
+import tempfile
+
+# Must run before any script module is imported: `setup_logging()` attaches
+# its FileHandler at import time, so a fixture is too late. Without this,
+# mocked failures from the test suite were written into the live logs/.
+os.environ["EDGE_RADAR_LOG_DIR"] = tempfile.mkdtemp(prefix="edge_radar_test_logs_")
+
+import pytest  # noqa: E402
+import trade_log  # noqa: E402
+from opportunity import Opportunity  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -20,10 +28,8 @@ def _isolate_data_logs(tmp_path, monkeypatch):
     Redirecting the module-level path constants to a per-test tmp dir makes
     every test hermetic regardless of how it exercises the I/O helpers.
     """
-    monkeypatch.setattr(trade_log, "TRADE_LOG_PATH",
-                        tmp_path / "kalshi_trades.json")
-    monkeypatch.setattr(trade_log, "SETTLEMENT_LOG_PATH",
-                        tmp_path / "kalshi_settlements.json")
+    monkeypatch.setattr(trade_log, "TRADE_LOG_PATH", tmp_path / "kalshi_trades.json")
+    monkeypatch.setattr(trade_log, "SETTLEMENT_LOG_PATH", tmp_path / "kalshi_settlements.json")
 
 
 @pytest.fixture(autouse=True)
@@ -39,8 +45,8 @@ def _isolate_venue_eligibility(tmp_path, monkeypatch):
     every test, not only the ones that think about it.
     """
     import venue_eligibility as vel
-    monkeypatch.setattr(vel, "ELIGIBILITY_PATH",
-                        tmp_path / "venue_eligibility.json")
+
+    monkeypatch.setattr(vel, "ELIGIBILITY_PATH", tmp_path / "venue_eligibility.json")
 
 
 @pytest.fixture(autouse=True)
@@ -59,6 +65,7 @@ def _ignore_operator_time_to_event_cap(monkeypatch):
     `tests/test_time_to_event_gate.py`, which sets its own cap).
     """
     import kalshi_executor as ke
+
     monkeypatch.setattr(ke, "MAX_DAYS_TO_EVENT", 0)
 
 
@@ -77,6 +84,7 @@ def _ignore_operator_exposure_caps(monkeypatch):
     `tests/test_exposure_gate.py`, which sets its own caps.
     """
     import kalshi_executor as ke
+
     monkeypatch.setattr(ke, "MAX_OPEN_EXPOSURE_PCT", 0.0)
     monkeypatch.setattr(ke, "MAX_SEGMENT_EXPOSURE_PCT", 0.0)
 
@@ -99,6 +107,7 @@ def _ignore_operator_sport_freezes(monkeypatch):
     (see `wc_off` in test_sport_disable.py).
     """
     import kalshi_executor as ke
+
     live = {k: v for k, v in ke._PER_SPORT_MIN_EDGE.items() if v < 1.0}
     monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", live)
 
@@ -115,6 +124,7 @@ def _ignore_operator_max_market_price(monkeypatch):
     `TestMaxMarketPriceGate` in test_risk_gates.py, which sets its own ceiling).
     """
     import kalshi_executor as ke
+
     monkeypatch.setattr(ke, "MAX_MARKET_PRICE", 1.0)
 
 
@@ -129,6 +139,7 @@ def no_fees(monkeypatch):
     itself do not use this fixture.
     """
     from app.config import reset_config
+
     monkeypatch.setenv("KALSHI_FEE_RATE", "0")
     reset_config()
     yield

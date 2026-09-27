@@ -2,6 +2,38 @@
 
 ---
 
+## 2026-09-27 -- MLB spreads get their own floor (0.08), and a shadow book
+
+MLB spreads went **0-9**, every one YES on "team wins by over 2.5/3.5 runs" at
+15-40c with claimed edges of 4.6-7.5%. The model expected 2.5 wins, the market
+2.1; P(0 wins | market prices) = 0.091. MLB totals ran 11-2 over the same 30 days
+on the same 0.03 sport floor, so a sport-wide change could not separate them.
+
+- **The formula was checked and is not the cause.** The run-line -> strike
+  conversion (normal margin, stdev 4.025) was replayed against 4,862 2024-25
+  regular-season finals, bucketed by team strength (season run differential) and
+  home/away, through both the favourite (-1.5) and underdog (+1.5) inference
+  paths. P(win by 3+) and P(win by 4+) land within ~1-2pts of reality in every
+  bucket. Unlike S21's NCAAF 15.0, this stdev fits.
+- **The likely cause is selection.** With a ~1-2pt error from the transform alone
+  and an effective floor of ~4.3% (0.03 + fee), the gate harvests positive noise.
+  It is YES-only by construction, not model lean: a NO on "wins by over 2.5" costs
+  75-85c, which Gate 3.55 (`MAX_MARKET_PRICE=0.75`) and R28's 8% NO floor block.
+- New `MIN_EDGE_THRESHOLD_<SPORT>_<CATEGORY>` (categories `game`/`spread`/`total`),
+  stored as `"<sport>_<category>"` in `_PER_SPORT_MIN_EDGE` and preferred by
+  `min_edge_for()` over the sport-wide floor. The 1.0 "off" idiom works per
+  category too. Live `.env`: `MIN_EDGE_THRESHOLD_MLB_SPREAD=0.08`.
+- `shadow_book.bat` also collects `KXMLBSPREAD` pre-gate, so the floor can be
+  judged on every scored strike rather than on the bets the gate chose. Read with
+  `shadow_book.py review --sport mlb`. Regular season ended 2026-09-27, so the
+  sample is postseason-only until spring.
+- Also: `logging_setup.LOG_DIR` honours `EDGE_RADAR_LOG_DIR`, which
+  `tests/conftest.py` points at a temp dir. Mocked failures (fake Nevada venue
+  rejections, "API 500: API down") were being written into the live
+  `logs/kalshi_executor_*.log`.
+
+---
+
 ## 2026-09-23 -- Report emails are scripted, and each one rides on its own scan task
 
 Every scheduled report email was a headless `claude --dangerously-skip-permissions -p`

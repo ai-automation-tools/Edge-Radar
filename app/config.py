@@ -37,10 +37,29 @@ _LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 # `_detect_sport("KXWCSPREAD-...")` returns "worldcup", which was not here, so
 # `MIN_EDGE_THRESHOLD_WORLDCUP` was ignored.
 _SUPPORTED_SPORTS: tuple[str, ...] = (
-    "mlb", "nba", "nhl", "nfl", "ncaab", "ncaaf", "mls", "soccer",
+    "mlb",
+    "nba",
+    "nhl",
+    "nfl",
+    "ncaab",
+    "ncaaf",
+    "mls",
+    "soccer",
     # ── previously orphaned ──
-    "worldcup", "ufc", "boxing", "golf", "nascar", "ipl", "esports", "tennis",
+    "worldcup",
+    "ufc",
+    "boxing",
+    "golf",
+    "nascar",
+    "ipl",
+    "esports",
+    "tennis",
 )
+# Market categories that can narrow a per-sport edge floor, read as
+# `MIN_EDGE_THRESHOLD_<SPORT>_<CATEGORY>` and stored under "<sport>_<category>".
+# Added 2026-09-27: MLB spreads went 0-9 (all YES "wins by over 2.5/3.5") while
+# MLB totals went 11-2 over 30 days, and a sport-wide floor cannot separate them.
+_FLOOR_CATEGORIES: tuple[str, ...] = ("game", "spread", "total")
 
 
 def _bool(name: str, default: bool) -> bool:
@@ -87,6 +106,7 @@ def _list(name: str, default: list[str] | None = None) -> list[str]:
 
 # ── Credential groups ───────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True)
 class KalshiCredentials:
     api_key: str = ""
@@ -112,7 +132,9 @@ class KalshiCredentials:
             api_key=_str("KALSHI_API_KEY", ""),
             private_key_path=_str("KALSHI_PRIVATE_KEY_PATH", ""),
             private_key_inline=_str("KALSHI_PRIVATE_KEY", ""),
-            base_url=_str("KALSHI_BASE_URL", "https://api.elections.kalshi.com/trade-api/v2").rstrip("/"),
+            base_url=_str(
+                "KALSHI_BASE_URL", "https://api.elections.kalshi.com/trade-api/v2"
+            ).rstrip("/"),
             subaccount=_int("KALSHI_SUBACCOUNT", 0),
         )
 
@@ -120,6 +142,7 @@ class KalshiCredentials:
 @dataclass(frozen=True)
 class KalshiProdCredentials:
     """Distinct prod-pointing credentials used by `make_prod_client()`."""
+
     api_key: str = ""
     private_key_path: str = ""
     base_url: str = "https://api.elections.kalshi.com/trade-api/v2"
@@ -129,7 +152,9 @@ class KalshiProdCredentials:
         return cls(
             api_key=_str("KALSHI_PROD_API_KEY", ""),
             private_key_path=_str("KALSHI_PROD_PRIVATE_KEY_PATH", ""),
-            base_url=_str("KALSHI_PROD_BASE_URL", "https://api.elections.kalshi.com/trade-api/v2").rstrip("/"),
+            base_url=_str(
+                "KALSHI_PROD_BASE_URL", "https://api.elections.kalshi.com/trade-api/v2"
+            ).rstrip("/"),
         )
 
 
@@ -153,6 +178,7 @@ class PolymarketCredentials:
     execution pipeline would have gone live instantly — the phased plan
     requires the dry-run edge window to prove out first (ROADMAP Priority 0).
     """
+
     key_id: str = ""
     secret_key: str = ""
     host: str = "https://api.polymarket.us"
@@ -210,6 +236,7 @@ class TelegramCredentials:
 
 
 # ── Operational groups ──────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class RiskLimits:
@@ -358,7 +385,9 @@ class PerSportOverrides:
     should fall back to the corresponding global value in `GateThresholds`
     for any sport not in the dict — preserving the existing fallback idiom.
 
-    - `min_edge`              : `MIN_EDGE_THRESHOLD_<SPORT>` (per-sport edge floor)
+    - `min_edge`              : `MIN_EDGE_THRESHOLD_<SPORT>` (per-sport edge floor),
+      plus `MIN_EDGE_THRESHOLD_<SPORT>_<CATEGORY>` stored as "<sport>_<category>"
+      (e.g. "mlb_spread"), which wins over the sport-wide floor for that category
     - `series_dedup_hours`    : `SERIES_DEDUP_HOURS_<SPORT>` (R9: MLB/NHL series
       cycles on consecutive days exceed the 48h global default — F12 observed
       a NYM/LAD pair bet at 49h apart that slipped through; both lost)
@@ -367,6 +396,7 @@ class PerSportOverrides:
       sports not present in the dict fall back to the global
       `CROSS_CATEGORY_DEDUP` value)
     """
+
     min_edge: dict[str, float] = field(default_factory=dict)
     series_dedup_hours: dict[str, int] = field(default_factory=dict)
     cross_category_dedup: dict[str, bool] = field(default_factory=dict)
@@ -384,6 +414,13 @@ class PerSportOverrides:
                 except ValueError:
                     # Match current kalshi_executor behavior: skip bad values.
                     pass
+            for category in _FLOOR_CATEGORIES:
+                raw_cat = os.getenv(f"MIN_EDGE_THRESHOLD_{sport.upper()}_{category.upper()}")
+                if raw_cat is not None and raw_cat != "":
+                    try:
+                        min_edge[f"{sport}_{category}"] = float(raw_cat)
+                    except ValueError:
+                        pass
 
             raw_dedup = os.getenv(f"SERIES_DEDUP_HOURS_{sport.upper()}")
             if raw_dedup is not None and raw_dedup != "":
@@ -458,6 +495,7 @@ class OddsCacheConfig:
     *current* book odds, not a frozen pre-game snapshot (the F44 phantom-edge
     bug). Pre-game responses keep the longer `ttl_seconds` (quota-friendly).
     """
+
     ttl_seconds: int = 300
     live_ttl_seconds: int = 45
     enabled: bool = True
@@ -483,6 +521,7 @@ class ScanCacheConfig:
     (long enough to read the table and pick rows, short enough that a
     user returning hours later gets a fresh scan). 0 disables.
     """
+
     ttl_seconds: int = 600
     enabled: bool = True
 
@@ -495,6 +534,7 @@ class ScanCacheConfig:
 
 
 # ── Aggregate ───────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class Config:
@@ -540,9 +580,7 @@ class Config:
         MIN_EDGE_THRESHOLD=0.30 is surprising but legal.
         """
         if not 0 <= self.kalshi.subaccount <= 63:
-            raise ValueError(
-                f"KALSHI_SUBACCOUNT must be 0-63, got {self.kalshi.subaccount}"
-            )
+            raise ValueError(f"KALSHI_SUBACCOUNT must be 0-63, got {self.kalshi.subaccount}")
         if self.risk.max_bet_size < self.risk.unit_size:
             raise ValueError(
                 f"MAX_BET_SIZE ({self.risk.max_bet_size}) must be >= "
@@ -551,21 +589,14 @@ class Config:
         if self.risk.unit_size <= 0:
             raise ValueError(f"UNIT_SIZE must be > 0, got {self.risk.unit_size}")
         if self.risk.max_daily_loss < 0:
-            raise ValueError(
-                f"MAX_DAILY_LOSS must be >= 0, got {self.risk.max_daily_loss}"
-            )
+            raise ValueError(f"MAX_DAILY_LOSS must be >= 0, got {self.risk.max_daily_loss}")
         if self.risk.max_open_positions < 0:
-            raise ValueError(
-                f"MAX_OPEN_POSITIONS must be >= 0, got {self.risk.max_open_positions}"
-            )
+            raise ValueError(f"MAX_OPEN_POSITIONS must be >= 0, got {self.risk.max_open_positions}")
         if self.risk.max_per_event < 0:
-            raise ValueError(
-                f"MAX_PER_EVENT must be >= 0, got {self.risk.max_per_event}"
-            )
+            raise ValueError(f"MAX_PER_EVENT must be >= 0, got {self.risk.max_per_event}")
         if self.risk.max_per_event_futures < 0:
             raise ValueError(
-                "MAX_PER_EVENT_FUTURES must be >= 0, got "
-                f"{self.risk.max_per_event_futures}"
+                "MAX_PER_EVENT_FUTURES must be >= 0, got " f"{self.risk.max_per_event_futures}"
             )
         if not 0.0 <= self.risk.max_open_exposure_pct <= 1.0:
             raise ValueError(
@@ -583,16 +614,15 @@ class Config:
                 f"got {self.gates.min_confidence!r}"
             )
         if not 0.0 <= self.kelly.kelly_fraction <= 1.0:
-            raise ValueError(
-                f"KELLY_FRACTION must be in [0, 1], got {self.kelly.kelly_fraction}"
-            )
+            raise ValueError(f"KELLY_FRACTION must be in [0, 1], got {self.kelly.kelly_fraction}")
         if self.gates.no_side_min_edge_global < 0:
             raise ValueError(
                 f"NO_SIDE_MIN_EDGE_GLOBAL must be >= 0, got {self.gates.no_side_min_edge_global}"
             )
         if not 0.0 <= self.kelly.no_side_kelly_multiplier_global <= 1.0:
             raise ValueError(
-                f"NO_SIDE_KELLY_MULTIPLIER_GLOBAL must be in [0, 1], got {self.kelly.no_side_kelly_multiplier_global}"
+                "NO_SIDE_KELLY_MULTIPLIER_GLOBAL must be in [0, 1], "
+                f"got {self.kelly.no_side_kelly_multiplier_global}"
             )
         if self.gates.min_consensus_books_nba < 0:
             raise ValueError(
@@ -600,11 +630,13 @@ class Config:
             )
         if self.gates.calibration_stdevs_ttl_days <= 0:
             raise ValueError(
-                f"CALIBRATION_STDEVS_TTL_DAYS must be > 0, got {self.gates.calibration_stdevs_ttl_days}"
+                "CALIBRATION_STDEVS_TTL_DAYS must be > 0, "
+                f"got {self.gates.calibration_stdevs_ttl_days}"
             )
         if self.gates.max_live_book_age_seconds < 0:
             raise ValueError(
-                f"MAX_LIVE_BOOK_AGE_SECONDS must be >= 0, got {self.gates.max_live_book_age_seconds}"
+                "MAX_LIVE_BOOK_AGE_SECONDS must be >= 0, "
+                f"got {self.gates.max_live_book_age_seconds}"
             )
         if self.gates.min_live_consensus_books < 0:
             raise ValueError(
@@ -652,8 +684,7 @@ class Config:
             )
         if self.system.log_level not in _LOG_LEVELS:
             raise ValueError(
-                f"LOG_LEVEL must be one of {sorted(_LOG_LEVELS)}, "
-                f"got {self.system.log_level!r}"
+                f"LOG_LEVEL must be one of {sorted(_LOG_LEVELS)}, " f"got {self.system.log_level!r}"
             )
         if self.odds_cache.ttl_seconds < 0:
             raise ValueError(
@@ -676,9 +707,7 @@ class Config:
         """
         if not sport:
             return self.gates.min_edge_threshold
-        return self.per_sport.min_edge.get(
-            sport.strip().lower(), self.gates.min_edge_threshold
-        )
+        return self.per_sport.min_edge.get(sport.strip().lower(), self.gates.min_edge_threshold)
 
     def cross_category_dedup_for(self, sport: str | None) -> bool:
         """Resolve per-sport cross-category dedup flag with fallback to global (R8).

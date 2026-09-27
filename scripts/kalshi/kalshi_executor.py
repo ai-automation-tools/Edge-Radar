@@ -618,7 +618,13 @@ def min_edge_for(opp: "Opportunity") -> float:
     `preflight_gate_status` scan preview -- so both see the same net floor.
     """
     sport = _detect_sport(opp.ticker)
-    if sport and sport in _PER_SPORT_MIN_EDGE:
+    # A `<sport>_<category>` floor (e.g. MIN_EDGE_THRESHOLD_MLB_SPREAD) beats the
+    # sport-wide one, so one market type can be tightened or switched off
+    # without touching the others in that sport.
+    sport_category = f"{sport}_{opp.category}" if sport and opp.category else None
+    if sport_category and sport_category in _PER_SPORT_MIN_EDGE:
+        base_floor = _PER_SPORT_MIN_EDGE[sport_category]
+    elif sport and sport in _PER_SPORT_MIN_EDGE:
         base_floor = _PER_SPORT_MIN_EDGE[sport]
     else:
         base_floor = MIN_EDGE_THRESHOLD
