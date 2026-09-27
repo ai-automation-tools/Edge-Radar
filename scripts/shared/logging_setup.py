@@ -8,6 +8,7 @@ Usage:
 """
 
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,9 +19,16 @@ load_dotenv()
 # Imported after load_dotenv so the config picks up `.env` values on first
 # call. Safe even if get_config() was already cached by an earlier import —
 # load_dotenv is idempotent (default `override=False`).
-from app.config import get_config
+from app.config import get_config  # noqa: E402
 
-LOG_DIR = Path(__file__).resolve().parent.parent.parent / "logs"
+# EDGE_RADAR_LOG_DIR redirects file logs. tests/conftest.py sets it to a temp
+# dir, because loggers attach their FileHandler at IMPORT time -- before any
+# fixture can monkeypatch a path -- and mocked tests ("API 500: API down",
+# fake venue rejections) were landing in the live logs/ beside real runs.
+LOG_DIR = Path(
+    os.environ.get("EDGE_RADAR_LOG_DIR")  # config-bootstrap
+    or Path(__file__).resolve().parent.parent.parent / "logs"
+)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_LEVEL = get_config().system.log_level
 
