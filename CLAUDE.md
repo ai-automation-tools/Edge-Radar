@@ -43,7 +43,9 @@ Detail: **[docs/polymarket/README.md](docs/polymarket/README.md)** · **[docs/se
 ## Strategy Profiles (P1)
 
 Two strategies, **one codebase**, two Kalshi wallets. A profile is a named
-overlay file, `.env.<name>`, applied on top of the base `.env`:
+overlay file, `.env.<name>`, applied on top of the base `.env`.
+**The `longshot` profile was retired 2026-09-27** (its scheduled task is gone);
+the mechanism stays, and the examples below show its syntax:
 
 ```bash
 python scripts/scan.py sports  --profile longshot --filter mlb --date today
@@ -54,7 +56,7 @@ EDGE_RADAR_PROFILE=longshot python scripts/doctor.py    # non-scan entry points
 | Profile | Wallet | `DRY_RUN` | Overrides |
 |:--|:--|:--|:--|
 | `main` (default) | subaccount 0 | `false` — **live** | none; the base `.env` |
-| `longshot` | subaccount 1 (~$40) | `true` | `MIN_MARKET_PRICE=0.08`, `MAX_PER_EVENT_FUTURES=3` |
+| ~~`longshot`~~ | subaccount 1 (~$40) | `true` | **Retired 2026-09-27** — strategy abandoned, `Longshot` task deleted. Was `MIN_MARKET_PRICE=0.08`, `MAX_PER_EVENT_FUTURES=3` |
 
 - **`KALSHI_SUBACCOUNT` is the only thing that isolates money.** Not a second
   API key, and not a second checkout of this repo — both still draw on one

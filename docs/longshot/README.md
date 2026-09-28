@@ -1,5 +1,11 @@
 # Longshot profile
 
+> [!WARNING]
+> **Retired 2026-09-27.** The longshot strategy was abandoned. The `Longshot`
+> scheduled task and its `.bat` wrappers were deleted; nothing runs this profile
+> any more. The P1 profile mechanism described below stays in the code for any
+> future strategy. Existing `"profile": "longshot"` rows remain in the trade log.
+
 The longshot/futures strategy, run as a **profile** of this repo since
 2026-09-10 (P1): `--profile longshot` overlays `.env.longshot` on the base
 `.env` and routes every Kalshi call to **subaccount 1** (~$40, `DRY_RUN=true`).
@@ -10,7 +16,7 @@ Full reasoning for the merge: **[CHANGELOG 2026-09-10 (P1)](../CHANGELOG.md)**.
 | | |
 |:--|:--|
 | Overlay template | [`.env.longshot.example`](../../.env.longshot.example) |
-| Scheduled tasks | `Longshot` 08:00 — scan, then email as its second action (see [task-schedules](../task-schedules/README.md)) |
+| Scheduled tasks | none — `Longshot` (08:00) deleted 2026-09-27 (see [task-schedules](../task-schedules/README.md)) |
 | Trade rows | tagged `"profile": "longshot"` in the shared `data/history/kalshi_trades.json` |
 
 ---
