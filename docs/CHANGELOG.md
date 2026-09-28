@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-09-27 -- Longshot strategy retired
+
+- The longshot strategy (P1 `longshot` profile, Kalshi subaccount 1, `DRY_RUN=true`)
+  was abandoned. The `Longshot` scheduled task was unregistered and its gitignored
+  `maintenance/longshot_scan.bat` / `email_longshot_scan.bat` deleted; pre-delete
+  XML in `.claude/temp/task-backup-2026-09-27/`.
+- It never placed a real order, so no live money was affected. The P1 profile
+  mechanism (`--profile`, `EDGE_RADAR_PROFILE`, `"profile"` on trade rows) stays.
+- `\AI-Projects\Edge-Radar-MikesAILab\` now holds 16 tasks.
+
 ## 2026-09-27 -- MLB spreads get their own floor (0.08), and a shadow book
 
 MLB spreads went **0-9**, every one YES on "team wins by over 2.5/3.5 runs" at
