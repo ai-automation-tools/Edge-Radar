@@ -46,4 +46,47 @@ class TestRenderLongshotNoneGuard:
         ]
         out = "\n".join(betting_analysis._render_longshot(rows))
         assert "+5.0%" in out  # the good row survived
-        assert "—" in out      # the bad row rendered a placeholder
+        assert "—" in out  # the bad row rendered a placeholder
+
+
+def _clv_row(clv, contracts=2, reason="t_minus_5", ticker="KXMLBTOTAL-26SEP111905NYMNYY-11"):
+    return {
+        "ticker": ticker,
+        "side": "no",
+        "market_price_at_entry": 0.70,
+        "contracts": contracts,
+        "clv": clv,
+        "close_capture_reason": reason if clv is not None else None,
+    }
+
+
+_SIDE_ONLY = [("Side", lambda r: (r.get("side") or "?").upper(), None)]
+
+
+class TestClvSection:
+    """S9: mean CLV in points with a bootstrap CI, coverage beside every figure."""
+
+    def test_coverage_counts_filled_rows_only(self):
+        # A zero-fill resting order settles into the log but has no entry
+        # price, so it must not count as a capture miss.
+        rows = [_clv_row(0.02), _clv_row(None, reason=None), _clv_row(None, contracts=0)]
+        out = "\n".join(betting_analysis._render_clv(rows, _SIDE_ONLY))
+        assert "captured 1/2 (50%)" in out
+        assert "+2.00 pts" in out
+
+    def test_low_coverage_warns(self):
+        rows = [_clv_row(0.01)] + [_clv_row(None, reason=None)] * 3
+        out = "\n".join(betting_analysis._render_clv(rows, _SIDE_ONLY))
+        assert "Coverage is below 60%" in out
+
+    def test_no_clv_says_so_instead_of_printing_zero(self):
+        out = "\n".join(betting_analysis._render_clv([_clv_row(None, reason=None)], _SIDE_ONLY))
+        assert "No settled bet in this window carries a CLV" in out
+        assert "pts" not in out
+
+    def test_bootstrap_ci_brackets_the_mean_and_is_reproducible(self):
+        vals = [-2.0, -1.0, 0.0, 1.0, 5.0]
+        lo, hi = betting_analysis._bootstrap_ci(vals)
+        assert lo < sum(vals) / len(vals) < hi
+        assert betting_analysis._bootstrap_ci(vals) == (lo, hi)
+        assert betting_analysis._bootstrap_ci([1.0]) is None

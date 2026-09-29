@@ -2,6 +2,94 @@
 
 ---
 
+## 2026-09-29 -- Polymarket removed; B1 per-book consensus; S9 CLV reporting
+
+### Polymarket US removed
+
+Operator decision: the venue was not being used. In 67 days it never filled an
+order, because every candidate stopped at Gate 3. It was, however, armed
+(`POLYMARKET_DRY_RUN=false`), running `--execute` unattended every morning.
+
+- The `Daily-Polymarket-Execution` task was unregistered. Its XML and
+  `daily_polymarket_scan.bat` are in `.claude/temp/task-backup-2026-09-29/`.
+  `\AI-Projects\Edge-Radar-MikesAILab\` now holds 15 tasks.
+- Deleted `scripts/polymarket/`, `docs/polymarket/`,
+  `docs/setup/polymarket-us-setup.md` and the four `tests/test_polymarket_*.py`
+  files. Also removed:
+  - the `polymarket`/`poly`/`pm` market type in `scan.py`
+  - `PolymarketCredentials` and the `POLYMARKET_*` env vars
+  - the venue in `market_client` (`VENUES = ("kalshi",)`)
+  - the `reports/Polymarket` report dir
+  - the email preset
+  - the `pyproject` pythonpath entry
+- The executor's venue min-share bump and its post-cap re-check are deleted.
+  Only Polymarket set `min_order_shares`, so they were dead code.
+- **Kept on purpose:**
+  - the venue-neutral seam: the `venue` field on trade rows (now always
+    `kalshi`), per-venue eligibility, and the `market_client` factory
+  - the email renderer's generic scan-log mode, which is tested and belongs
+    to no venue
+- The two hand-placed iOS positions (`tec-mlb-champ-2026-09-27-mil`/`-nyy`) are
+  still in that account. They were never system trades, and nothing here tracks
+  them any more.
+- Docs and skills were swept: CLAUDE.md, task-schedules, the three skills, the
+  README files, UPSTREAMS and ARCHITECTURE. Historical docs were left as they were.
+- The roadmap items PM2e, PM-games and PM3 are gone. B5 (futures devig) stays,
+  because it applies to Kalshi futures too.
+
+### B1 -- spread/total consensus inverts per book
+
+`consensus_spread_prob` and `consensus_total_prob` used to take the weighted
+median line and the weighted median probability *independently*, then invert
+that pair through the normal CDF. The result was a quote no book made. Each
+book's mean is now inferred from its own (line, devigged probability), and the
+weighted median of those means is used. Measured 2026-08-25 over 37 cached odds
+files:
+- The error was near zero in the typical case (median 0.00pt, because books
+  usually agree on the line).
+- Its tail reached **8.8pt, mostly NFL**, and all 12 rows above 3pt pushed
+  P(cover) *up*, toward YES, which is the side the gate then selects.
+
+When the books agree, the result is unchanged (tested).
+
+- `weighted_median` now returns the midpoint on an exact 50% weight tie,
+  instead of always resolving down to the lower value (review #6).
+- `median_book_spread`, `median_book_line` and `raw_median_implied` are still
+  recorded, but for display only. Each `books[]` entry now carries its `mean`.
+- `shadow_book.reproject` inverts the stored (median line, mean) pair, so it is
+  now exact when the books share a line and approximate when they split. This
+  is noted in its docstring.
+
+### S9 -- CLV reporting slice
+
+`betting_analysis.py` gets a **Closing Line Value** section directly after the
+headline. It shows mean CLV in points with a seeded 95% bootstrap CI, overall
+and by sport, category, side and entry-price band, and prints
+`n_captured / n_settled` beside every figure. Below 60% coverage (S15's line)
+it warns that the mean reads optimistic.
+
+- **The denominator counts filled bets only.** The settlement log also holds
+  zero-fill resting orders, which `clv_capture` skips by design because they
+  have no entry price. Counting them made the 30-day coverage read 20% (19/93)
+  and looked like a capture failure. Of the 19 post-launch rows that had a
+  start time but no capture attempt, all 19 were zero-fill or dry-run, and two
+  were the 09-15 S28 fractional fills. On filled bets the figure is **27%
+  (19/70)**:
+  - 41 have no attempt: mostly bets placed before capture shipped, which age
+    out of the window by 2026-10-10
+  - 10 are recorded `missed`: real capture gaps, worth a look if they keep
+    accruing
+- Fee role is not sliced. Settlement rows do not record it, and every fill to
+  date has been a taker (S23b). The report says so rather than printing a
+  constant column.
+- First reading (30d): **-0.21 pts, CI [-0.97, +0.55]**, n=19. No signal
+  either way yet, and not readable at this coverage anyway.
+
+Tests: +8 (B1 per-book mean and agreeing books, tie-break, S9 coverage, warning,
+empty case, bootstrap). The Polymarket suites (−89) are gone, leaving 1202 passing.
+
+---
+
 ## 2026-09-29 -- S28 fractional fills, B3 10% Hard Stop, B6(d) DST-aware Eastern time
 
 Three money-path fixes from the top of the roadmap.

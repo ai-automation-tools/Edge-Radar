@@ -1,7 +1,7 @@
 ---
 name: betting-logic-review
 description: Audit Edge-Radar's betting math, risk gates, sizing, sport-specific models, and market-data handling for errors that can lose money, then save a dated findings report to docs/my-documents/repo-reviews/. Verifies every claim against the live trade log and cached odds rather than trusting docs or comments. Use for "review the betting logic", "check for betting errors", "audit the edge model", "is the sizing right", "check the sport/API data", or a periodic quant health check. Complements /repo-review, which covers structure, docs, and cruft.
-argument-hint: [focus area] — e.g. "spreads", "sizing", "fees", "mlb", "polymarket", or empty for full
+argument-hint: [focus area] — e.g. "spreads", "sizing", "fees", "mlb", "futures", or empty for full
 user-invocable: true
 allowed-tools: Read, Bash, Glob, Grep, Write
 ---
@@ -13,7 +13,7 @@ thing that mis-prices a market, mis-sizes a bet, bypasses a gate, or corrupts th
 P&L record that calibration decisions are made from.
 
 `$ARGUMENTS` may name a focus area (`spreads`, `sizing`, `fees`, `mlb`,
-`polymarket`, `futures`, `settlement`). Emphasise it, but still run the
+`futures`, `settlement`). Emphasise it, but still run the
 **Verification Battery** in full — it is cheap and it is where the real findings
 come from.
 
@@ -203,7 +203,6 @@ than skimming all of them.
 | `kalshi_executor.py` `log_trade` | fields read from the API response that the response may no longer contain |
 | `kalshi_settler.py` `calculate_pnl` | revenue derived per-trade not per-position; fees actually populated |
 | `futures_edge.py` `devig_nway` | proportional vs power/Shin devig on N-way books; incomplete outcome lists |
-| `polymarket/*_edge.py` | drift from the Kalshi composite; venue min-share handling |
 | `app/config.py` vs `.env.example` vs `CLAUDE.md` | three-way drift in limits and defaults |
 
 ## Known-good — do not re-report
@@ -212,7 +211,7 @@ Established by prior review; re-report only with new contradicting evidence.
 
 - Kelly `f* = edge / (1 - price)` (C11) is the correct binary-contract form.
 - `high` confidence capped to the `medium` composite weight for sports (C4) is
-  evidence-backed; futures/Polymarket deliberately keep `high: 9`.
+  evidence-backed; futures deliberately keep `high: 9`.
 - No correlation guard, deliberately (C11b) — measured and rejected.
 - Soccer margin stdev 1.8 is calibrated against 74 World Cup matches; do not lower it.
 - Fix A / Fix B cross-game contamination guards are sound.

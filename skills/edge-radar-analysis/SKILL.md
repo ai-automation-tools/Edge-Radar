@@ -12,7 +12,7 @@ You are executing `/edge-radar-analysis`. This skill produces a **comprehensive 
 
 Use this for weekly reviews, ad-hoc "how am I doing" checks, and calibration attribution after risk-gate changes ship.
 
-> **Scope: Kalshi only.** Settlement records carry no `venue` field — all 354 are Kalshi. Polymarket execution went live 2026-07-23 but **no Polymarket order has ever filled** (every candidate is still stopped by the 3% edge gate), so nothing from that venue reaches this report yet. If Polymarket starts filling, check whether `betting_analysis.py` needs a venue split before quoting blended ROI.
+> **Scope: Kalshi only.** Kalshi is the only venue. Polymarket US was removed 2026-09-29 (see CHANGELOG) without ever filling an order, so no settlement record comes from it.
 
 ## Parse Arguments
 

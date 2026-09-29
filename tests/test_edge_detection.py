@@ -2032,3 +2032,82 @@ class TestCollegeFilterAliases:
 
         for sport in ("nfl", "ncaaf", "ncaab", "mlb", "nba", "nhl"):
             assert sport in FILTER_SHORTCUTS, f"no --filter {sport}"
+
+
+class TestPerBookMeanConsensus:
+    """B1: spread/total consensus must infer each book's mean from ITS OWN
+    (line, devigged probability) quote and then take the median of the means.
+
+    The old code took the median line and the median probability independently
+    and inverted that pair -- a quote no book made. Books usually agree on the
+    line, so the error was near zero typically, but its tail (up to 8.8pt, mostly
+    NFL) was one-sided toward YES.
+    """
+
+    FUTURE = "2099-08-16T14:00:00Z"
+
+    def _split_spread_event(self, books):
+        """books: [(key, fav_point, fav_price, dog_price)] -- books disagree."""
+        return {
+            "away_team": "Japan",
+            "home_team": "Brazil",
+            "commence_time": self.FUTURE,
+            "bookmakers": [
+                {
+                    "key": key,
+                    "last_update": _fresh_lu(),
+                    "markets": [
+                        {
+                            "key": "spreads",
+                            "outcomes": [
+                                {"name": "Brazil", "point": pt, "price": fp},
+                                {"name": "Japan", "point": -pt, "price": dp},
+                            ],
+                        }
+                    ],
+                }
+                for key, pt, fp, dp in books
+            ],
+        }
+
+    def test_mean_is_a_quote_some_book_made(self):
+        # A: -3.0 at devigged 0.8, B: -3.5 at 0.5, C: -10.0 at 0.2 (equal weights).
+        # Old pairing: median line -3.5 with median prob 0.5 -> mean 3.5, which
+        # matches B only by coincidence of ranks; the per-book means are
+        # 3 + 0.84s, 3.5, 10 - 0.84s, and their median is what must come back.
+        ev = self._split_spread_event(
+            [
+                ("book_a", -3.0, 1.25, 5.0),
+                ("book_b", -3.5, 1.90, 1.90),
+                ("book_c", -10.0, 5.0, 1.25),
+            ]
+        )
+        _, d = consensus_spread_prob([ev], "Brazil", 2.5, ticker="KXWCSPREAD-26JUL01BRAJPN-BRA3")
+        means = sorted(b["mean"] for b in d["books"])
+        assert d["inferred_mean_margin"] == pytest.approx(
+            means[1], abs=0.01
+        )  # details round to 2dp
+        # and it is NOT the old median-line / median-prob pairing (3.5)
+        assert d["inferred_mean_margin"] != pytest.approx(3.5, abs=0.01)
+
+    def test_agreeing_books_unchanged(self):
+        # When every book posts the same line, per-book inversion == old result.
+        ev = _spread_event("Brazil", "Japan", -1.5, 1.90, 1.90, self.FUTURE, books=("a", "b", "c"))
+        _, d = consensus_spread_prob([ev], "Brazil", 2.5, ticker="KXWCSPREAD-26JUL01BRAJPN-BRA3")
+        assert d["inferred_mean_margin"] == pytest.approx(1.5, abs=0.02)
+
+
+class TestWeightedMedianTieBreak:
+    """B1 (#6): an exact weight tie at the 50% mark returns the midpoint, not
+    always the lower value."""
+
+    def test_even_tie_takes_midpoint(self):
+        from edge_detector import weighted_median
+
+        assert weighted_median([0.40, 0.60], [1.0, 1.0]) == pytest.approx(0.50)
+
+    def test_no_tie_unchanged(self):
+        from edge_detector import weighted_median
+
+        assert weighted_median([1.0, 2.0, 3.0], [1.0, 1.0, 1.0]) == 2.0
+        assert weighted_median([0.40, 0.60], [1.0, 3.0]) == 0.60

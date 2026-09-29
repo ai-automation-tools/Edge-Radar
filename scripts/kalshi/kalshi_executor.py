@@ -1647,45 +1647,15 @@ def size_order(
         actual_cost = contracts * opp.market_price
         bankroll_pct = actual_cost / bankroll if bankroll > 0 else 0
 
-    # ── Venue minimum-order size (PM2c). Some venues enforce a per-order
-    # share minimum (Polymarket US `minimumTradeQty`, recorded by the scanner
-    # into `details["min_order_shares"]`). Runs AFTER the caps above so a
-    # capped count can't slip below the minimum. Bump the count up when the
-    # bumped cost still respects MAX_BET_SIZE and the bankroll; otherwise
-    # reject — a sub-minimum order would just be rejected by the exchange.
-    try:
-        min_shares = int((opp.details or {}).get("min_order_shares") or 0)
-    except (TypeError, ValueError, AttributeError):
-        min_shares = 0
-    if 0 < contracts < min_shares:
-        bumped_cost = min_shares * opp.market_price
-        if bumped_cost > MAX_BET_SIZE or bumped_cost > bankroll:
-            return SizedOrder(
-                opportunity=opp,
-                contracts=0,
-                price_cents=0,
-                cost_dollars=0,
-                bankroll_pct=0,
-                risk_approval=(
-                    f"REJECTED: below_venue_min_shares (sized {contracts} < "
-                    f"min {min_shares}; bumping would cost ${bumped_cost:.2f})"
-                ),
-            )
-        contracts = min_shares
-        actual_cost = bumped_cost
-        bankroll_pct = actual_cost / bankroll if bankroll > 0 else 0
-        approval = "APPROVED_BUMPED_MIN_SHARES"
-
     # ── Hard Stop (B3): no single position above 10% of bankroll. CLAUDE.md
     #   documented it from launch, but nothing enforced it -- it held only
     #   because MAX_BET_SIZE happened to sit under 10% of the balance. Runs
-    #   last, because every step above (the `max(1, ...)` floors, the venue
-    #   min-share bump) can push cost up. A constant, not a knob: it is a Hard
-    #   Stop. Cap to the limit; reject only when even the smallest legal order
-    #   breaches it.
+    #   last, because the `max(1, ...)` floors above can push cost up. A
+    #   constant, not a knob: it is a Hard Stop. Cap to the limit; reject only
+    #   when even the smallest legal order breaches it.
     if bankroll > 0 and actual_cost > HARD_STOP_POSITION_PCT * bankroll:
         capped = int(HARD_STOP_POSITION_PCT * bankroll / opp.market_price)
-        if capped < max(1, min_shares):
+        if capped < 1:
             return SizedOrder(
                 opportunity=opp,
                 contracts=0,
@@ -2757,30 +2727,6 @@ def execute_pipeline(
                     f"  Budget cap: [green]${pre_budget_cost:.2f} within ${budget_dollars:.2f} limit[/green]"  # noqa: E501
                 )
 
-        # ── Venue minimum re-check (PM2c): the ratio/budget caps above can
-        # scale a bumped order back below its venue's per-order minimum. Drop
-        # those rows — restoring the count would defeat the cap, and a
-        # sub-minimum order would just be rejected by the exchange.
-        below_min = [
-            s
-            for s in to_execute
-            if 0 < s.contracts < int((s.opportunity.details or {}).get("min_order_shares") or 0)
-        ]
-        if below_min:
-            to_execute = [s for s in to_execute if s not in below_min]
-            rprint(
-                f"  [yellow]Dropped {len(below_min)} order(s) capped below "
-                f"the venue share minimum:[/yellow]"
-            )
-            for s in below_min:
-                rprint(
-                    f"    [dim]SKIP {s.opportunity.ticker}: {s.contracts} < "
-                    f"{(s.opportunity.details or {}).get('min_order_shares')} min[/dim]"
-                )
-            if not to_execute:
-                rprint("[yellow]No orders left after the venue-minimum check.[/yellow]")
-                return []
-
     from ticker_display import (
         parse_game_datetime,
         format_bet_label,
@@ -3161,9 +3107,7 @@ def main():
         type=str,
         default="kalshi",
         choices=VENUES,
-        help="Execution venue (default kalshi). The run command scans Kalshi "
-        "markets, so only kalshi is accepted here — Polymarket execution "
-        "routes through `scan.py polymarket --execute` (PM2c)",
+        help="Execution venue (default kalshi; the only one wired today)",
     )
 
     status_p = sub.add_parser("status", help="Show portfolio status")
@@ -3200,14 +3144,6 @@ def main():
         show_status(client, save=args.save)
 
     elif args.command == "run":
-        if getattr(args, "venue", "kalshi") != "kalshi":
-            rprint(
-                "[red bold]Refused:[/red bold] `run` scans Kalshi markets — a "
-                "non-Kalshi venue would price nothing it can execute. Use "
-                "`python scripts/scan.py polymarket --execute` for Polymarket (PM2c)."
-            )
-            sys.exit(2)
-
         # Get opportunities
         if args.from_file:
             rprint(

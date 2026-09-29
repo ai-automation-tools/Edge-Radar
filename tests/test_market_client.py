@@ -24,35 +24,48 @@ class TestKalshiClientConformance:
 
     @pytest.mark.parametrize("name", PROTOCOL_METHODS)
     def test_method_exists_and_callable(self, name):
-        assert callable(getattr(KalshiClient, name, None)), (
-            f"KalshiClient.{name} missing — MarketClient contract broken")
+        assert callable(
+            getattr(KalshiClient, name, None)
+        ), f"KalshiClient.{name} missing — MarketClient contract broken"
 
     @pytest.mark.parametrize("name", PROTOCOL_METHODS)
     def test_signature_covers_protocol_params(self, name):
         # Every parameter the Protocol declares must be accepted by the
         # implementation (drift here would break venue-agnostic callers).
-        proto_params = set(inspect.signature(
-            getattr(mc.MarketClient, name)).parameters) - {"self"}
-        impl_params = set(inspect.signature(
-            getattr(KalshiClient, name)).parameters) - {"self"}
+        proto_params = set(inspect.signature(getattr(mc.MarketClient, name)).parameters) - {"self"}
+        impl_params = set(inspect.signature(getattr(KalshiClient, name)).parameters) - {"self"}
         missing = proto_params - impl_params
         assert not missing, f"KalshiClient.{name} missing params: {missing}"
 
     def test_runtime_checkable_on_conforming_instance(self):
         class Dummy:
-            def get_balance_dollars(self): return {}
-            def get_positions(self, **kw): return {}
-            def create_order(self, ticker, side, action, **kw): return {}
-            def get_orders(self, **kw): return {}
-            def cancel_order(self, order_id, exchange_index=None): return {}
-            def get_fills(self, **kw): return {}
-            def get_settlements(self, **kw): return {}
+            def get_balance_dollars(self):
+                return {}
+
+            def get_positions(self, **kw):
+                return {}
+
+            def create_order(self, ticker, side, action, **kw):
+                return {}
+
+            def get_orders(self, **kw):
+                return {}
+
+            def cancel_order(self, order_id, exchange_index=None):
+                return {}
+
+            def get_fills(self, **kw):
+                return {}
+
+            def get_settlements(self, **kw):
+                return {}
 
         assert isinstance(Dummy(), mc.MarketClient)
 
     def test_runtime_checkable_rejects_partial(self):
         class NotAClient:
-            def get_balance_dollars(self): return {}
+            def get_balance_dollars(self):
+                return {}
 
         assert not isinstance(NotAClient(), mc.MarketClient)
 
@@ -84,17 +97,6 @@ class TestGetMarketClient:
         monkeypatch.setattr("kalshi_client.KalshiClient", DummyKalshi)
         assert isinstance(mc.get_market_client(" Kalshi "), DummyKalshi)
 
-    def test_polymarket_without_creds_raises_setup_guidance(self, monkeypatch):
-        # PM2 write half exists; without configured credentials the client
-        # (and thus the factory) must fail with the .env setup message.
-        import polymarket_exec_client as pec
-        from types import SimpleNamespace
-        monkeypatch.setattr(pec, "get_config", lambda: SimpleNamespace(
-            polymarket=SimpleNamespace(key_id="", secret_key="", host="h"),
-            system=SimpleNamespace(dry_run=True)))
-        with pytest.raises(FileNotFoundError, match="POLYMARKET_KEY_ID"):
-            mc.get_market_client("polymarket")
-
     def test_unknown_venue_raises_value_error(self):
         with pytest.raises(ValueError, match="Unknown venue"):
-            mc.get_market_client("manifold")
+            mc.get_market_client("polymarket")
