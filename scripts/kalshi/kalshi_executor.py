@@ -72,6 +72,9 @@ TRADE_LOG_PATH = paths.TRADE_LOG_PATH
 
 _cfg = get_config()
 MAX_BET_SIZE = _cfg.risk.max_bet_size
+# Hard Stop (B3): max single-position cost as a fraction of bankroll. Deliberately
+# not env-driven -- CLAUDE.md lists it under Hard Stops, which config cannot loosen.
+HARD_STOP_POSITION_PCT = 0.10
 UNIT_SIZE = _cfg.risk.unit_size
 MAX_DAILY_LOSS = _cfg.risk.max_daily_loss
 MAX_OPEN_POSITIONS = _cfg.risk.max_open_positions
@@ -383,7 +386,7 @@ def resting_exposure(
     total = 0.0
     by_segment: dict[str, float] = {}
     for o in orders:
-        remaining = int(float(_order_field(o, "remaining_count", "remaining_count_fp") or "0"))
+        remaining = _order_count(o, "remaining_count", "remaining_count_fp")
         if remaining <= 0:
             continue
         ticker = o.get("ticker", "")
@@ -398,7 +401,7 @@ def resting_exposure(
             price = 1.00
             log.warning(
                 "Resting order %s (%s) is not priceable from the trade log; "
-                "counting %d contract(s) at $1.00 worst case so Gate 2b errs "
+                "counting %g contract(s) at $1.00 worst case so Gate 2b errs "
                 "tight rather than blind",
                 o.get("order_id"),
                 ticker,
@@ -1062,7 +1065,7 @@ def cancel_live_resting_orders(
     by_order = {r["order_id"]: r for r in (trade_rows or []) if r.get("order_id")}
     cancelled: list[dict] = []
     for o in orders:
-        remaining = int(float(_order_field(o, "remaining_count", "remaining_count_fp") or "0"))
+        remaining = _order_count(o, "remaining_count", "remaining_count_fp")
         if remaining <= 0:
             continue
         order_id = o.get("order_id")
@@ -1127,7 +1130,7 @@ def cancel_stale_resting_orders(
         return []
     orders = resp.get("orders", []) if isinstance(resp, dict) else []
     for o in orders:
-        fill_count = int(float(o.get("fill_count_fp", "0") or "0"))
+        fill_count = _order_count(o, "fill_count_fp")
         if fill_count != 0:
             continue
         ts = o.get("created_time")
@@ -1673,6 +1676,32 @@ def size_order(
         bankroll_pct = actual_cost / bankroll if bankroll > 0 else 0
         approval = "APPROVED_BUMPED_MIN_SHARES"
 
+    # ── Hard Stop (B3): no single position above 10% of bankroll. CLAUDE.md
+    #   documented it from launch, but nothing enforced it -- it held only
+    #   because MAX_BET_SIZE happened to sit under 10% of the balance. Runs
+    #   last, because every step above (the `max(1, ...)` floors, the venue
+    #   min-share bump) can push cost up. A constant, not a knob: it is a Hard
+    #   Stop. Cap to the limit; reject only when even the smallest legal order
+    #   breaches it.
+    if bankroll > 0 and actual_cost > HARD_STOP_POSITION_PCT * bankroll:
+        capped = int(HARD_STOP_POSITION_PCT * bankroll / opp.market_price)
+        if capped < max(1, min_shares):
+            return SizedOrder(
+                opportunity=opp,
+                contracts=0,
+                price_cents=0,
+                cost_dollars=0,
+                bankroll_pct=0,
+                risk_approval=(
+                    f"REJECTED: hard_stop_position_pct (${actual_cost:.2f} > "
+                    f"{HARD_STOP_POSITION_PCT:.0%} of ${bankroll:.2f} bankroll)"
+                ),
+            )
+        contracts = capped
+        actual_cost = contracts * opp.market_price
+        bankroll_pct = actual_cost / bankroll
+        approval = "APPROVED_CAPPED_HARD_STOP"
+
     return SizedOrder(
         opportunity=opp,
         contracts=contracts,
@@ -1721,7 +1750,7 @@ def resting_sides(client, trade_rows: list[dict] | None = None) -> dict[str, str
     sides: dict[str, str] = {}
     unknown = 0
     for o in orders:
-        remaining = int(float(_order_field(o, "remaining_count", "remaining_count_fp") or "0"))
+        remaining = _order_count(o, "remaining_count", "remaining_count_fp")
         if remaining <= 0:
             continue
         ticker = o.get("ticker", "")
@@ -1756,6 +1785,16 @@ def _order_field(order: dict, *keys: str, default: str = "0") -> str:
     return default
 
 
+def _order_count(order: dict, *keys: str) -> float:
+    """A contract count from an order payload, kept fractional (S28).
+
+    Kalshi fills fractionally (``fill_count_fp: "0.01"``). ``int(float(...))``
+    truncated a 1.99 fill to 1, hiding paid-for exposure from the trade log,
+    settlement P&L and Gate 2b, and made R4 cancel a 0.01 fill as "zero-fill".
+    """
+    return float(_order_field(order, *keys) or "0")
+
+
 def log_trade(order_response: dict, sized: SizedOrder, trade_log: list) -> dict:
     """Log an executed trade with fill-accurate accounting.
 
@@ -1769,13 +1808,13 @@ def log_trade(order_response: dict, sized: SizedOrder, trade_log: list) -> dict:
 
     # Parse fill info from Kalshi API response (v2 create uses fill_count /
     # remaining_count; cancel/get/list use the *_fp variants).
-    fill_count = int(float(_order_field(order, "fill_count", "fill_count_fp") or "0"))
-    remaining = int(float(_order_field(order, "remaining_count", "remaining_count_fp") or "0"))
+    fill_count = _order_count(order, "fill_count", "fill_count_fp")
+    remaining = _order_count(order, "remaining_count", "remaining_count_fp")
     filled_cost = round(fill_count * opp.market_price, 4) if fill_count else 0.0
 
     # Determine order status category
     api_status = order.get("status", "unknown")
-    if fill_count == 0:
+    if fill_count <= 0:
         fill_status = "resting"
     elif remaining > 0:
         fill_status = "partial"
@@ -2022,17 +2061,17 @@ def _place_order_batch(client: KalshiClient, to_execute: list, trade_log: list) 
             results.append(record)
             consecutive_conn_errors = 0  # a response arrived — transport is healthy
 
-            fill = int(float(_order_field(order, "fill_count", "fill_count_fp") or "0"))
+            fill = _order_count(order, "fill_count", "fill_count_fp")
             fees = order.get("taker_fees_dollars", "0")
             fill_tag = ""
             if fill == 0:
                 fill_tag = " [yellow](RESTING — no fills yet)[/yellow]"
             elif fill < s.contracts:
-                fill_tag = f" [yellow](PARTIAL — {fill}/{s.contracts} filled)[/yellow]"
+                fill_tag = f" [yellow](PARTIAL — {fill:g}/{s.contracts} filled)[/yellow]"
             rprint(
                 f"  [green]OK[/green] {opp.ticker} "
                 f"{opp.side.upper()} x{s.contracts} @ ${s.price_cents/100:.2f} "
-                f"-- status={status} filled={fill}/{s.contracts} fees=${fees}"
+                f"-- status={status} filled={fill:g}/{s.contracts} fees=${fees}"
                 f"{fill_tag}"
             )
 

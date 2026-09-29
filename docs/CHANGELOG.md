@@ -2,6 +2,38 @@
 
 ---
 
+## 2026-09-29 -- S28 fractional fills, B3 10% Hard Stop, B6(d) DST-aware Eastern time
+
+Three money-path fixes from the top of the roadmap.
+
+- **S28: fractional fills were truncated to whole contracts.** Kalshi fills
+  fractionally (`fill_count_fp: "0.01"`), and every parser did `int(float(...))`.
+  A 0.01 fill logged as `contracts: 0` / `resting`, and a 1.99 fill as 1. That
+  hid paid-for exposure from the trade log, settlement P&L and Gate 2b, and let
+  R4's janitor cancel a 0.01-filled order as "zero-fill". All executor sites now
+  go through `_order_count()` (float), and the status branch checks `<= 0`. The
+  settler (`calculate_pnl`, `trade_fees`, `settle_trade` rows, `reconcile`) and
+  `recover_trade_log.py` dropped their `int()` casts too; `taker_fee` already took
+  a float. The 2026-09-15 rows still read 0: reconcile them against `position_fp`
+  after they settle.
+- **B3: the 10%-of-bankroll Hard Stop now exists in code.** `size_order` computed
+  `bankroll_pct` and nothing read it. It is now the last sizing step, after the
+  venue min-share bump, because the `max(1, ...)` floors and the bump can both push
+  cost up. It caps to 10%, and rejects (`hard_stop_position_pct`) only when even
+  the smallest legal order breaches it. It is a constant (`HARD_STOP_POSITION_PCT`),
+  not an env knob, because config should not be able to loosen a Hard Stop. At
+  today's ~$88 cash it does not bind (`MAX_BET_SIZE=8` < $8.80).
+- **B6(d): Eastern time was a fixed UTC-4.** `edge_detector` (`_ticker_scheduled_utc`,
+  `_commence_et_date`) and `ticker_display.ticker_scheduled_utc` now use
+  `ZoneInfo("America/New_York")`. From November to March a game at 04:00-05:00 UTC
+  (a late West Coast tip) resolved to the next ET date, so the exact-date
+  spread/total and NBA/NHL match found nothing and skipped the market silently.
+  The ticker fallback of Gate 4.8 also read every winter start an hour early.
+  `tzdata` is already installed as a pandas dependency.
+- Tests: +10 (fractional log_trade and the janitor, hard-stop cap/reject/untouched,
+  winter parsing on both ET paths). Two existing classes pin
+  `HARD_STOP_POSITION_PCT=1.0` to keep isolating Kelly and the min-share bump. 1283 pass.
+
 ## 2026-09-29 -- ROADMAP.md cut down to open work only
 
 - `docs/ROADMAP.md` went from 1,048 lines to only the items still open, one line each.

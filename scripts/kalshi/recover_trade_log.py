@@ -55,9 +55,8 @@ RECON_NOTE = (
 
 def _is_test_or_empty(trade: dict) -> bool:
     """Records to drop from the clobbered log: the seeded test order(s)."""
-    return (
-        trade.get("edge_source") == "test"
-        or str(trade.get("order_id", "")).startswith("ord-test")
+    return trade.get("edge_source") == "test" or str(trade.get("order_id", "")).startswith(
+        "ord-test"
     )
 
 
@@ -65,7 +64,7 @@ def build_record(client: KalshiClient, pos: dict) -> dict:
     ticker = pos["ticker"]
     pos_fp = float(pos.get("position_fp", "0") or 0)
     side = "yes" if pos_fp > 0 else "no"
-    contracts = int(abs(pos_fp))
+    contracts = abs(pos_fp)
     cost = float(pos.get("total_traded_dollars", "0") or 0)
     fees = float(pos.get("fees_paid_dollars", "0") or 0)
     avg_price = round(cost / contracts, 4) if contracts else 0.0
@@ -98,8 +97,8 @@ def build_record(client: KalshiClient, pos: dict) -> dict:
         "price_cents": int(round(avg_price * 100)),
         "taker_fees": str(round(fees, 6)),
         "maker_fees": "0",
-        "status": "executed",      # settler reconcile path keys on this
-        "fill_status": "filled",   # != "resting" so it counts as exposure
+        "status": "executed",  # settler reconcile path keys on this
+        "fill_status": "filled",  # != "resting" so it counts as exposure
         "edge_estimated": None,
         "fair_value": None,
         "market_price_at_entry": avg_price,
@@ -119,15 +118,15 @@ def build_record(client: KalshiClient, pos: dict) -> dict:
 
 def main():
     ap = argparse.ArgumentParser(description="Rebuild trade log from live Kalshi positions")
-    ap.add_argument("--write", action="store_true",
-                    help="Back up the current log and write the rebuilt one")
+    ap.add_argument(
+        "--write", action="store_true", help="Back up the current log and write the rebuilt one"
+    )
     args = ap.parse_args()
 
     client = KalshiClient()
     resp = client.get_positions(limit=200, count_filter="position")
     positions = [
-        p for p in resp.get("market_positions", [])
-        if float(p.get("position_fp", "0") or 0) != 0
+        p for p in resp.get("market_positions", []) if float(p.get("position_fp", "0") or 0) != 0
     ]
 
     existing = load_trade_log()
@@ -135,11 +134,7 @@ def main():
     open_tickers = {t.get("ticker") for t in kept if t.get("closed_at") is None}
     dropped = len(existing) - len(kept)
 
-    new_records = [
-        build_record(client, p)
-        for p in positions
-        if p["ticker"] not in open_tickers
-    ]
+    new_records = [build_record(client, p) for p in positions if p["ticker"] not in open_tickers]
     rebuilt = kept + new_records
 
     table = Table(title="Trade-log reconstruction preview", show_lines=False)
@@ -147,9 +142,14 @@ def main():
     for col in ("Ticker", "Side", *_numeric):
         table.add_column(col, justify="right" if col in _numeric else "left")
     for r in new_records:
-        table.add_row(r["ticker"], r["side"], str(r["contracts"]),
-                      f"${r['filled_cost']:.2f}", f"${float(r['taker_fees']):.2f}",
-                      f"${r['market_price_at_entry']:.2f}")
+        table.add_row(
+            r["ticker"],
+            r["side"],
+            str(r["contracts"]),
+            f"${r['filled_cost']:.2f}",
+            f"${float(r['taker_fees']):.2f}",
+            f"${r['market_price_at_entry']:.2f}",
+        )
     console.print(table)
 
     rprint(f"\nLive Kalshi open positions: [bold]{len(positions)}[/bold]")

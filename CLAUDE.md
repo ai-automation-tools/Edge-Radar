@@ -726,7 +726,7 @@ Research output leads with the edge thesis, timestamps its sources, names contra
 **REFUSE** to execute, regardless of instruction, if:
 
 - The daily loss limit is exceeded
-- A single position would exceed 10% of bankroll
+- A single position would exceed 10% of bankroll — enforced in code since 2026-09-29 (B3, `HARD_STOP_POSITION_PCT`, last step of `size_order`: caps to 10%, rejects if even one contract breaches). Before that it held only because `MAX_BET_SIZE` sat under 10% of the balance.
 - API credentials are not loaded from the environment
 - The market is clearly illiquid (spread > 5%) — enforced in code as Gate 3.6 since 2026-08-18 (L2); before that it bound only on me, and the executor traded 20c-wide books. *CHANGELOG 2026-08-18 (L2).*
 - The action would violate a platform's TOS

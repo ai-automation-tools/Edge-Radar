@@ -6,41 +6,110 @@ Used by all display/report functions across the project.
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 # ── Team abbreviation lookup ──────────────────────────────────────────────────
 
 MLB_TEAMS = {
-    "ARI": "Arizona", "ATL": "Atlanta", "BAL": "Baltimore", "BOS": "Boston",
-    "CHC": "Cubs", "CWS": "White Sox", "CIN": "Cincinnati", "CLE": "Cleveland",
-    "COL": "Colorado", "DET": "Detroit", "HOU": "Houston", "KC": "Kansas City",
-    "LAA": "LA Angels", "LAD": "LA Dodgers", "MIA": "Miami", "MIL": "Milwaukee",
-    "MIN": "Minnesota", "NYM": "NY Mets", "NYY": "NY Yankees", "OAK": "Oakland",
-    "PHI": "Philadelphia", "PIT": "Pittsburgh", "SD": "San Diego", "SF": "San Francisco",
-    "SEA": "Seattle", "STL": "St. Louis", "TB": "Tampa Bay", "TEX": "Texas",
-    "TOR": "Toronto", "WSH": "Washington",
+    "ARI": "Arizona",
+    "ATL": "Atlanta",
+    "BAL": "Baltimore",
+    "BOS": "Boston",
+    "CHC": "Cubs",
+    "CWS": "White Sox",
+    "CIN": "Cincinnati",
+    "CLE": "Cleveland",
+    "COL": "Colorado",
+    "DET": "Detroit",
+    "HOU": "Houston",
+    "KC": "Kansas City",
+    "LAA": "LA Angels",
+    "LAD": "LA Dodgers",
+    "MIA": "Miami",
+    "MIL": "Milwaukee",
+    "MIN": "Minnesota",
+    "NYM": "NY Mets",
+    "NYY": "NY Yankees",
+    "OAK": "Oakland",
+    "PHI": "Philadelphia",
+    "PIT": "Pittsburgh",
+    "SD": "San Diego",
+    "SF": "San Francisco",
+    "SEA": "Seattle",
+    "STL": "St. Louis",
+    "TB": "Tampa Bay",
+    "TEX": "Texas",
+    "TOR": "Toronto",
+    "WSH": "Washington",
 }
 
 NBA_TEAMS = {
-    "ATL": "Hawks", "BOS": "Celtics", "BKN": "Nets", "CHA": "Hornets",
-    "CHI": "Bulls", "CLE": "Cavs", "DAL": "Mavs", "DEN": "Nuggets",
-    "DET": "Pistons", "GS": "Warriors", "HOU": "Rockets", "IND": "Pacers",
-    "LAC": "Clippers", "LAL": "Lakers", "MEM": "Grizzlies", "MIA": "Heat",
-    "MIL": "Bucks", "MIN": "Wolves", "NO": "Pelicans", "NY": "Knicks",
-    "OKC": "Thunder", "ORL": "Magic", "PHI": "76ers", "PHX": "Suns",
-    "POR": "Blazers", "SAC": "Kings", "SA": "Spurs", "TOR": "Raptors",
-    "UTA": "Jazz", "WAS": "Wizards",
+    "ATL": "Hawks",
+    "BOS": "Celtics",
+    "BKN": "Nets",
+    "CHA": "Hornets",
+    "CHI": "Bulls",
+    "CLE": "Cavs",
+    "DAL": "Mavs",
+    "DEN": "Nuggets",
+    "DET": "Pistons",
+    "GS": "Warriors",
+    "HOU": "Rockets",
+    "IND": "Pacers",
+    "LAC": "Clippers",
+    "LAL": "Lakers",
+    "MEM": "Grizzlies",
+    "MIA": "Heat",
+    "MIL": "Bucks",
+    "MIN": "Wolves",
+    "NO": "Pelicans",
+    "NY": "Knicks",
+    "OKC": "Thunder",
+    "ORL": "Magic",
+    "PHI": "76ers",
+    "PHX": "Suns",
+    "POR": "Blazers",
+    "SAC": "Kings",
+    "SA": "Spurs",
+    "TOR": "Raptors",
+    "UTA": "Jazz",
+    "WAS": "Wizards",
 }
 
 NHL_TEAMS = {
-    "ANA": "Ducks", "ARI": "Coyotes", "BOS": "Bruins", "BUF": "Sabres",
-    "CGY": "Flames", "CAR": "Hurricanes", "CHI": "Blackhawks", "COL": "Avalanche",
-    "CBJ": "Blue Jackets", "DAL": "Stars", "DET": "Red Wings", "EDM": "Oilers",
-    "FLA": "Panthers", "LA": "Kings", "MIN": "Wild", "MTL": "Canadiens",
-    "NSH": "Predators", "NJ": "Devils", "NYI": "Islanders", "NYR": "Rangers",
-    "OTT": "Senators", "PHI": "Flyers", "PIT": "Penguins", "SJ": "Sharks",
-    "SEA": "Kraken", "STL": "Blues", "TB": "Lightning", "TOR": "Maple Leafs",
-    "VAN": "Canucks", "VGK": "Golden Knights", "WPG": "Jets", "WSH": "Capitals",
+    "ANA": "Ducks",
+    "ARI": "Coyotes",
+    "BOS": "Bruins",
+    "BUF": "Sabres",
+    "CGY": "Flames",
+    "CAR": "Hurricanes",
+    "CHI": "Blackhawks",
+    "COL": "Avalanche",
+    "CBJ": "Blue Jackets",
+    "DAL": "Stars",
+    "DET": "Red Wings",
+    "EDM": "Oilers",
+    "FLA": "Panthers",
+    "LA": "Kings",
+    "MIN": "Wild",
+    "MTL": "Canadiens",
+    "NSH": "Predators",
+    "NJ": "Devils",
+    "NYI": "Islanders",
+    "NYR": "Rangers",
+    "OTT": "Senators",
+    "PHI": "Flyers",
+    "PIT": "Penguins",
+    "SJ": "Sharks",
+    "SEA": "Kraken",
+    "STL": "Blues",
+    "TB": "Lightning",
+    "TOR": "Maple Leafs",
+    "VAN": "Canucks",
+    "VGK": "Golden Knights",
+    "WPG": "Jets",
+    "WSH": "Capitals",
 }
 
 # Merged lookup — MLB takes priority for shared abbreviations since it uses
@@ -52,12 +121,27 @@ TEAM_NAMES.update(MLB_TEAMS)
 
 # Kalshi uses non-standard abbreviations for some teams — add aliases
 _KALSHI_ALIASES = {
-    "SAS": "Spurs", "GSW": "Warriors", "NOP": "Pelicans", "NYK": "Knicks",
-    "NOR": "Pelicans", "SAN": "Spurs", "GLD": "Warriors",
-    "PHO": "Suns", "CHAR": "Hornets", "BKLN": "Nets",
-    "ILST": "Illinois", "COLO": "Colorado", "UCLA": "UCLA", "UCON": "UConn",
-    "DUKE": "Duke", "ARIZ": "Arizona", "HOUS": "Houston", "FLOR": "Florida",
-    "AUBU": "Auburn", "PURD": "Purdue", "BAYLOR": "Baylor",
+    "SAS": "Spurs",
+    "GSW": "Warriors",
+    "NOP": "Pelicans",
+    "NYK": "Knicks",
+    "NOR": "Pelicans",
+    "SAN": "Spurs",
+    "GLD": "Warriors",
+    "PHO": "Suns",
+    "CHAR": "Hornets",
+    "BKLN": "Nets",
+    "ILST": "Illinois",
+    "COLO": "Colorado",
+    "UCLA": "UCLA",
+    "UCON": "UConn",
+    "DUKE": "Duke",
+    "ARIZ": "Arizona",
+    "HOUS": "Houston",
+    "FLOR": "Florida",
+    "AUBU": "Auburn",
+    "PURD": "Purdue",
+    "BAYLOR": "Baylor",
 }
 for alias, name in _KALSHI_ALIASES.items():
     TEAM_NAMES.setdefault(alias, name)
@@ -78,19 +162,32 @@ def _resolve_team_abbr(abbr: str, ticker: str = "") -> str:
 # ── Ticker prefix to sport mapping ────────────────────────────────────────────
 
 _SPORT_PREFIXES = {
-    "KXMLBGAME": "mlb", "KXMLB": "mlb",
-    "KXNBAGAME": "nba", "KXNBA": "nba",
-    "KXNHLGAME": "nhl", "KXNHL": "nhl",
-    "KXNFLGAME": "nfl", "KXNFL": "nfl",
-    "KXNCAABB": "ncaab", "KXNCAAMB": "ncaab", "KXNCAAF": "ncaaf",
-    "KXSOCCER": "soccer", "KXMLS": "mls",
-    "KXWCGAME": "worldcup", "KXWC": "worldcup",
-    "KXUFC": "ufc", "KXBOX": "boxing",
-    "KXGOLF": "golf", "KXPGA": "golf",
-    "KXNASCAR": "nascar", "KXIPL": "ipl",
+    "KXMLBGAME": "mlb",
+    "KXMLB": "mlb",
+    "KXNBAGAME": "nba",
+    "KXNBA": "nba",
+    "KXNHLGAME": "nhl",
+    "KXNHL": "nhl",
+    "KXNFLGAME": "nfl",
+    "KXNFL": "nfl",
+    "KXNCAABB": "ncaab",
+    "KXNCAAMB": "ncaab",
+    "KXNCAAF": "ncaaf",
+    "KXSOCCER": "soccer",
+    "KXMLS": "mls",
+    "KXWCGAME": "worldcup",
+    "KXWC": "worldcup",
+    "KXUFC": "ufc",
+    "KXBOX": "boxing",
+    "KXGOLF": "golf",
+    "KXPGA": "golf",
+    "KXNASCAR": "nascar",
+    "KXIPL": "ipl",
     "KXESPORT": "esports",
-    "KXATPMATCH": "tennis", "KXATP": "tennis",
-    "KXWTAMATCH": "tennis", "KXWTA": "tennis",
+    "KXATPMATCH": "tennis",
+    "KXATP": "tennis",
+    "KXWTAMATCH": "tennis",
+    "KXWTA": "tennis",
 }
 
 
@@ -103,11 +200,22 @@ def _detect_sport(ticker: str) -> str | None:
 
 
 _SPORT_DISPLAY = {
-    "mlb": "MLB", "nba": "NBA", "nhl": "NHL", "nfl": "NFL",
-    "ncaab": "NCAAB", "ncaaf": "NCAAF", "soccer": "Soccer", "mls": "MLS",
+    "mlb": "MLB",
+    "nba": "NBA",
+    "nhl": "NHL",
+    "nfl": "NFL",
+    "ncaab": "NCAAB",
+    "ncaaf": "NCAAF",
+    "soccer": "Soccer",
+    "mls": "MLS",
     "worldcup": "World Cup",
-    "ufc": "UFC", "boxing": "Boxing", "golf": "Golf", "nascar": "NASCAR",
-    "ipl": "IPL", "esports": "Esports", "tennis": "Tennis",
+    "ufc": "UFC",
+    "boxing": "Boxing",
+    "golf": "Golf",
+    "nascar": "NASCAR",
+    "ipl": "IPL",
+    "esports": "Esports",
+    "tennis": "Tennis",
 }
 
 
@@ -121,6 +229,7 @@ def sport_from_ticker(ticker: str) -> str:
 
 
 # ── Team code splitting ───────────────────────────────────────────────────────
+
 
 def _split_team_codes(combined: str) -> tuple[str, str]:
     """Split a combined team code like CWSMIA into (CWS, MIA).
@@ -142,6 +251,7 @@ def _split_team_codes(combined: str) -> tuple[str, str]:
 
 
 # ── Bet type from ticker ─────────────────────────────────────────────────────
+
 
 def bet_type_from_ticker(ticker: str) -> str:
     """Infer a short bet-type label from a Kalshi ticker prefix.
@@ -257,15 +367,22 @@ def _extract_team_from_title(title: str) -> str:
 # ── Date/time extraction ─────────────────────────────────────────────────────
 
 _MONTH_MAP = {
-    "JAN": "Jan", "FEB": "Feb", "MAR": "Mar", "APR": "Apr",
-    "MAY": "May", "JUN": "Jun", "JUL": "Jul", "AUG": "Aug",
-    "SEP": "Sep", "OCT": "Oct", "NOV": "Nov", "DEC": "Dec",
+    "JAN": "Jan",
+    "FEB": "Feb",
+    "MAR": "Mar",
+    "APR": "Apr",
+    "MAY": "May",
+    "JUN": "Jun",
+    "JUL": "Jul",
+    "AUG": "Aug",
+    "SEP": "Sep",
+    "OCT": "Oct",
+    "NOV": "Nov",
+    "DEC": "Dec",
 }
 
 # Pattern: KXPREFIX-YYMONDDHHMMTEAMS-PICK  (sports games)
-_GAME_RE = re.compile(
-    r"KX\w*GAME-(\d{2})([A-Z]{3})(\d{2})(\d{4})([A-Z]{4,8})-(.+)"
-)
+_GAME_RE = re.compile(r"KX\w*GAME-(\d{2})([A-Z]{3})(\d{2})(\d{4})([A-Z]{4,8})-(.+)")
 
 # Pattern for spreads/totals: KXPREFIX-YYMONDDHHMMTEAMS-STRIKE
 _SPREAD_TOTAL_RE = re.compile(
@@ -274,14 +391,15 @@ _SPREAD_TOTAL_RE = re.compile(
 
 # Generic date pattern for non-sports (prediction markets, futures):
 # KXPREFIX-YYMONDDHH... or KXPREFIX-YYMONDD...
-_DATE_RE = re.compile(
-    r"KX\w+-(\d{2})([A-Z]{3})(\d{2})"
-)
+_DATE_RE = re.compile(r"KX\w+-(\d{2})([A-Z]{3})(\d{2})")
 
 
-_MONTH_NUM = {m: i + 1 for i, m in enumerate(
-    ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-     "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"])}
+_MONTH_NUM = {
+    m: i + 1
+    for i, m in enumerate(
+        ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+    )
+}
 
 
 def days_to_event(ticker: str, now: datetime | None = None) -> int | None:
@@ -310,9 +428,8 @@ def days_to_event(ticker: str, now: datetime | None = None) -> int | None:
     if not month:
         return None
     try:
-        event = datetime(2000 + int(m.group(1)), month, int(m.group(3)),
-                         tzinfo=timezone.utc)
-    except ValueError:            # e.g. FEB 30 in a malformed ticker
+        event = datetime(2000 + int(m.group(1)), month, int(m.group(3)), tzinfo=timezone.utc)
+    except ValueError:  # e.g. FEB 30 in a malformed ticker
         return None
     return (event.date() - (now or datetime.now(timezone.utc)).date()).days
 
@@ -328,7 +445,7 @@ def parse_game_datetime(ticker: str) -> str:
     # Try game/spread/total pattern first (has time)
     m = _GAME_RE.match(ticker) or _SPREAD_TOTAL_RE.match(ticker)
     if m:
-        _yy, mon, day, time_str = m.group(1), m.group(2), m.group(3), m.group(4)
+        mon, day, time_str = m.group(2), m.group(3), m.group(4)
         hh, mm = int(time_str[:2]), int(time_str[2:])
         ampm = "am" if hh < 12 else "pm"
         hh12 = hh if hh <= 12 else hh - 12
@@ -340,7 +457,7 @@ def parse_game_datetime(ticker: str) -> str:
     # Fallback: just date
     m = _DATE_RE.match(ticker)
     if m:
-        _yy, mon, day = m.group(1), m.group(2), m.group(3)
+        mon, day = m.group(2), m.group(3)
         mon_label = _MONTH_MAP.get(mon, mon.capitalize())
         return f"{mon_label} {int(day)}"
 
@@ -394,9 +511,18 @@ def format_bet_label(ticker: str, title: str) -> str:
 # ── Date filtering ────────────────────────────────────────────────────────────
 
 _MONTH_NUM = {
-    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4,
-    "MAY": 5, "JUN": 6, "JUL": 7, "AUG": 8,
-    "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+    "JAN": 1,
+    "FEB": 2,
+    "MAR": 3,
+    "APR": 4,
+    "MAY": 5,
+    "JUN": 6,
+    "JUL": 7,
+    "AUG": 8,
+    "SEP": 9,
+    "OCT": 10,
+    "NOV": 11,
+    "DEC": 12,
 }
 
 
@@ -499,15 +625,14 @@ def filter_exclude_tickers(opportunities: list, exclude_tickers: set[str]) -> li
 
 # ── Game-start detection (R27 / F44) ───────────────────────────────────────────
 
-# Kalshi embeds the game's ET wall-clock start in the ticker. We don't ship a
-# tzdata dependency, so we treat the numerals as UTC and shift by a fixed ET
-# offset — a 1-hour EST/EDT slip is immaterial for "has this game started?".
-# Mirrors edge_detector._ticker_scheduled_utc (the hardened event-matching path);
-# kept here too so display/report code can import without pulling in the scanner.
-_ET_UTC_OFFSET_HOURS = 4
+# Kalshi embeds the game's ET wall-clock start in the ticker. DST-aware (B6(d)):
+# a fixed UTC-4 put every Nov-Mar start an hour early. Mirrors
+# edge_detector._ticker_scheduled_utc; kept here too so display/report code can
+# import without pulling in the scanner.
+_ET = ZoneInfo("America/New_York")
 
 
-def ticker_scheduled_utc(ticker: str, et_utc_offset_hours: int = _ET_UTC_OFFSET_HOURS) -> datetime | None:
+def ticker_scheduled_utc(ticker: str) -> datetime | None:
     """Parse a game ticker's scheduled start (YYMMMDD + HHMM, ET) as aware UTC.
 
     Only moneyline (GAME) tickers embed the HHMM time, e.g.
@@ -522,11 +647,10 @@ def ticker_scheduled_utc(ticker: str, et_utc_offset_hours: int = _ET_UTC_OFFSET_
     if not month:
         return None
     try:
-        et_as_utc = datetime(2000 + int(yy), month, int(dd),
-                             int(hhmm[:2]), int(hhmm[2:]), tzinfo=timezone.utc)
+        et = datetime(2000 + int(yy), month, int(dd), int(hhmm[:2]), int(hhmm[2:]), tzinfo=_ET)
     except ValueError:
         return None
-    return et_as_utc + timedelta(hours=et_utc_offset_hours)
+    return et.astimezone(timezone.utc)
 
 
 def is_game_started(ticker: str, now: datetime | None = None) -> bool:

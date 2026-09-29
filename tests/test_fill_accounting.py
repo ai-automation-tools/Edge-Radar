@@ -13,6 +13,7 @@ from opportunity import Opportunity
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+
 def _make_opp(price=0.50, edge=0.10):
     return Opportunity(
         ticker="KXNBAGAME-26APR04BOSNYK-BOS",
@@ -57,6 +58,7 @@ def _make_api_response(fill_count=10, remaining=0, status="executed"):
 
 # ── get_filled_contracts / get_filled_cost helpers ────────────────────────
 
+
 class TestGetFilledContracts:
     def test_new_format_uses_filled_contracts(self):
         trade = {"filled_contracts": 7, "contracts": 10, "fill_count": "7"}
@@ -100,6 +102,7 @@ class TestGetFilledCost:
 
 
 # ── log_trade fill scenarios ─────────────────────────────────────────────
+
 
 class TestLogTradeFillScenarios:
     def test_fully_filled_order(self):
@@ -191,6 +194,7 @@ class TestLogTradeFillScenarios:
 
 # ── Settlement with fill-based accounting ─────────────────────────────────
 
+
 class TestSettlementAccounting:
     def test_pnl_uses_filled_cost(self):
         """Settlement should compute P&L from filled cost, not requested."""
@@ -265,6 +269,7 @@ class TestSettlementAccounting:
 
 # ── Per-trade revenue attribution (review #8: no double-count) ─────────────────
 
+
 class TestRevenueNoDoubleCount:
     """Kalshi settlements are keyed per-market. When two trades share a ticker
     they both match the same settlement; each must earn only its own filled
@@ -298,7 +303,7 @@ class TestRevenueNoDoubleCount:
 
         settlement = {"market_result": "yes", "revenue": 1000}  # $10 aggregate
         p = calculate_pnl(self._trade(10, 4.0), settlement)
-        assert p["revenue"] == 10.0            # 10 * $1.00 == the aggregate
+        assert p["revenue"] == 10.0  # 10 * $1.00 == the aggregate
         assert p["net_pnl"] == pytest.approx(10.0 - 4.0, abs=0.001)
         assert p["won"] is True
 
@@ -313,6 +318,7 @@ class TestRevenueNoDoubleCount:
 
 
 # ── Settlement revenue normalization (review #9: one shared rule) ──────────────
+
 
 class TestSettlementRevenueDollars:
     def test_int_is_treated_as_cents(self):
@@ -330,6 +336,7 @@ class TestSettlementRevenueDollars:
 
 
 # ── v2 create-order response shape (Kalshi create-order-v2 migration) ──────────
+
 
 def _make_v2_response(fill_count=10, remaining=0):
     """Simulate the lean, flat v2 /portfolio/events/orders create response.
@@ -376,3 +383,40 @@ class TestV2CreateResponseParsing:
         rec = log_trade(_make_api_response(fill_count=10, remaining=0), sized, [])
         assert rec["filled_contracts"] == 10
         assert rec["fill_status"] == "filled"
+
+
+class TestFractionalFills:
+    """S28: Kalshi fills fractionally. `int(float(...))` logged a 0.01 fill as 0
+    ("resting", $0) and a 1.99 fill as 1 -- paid-for exposure missing from the
+    trade log, settlement P&L and Gate 2b. Replays the 2026-09-15 shape."""
+
+    def test_hundredth_fill_is_recorded_not_resting(self):
+        sized = _make_sized(_make_opp(price=0.73), contracts=2, price_cents=73, cost=1.46)
+        rec = log_trade(_make_api_response(fill_count="0.01", remaining="1.99"), sized, [])
+        assert rec["filled_contracts"] == pytest.approx(0.01)
+        assert rec["filled_cost"] == pytest.approx(0.0073)
+        assert rec["remaining_count"] == pytest.approx(1.99)
+        assert rec["fill_status"] == "partial"
+
+    def test_near_whole_fill_is_not_rounded_down(self):
+        sized = _make_sized(_make_opp(), contracts=2, cost=1.00)
+        rec = log_trade(_make_api_response(fill_count="1.99", remaining="0.01"), sized, [])
+        assert rec["filled_contracts"] == pytest.approx(1.99)
+        assert rec["filled_cost"] == pytest.approx(0.995)
+        assert get_filled_contracts(rec) == pytest.approx(1.99)
+
+    def test_stale_janitor_keeps_a_fractional_partial(self):
+        # R4 cancels only zero-fill orders; 0.01 filled must not read as zero.
+        from datetime import datetime, timedelta, timezone
+        from unittest.mock import MagicMock
+        from kalshi_executor import cancel_stale_resting_orders
+
+        old = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+        client = MagicMock()
+        client.get_orders.return_value = {
+            "orders": [
+                {"order_id": "o1", "fill_count_fp": "0.01", "created_time": old},
+            ]
+        }
+        assert cancel_stale_resting_orders(client, max_hours=24) == []
+        client.cancel_order.assert_not_called()
