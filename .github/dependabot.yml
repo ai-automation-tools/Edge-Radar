@@ -1,0 +1,19 @@
+# Dependency updates. Minor/patch bumps arrive as one grouped PR per ecosystem per week;
+# majors get their own PR. Semantic upstream drift (API, protocol) is the Edge-Radar Upstream
+# Check routine's job -- see docs/UPSTREAMS.md.
+# Live-money repo: these PRs are not auto-merged by any routine. Review before merging.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
