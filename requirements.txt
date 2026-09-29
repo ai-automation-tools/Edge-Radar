@@ -16,7 +16,7 @@ cryptography>=44.0.3              # RSA-PSS signing for Kalshi API auth
 # kalshi-python==1.0.0          # planned — Kalshi (install from their repo)
 
 # === Data & Analysis ===
-scipy>=1.11.4                     # Normal CDF for edge probability
+scipy>=1.17.1                     # Normal CDF for edge probability
 pandas>=2.1.4                     # Dataframes for backtesting & report generation
 # numpy==1.26.2                   # planned — numerical computing
 # scikit-learn==1.3.2             # planned — ML models
