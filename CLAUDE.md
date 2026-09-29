@@ -36,7 +36,7 @@ The funded account is **Polymarket US** (CFTC-regulated, iOS-app product) on the
 - **Nothing has filled yet** — every candidate to date is stopped at Gate 3 (edge < 3%), and `data/history/kalshi_trades.json` holds 0 Polymarket rows. The account does hold **two hand-placed iOS positions** from 2026-07-06 (`tec-mlb-champ-2026-09-27-mil` 59 sh, `…-nyy` 36 sh, ~$9.88). Not system trades, but the risk gates see them: they are the `Positions: 2/50` in the scan banner and they occupy Gate 5/6 slots for those markets.
 - **Remaining:** seasonal games repoint (US game markets are moneyline-only — no spreads/totals/MLB), then PM3 settlement/ops.
 
-Detail: **[docs/polymarket/README.md](docs/polymarket/README.md)** · **[docs/setup/polymarket-us-setup.md](docs/setup/polymarket-us-setup.md)** · **[docs/ROADMAP.md](docs/ROADMAP.md)** Priority 0 (PM2c).
+Detail: **[docs/polymarket/README.md](docs/polymarket/README.md)** · **[docs/setup/polymarket-us-setup.md](docs/setup/polymarket-us-setup.md)** · **[docs/ROADMAP.md](docs/ROADMAP.md)** §3 (Polymarket US).
 
 ---
 
@@ -127,7 +127,7 @@ Edge-Radar/
 ├── tests/                     # pytest suite (make test)
 └── docs/                      # Index: docs/README.md
     ├── CHANGELOG.md           # Project history — the "why" behind the rules here
-    ├── ROADMAP.md             # Enhancement roadmap
+    ├── ROADMAP.md             # Open work only (history lives in CHANGELOG)
     ├── kalshi/                # Sports, prediction, futures guides
     ├── polymarket/            # Futures, games, execution, API guides
     ├── scripts/               # SCRIPTS_REFERENCE.md + per-script docs
