@@ -1,9 +1,7 @@
 """Tests for ticker_display.py — ticker parsing, date extraction, filtering."""
 
 from datetime import date, timedelta
-from unittest.mock import patch
 
-import pytest
 
 from datetime import datetime, timezone
 
@@ -20,12 +18,12 @@ from ticker_display import (
     filter_exclude_tickers,
     ticker_scheduled_utc,
     is_game_started,
-    TEAM_NAMES,
 )
 from opportunity import Opportunity
 
 
 # ── _split_team_codes ────────────────────────────────────────────────────────
+
 
 class TestSplitTeamCodes:
     def test_two_three_char_teams(self):
@@ -49,6 +47,7 @@ class TestSplitTeamCodes:
 
 
 # ── parse_game_datetime ──────────────────────────────────────────────────────
+
 
 class TestParseGameDatetime:
     def test_mlb_game_ticker(self):
@@ -89,6 +88,7 @@ class TestParseGameDatetime:
 
 # ── parse_matchup ────────────────────────────────────────────────────────────
 
+
 class TestParseMatchup:
     def test_mlb_matchup(self):
         assert parse_matchup("KXMLBGAME-26MAR301840CWSMIA-MIA") == "White Sox @ Miami"
@@ -102,6 +102,7 @@ class TestParseMatchup:
 
 
 # ── parse_pick_team ──────────────────────────────────────────────────────────
+
 
 class TestParsePickTeam:
     def test_known_team(self):
@@ -128,6 +129,7 @@ class TestParsePickTeam:
 
 # ── format_bet_label ─────────────────────────────────────────────────────────
 
+
 class TestFormatBetLabel:
     def test_game_ticker_uses_matchup(self):
         result = format_bet_label("KXMLBGAME-26MAR301840CWSMIA-MIA", "Some Title")
@@ -140,6 +142,7 @@ class TestFormatBetLabel:
 
 
 # ── extract_ticker_date ──────────────────────────────────────────────────────
+
 
 class TestExtractTickerDate:
     def test_mlb_game(self):
@@ -156,6 +159,7 @@ class TestExtractTickerDate:
 
 
 # ── resolve_date_arg ─────────────────────────────────────────────────────────
+
 
 class TestResolveDateArg:
     def test_today(self):
@@ -182,13 +186,38 @@ class TestResolveDateArg:
 
 # ── filter_by_date ───────────────────────────────────────────────────────────
 
+
 class TestFilterByDate:
     def test_filters_to_matching_date(self):
         opps = [
-            Opportunity("KXMLBGAME-26MAR301840CWSMIA-MIA", "G1", "game", "yes",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
-            Opportunity("KXMLBGAME-26MAR311840PITCIN-PIT", "G2", "game", "yes",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
+            Opportunity(
+                "KXMLBGAME-26MAR301840CWSMIA-MIA",
+                "G1",
+                "game",
+                "yes",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
+            Opportunity(
+                "KXMLBGAME-26MAR311840PITCIN-PIT",
+                "G2",
+                "game",
+                "yes",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
         ]
         result = filter_by_date(opps, "2026-03-30")
         assert len(result) == 1
@@ -196,8 +225,20 @@ class TestFilterByDate:
 
     def test_no_matches_returns_empty(self):
         opps = [
-            Opportunity("KXMLBGAME-26MAR301840CWSMIA-MIA", "G1", "game", "yes",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
+            Opportunity(
+                "KXMLBGAME-26MAR301840CWSMIA-MIA",
+                "G1",
+                "game",
+                "yes",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
         ]
         assert filter_by_date(opps, "2026-04-15") == []
 
@@ -209,13 +250,38 @@ class TestFilterByDate:
 
 # ── filter_exclude_tickers ───────────────────────────────────────────────────
 
+
 class TestFilterExcludeTickers:
     def test_excludes_matching_event(self):
         opps = [
-            Opportunity("KXMLBGAME-26MAR301840CWSMIA-MIA", "G1", "game", "yes",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
-            Opportunity("KXMLBGAME-26MAR311840PITCIN-PIT", "G2", "game", "yes",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
+            Opportunity(
+                "KXMLBGAME-26MAR301840CWSMIA-MIA",
+                "G1",
+                "game",
+                "yes",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
+            Opportunity(
+                "KXMLBGAME-26MAR311840PITCIN-PIT",
+                "G2",
+                "game",
+                "yes",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
         ]
         # Holding YES on MIA — should exclude the NO side too
         exclude = {"KXMLBGAME-26MAR301840CWSMIA-MIA"}
@@ -225,8 +291,20 @@ class TestFilterExcludeTickers:
 
     def test_excludes_opposite_side_of_same_game(self):
         opps = [
-            Opportunity("KXMLBGAME-26MAR301840CWSMIA-CWS", "G1", "game", "no",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
+            Opportunity(
+                "KXMLBGAME-26MAR301840CWSMIA-CWS",
+                "G1",
+                "game",
+                "no",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
         ]
         # Holding YES on MIA — should also exclude CWS side of same game
         exclude = {"KXMLBGAME-26MAR301840CWSMIA-MIA"}
@@ -235,8 +313,20 @@ class TestFilterExcludeTickers:
 
     def test_keeps_unrelated_games(self):
         opps = [
-            Opportunity("KXMLBGAME-26MAR311840PITCIN-PIT", "G2", "game", "yes",
-                        0.5, 0.6, 0.1, "test", "high", 8.0, 8.0, {}),
+            Opportunity(
+                "KXMLBGAME-26MAR311840PITCIN-PIT",
+                "G2",
+                "game",
+                "yes",
+                0.5,
+                0.6,
+                0.1,
+                "test",
+                "high",
+                8.0,
+                8.0,
+                {},
+            ),
         ]
         exclude = {"KXMLBGAME-26MAR301840CWSMIA-MIA"}
         result = filter_exclude_tickers(opps, exclude)
@@ -245,14 +335,15 @@ class TestFilterExcludeTickers:
 
 # ── ticker_scheduled_utc (R27 / F44) ──────────────────────────────────────────
 
+
 class TestTickerScheduledUTC:
     def test_moneyline_ticker_parsed_as_et_shifted_to_utc(self):
-        # 18:40 ET + 4h offset -> 22:40 UTC on the same calendar day
+        # 18:40 EDT -> 22:40 UTC on the same calendar day
         dt = ticker_scheduled_utc("KXMLBGAME-26MAR301840CWSMIA-MIA")
         assert dt == datetime(2026, 3, 30, 22, 40, tzinfo=timezone.utc)
 
     def test_offset_can_cross_midnight(self):
-        # 21:40 ET + 4h -> 01:40 UTC next day
+        # 21:40 EDT -> 01:40 UTC next day
         dt = ticker_scheduled_utc("KXMLBGAME-26JUN052140WSHAZ-WSH")
         assert dt == datetime(2026, 6, 6, 1, 40, tzinfo=timezone.utc)
 
@@ -268,8 +359,37 @@ class TestTickerScheduledUTC:
     def test_unparseable_returns_none(self):
         assert ticker_scheduled_utc("RANDOM-TICKER") is None
 
+    def test_winter_ticker_uses_est_not_edt(self):
+        # B6(d): 19:00 EST is UTC-5 -> 00:00 UTC next day (a fixed -4 gave 23:00).
+        dt = ticker_scheduled_utc("KXNHLGAME-26JAN151900BOSNYR-BOS")
+        assert dt == datetime(2026, 1, 16, 0, 0, tzinfo=timezone.utc)
+
+    def test_edge_detector_parser_agrees_in_winter(self):
+        from edge_detector import _ticker_scheduled_utc
+
+        t = "KXNHLGAME-26JAN151900BOSNYR-BOS"
+        assert _ticker_scheduled_utc(t) == ticker_scheduled_utc(t)
+
+
+class TestCommenceEtDate:
+    """B6(d): same-day matching compares exact ET dates. A late West Coast tip
+    in winter must stay on its own ET date, not roll to the next one."""
+
+    def test_winter_late_tip_stays_on_its_et_date(self):
+        from edge_detector import _commence_et_date
+
+        # 04:30 UTC Jan 16 = 23:30 EST Jan 15 (a fixed -4 said 00:30 Jan 16).
+        assert _commence_et_date({"commence_time": "2026-01-16T04:30:00Z"}) == "2026-01-15"
+
+    def test_summer_unchanged(self):
+        from edge_detector import _commence_et_date
+
+        # 03:30 UTC Jul 16 = 23:30 EDT Jul 15.
+        assert _commence_et_date({"commence_time": "2026-07-16T03:30:00Z"}) == "2026-07-15"
+
 
 # ── is_game_started (R27 / F44) ───────────────────────────────────────────────
+
 
 class TestIsGameStarted:
     # Game scheduled 2026-03-30 22:40 UTC (18:40 ET).
@@ -298,15 +418,18 @@ class TestIsGameStarted:
 
 # ── Tennis (Wimbledon) ───────────────────────────────────────────────────────
 
+
 class TestTennisDisplay:
     """Sport detection and label for Wimbledon ATP/WTA tickers."""
 
     def test_atp_ticker_sport_is_tennis(self):
         from ticker_display import sport_from_ticker
+
         assert sport_from_ticker("KXATPMATCH-26JUL01DJOKMED-DJOK") == "Tennis"
 
     def test_wta_ticker_sport_is_tennis(self):
         from ticker_display import sport_from_ticker
+
         assert sport_from_ticker("KXWTAMATCH-26JUL01SWIRYB-SWI") == "Tennis"
 
     def test_atp_player_abbr_returned_raw(self):

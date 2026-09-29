@@ -53,7 +53,7 @@ Only `README.md` and `CHANGELOG.md` live at the root of `docs/`. Everything else
 *   [betting-strategy-review-2026-08-26.md](./enhancements/betting-strategy-review-2026-08-26.md) — Full review of the settled record (402 bets), the defects found (CLV never computed, no cumulative-exposure gate, taker-only fee drag), and a four-phase action plan: stop waste → install CLV measurement → remove trading cost → scale only on evidence.
 
 ### 📈 Roadmap & Changelog
-*   [ROADMAP.md](./ROADMAP.md) — Priorities, consolidated action items, completed milestones, and the findings log (incl. the 90-day review, F45–F49). **Top item: Polymarket integration (Priority 0).**
+*   [ROADMAP.md](./ROADMAP.md) — Open work only, in priority order. Shipped items, findings and the pre-2026-09-29 roadmap live in [CHANGELOG.md](./CHANGELOG.md).
 *   [CHANGELOG.md](./CHANGELOG.md) — Project commit and feature changelog history.
 
 > Periodic performance audits live under `docs/my-documents/` (git-ignored, local-only). Their conclusions are folded into the ROADMAP findings log, which is the tracked, canonical record.

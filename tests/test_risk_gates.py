@@ -1089,6 +1089,8 @@ class TestKellyPriceComplement:
 
         monkeypatch.setattr(ke, "KELLY_FRACTION", 0.50)
         monkeypatch.setattr(ke, "MAX_BET_SIZE", 100000.0)
+        # Isolate Kelly from the B3 10%-of-bankroll Hard Stop, like MAX_BET_SIZE.
+        monkeypatch.setattr(ke, "HARD_STOP_POSITION_PCT", 1.0)
         monkeypatch.setattr(ke, "MIN_MARKET_PRICE", 0.0)
         monkeypatch.setattr(ke, "_PER_SPORT_MIN_EDGE", {})
 
@@ -2487,6 +2489,9 @@ class TestVenueMinShares:
         import kalshi_executor as ke
 
         monkeypatch.setattr(ke, "KELLY_FRACTION", 0.25)
+        # A 5-share bump at 50c is 12.5% of the $20 bankroll; these cases test
+        # the bump, not the B3 Hard Stop (covered in TestHardStopPositionPct).
+        monkeypatch.setattr(ke, "HARD_STOP_POSITION_PCT", 1.0)
 
     def _pm_opp(self, price=0.50, min_shares=5, **kw):
         opp = _opp(ticker="PM-tec-nba-champ-2027-sas", price=price, **kw)
@@ -2754,3 +2759,39 @@ class TestGate48LiveDetection:
 
         opp = self._opp("KXNCAAFSPREAD-26SEP12WSUKSU-KSU25", "not a date")
         assert _game_has_started(opp) is False
+
+
+class TestHardStopPositionPct:
+    """B3: CLAUDE.md's Hard Stop -- no single position above 10% of bankroll --
+    had no code; it held only because MAX_BET_SIZE sat under 10% of the balance."""
+
+    @pytest.fixture(autouse=True)
+    def _pin(self, monkeypatch):
+        import kalshi_executor as ke
+
+        monkeypatch.setattr(ke, "MAX_BET_SIZE", 1000.0)  # take the other cap out
+        monkeypatch.setattr(ke, "KELLY_FRACTION", 0.25)
+
+    def test_caps_to_ten_percent(self):
+        # $5 flat unit at 50c on a $20 bankroll = 25% -> capped to $2 (4 contracts).
+        r = size_order(
+            _opp(price=0.50), bankroll=20.0, open_positions=0, daily_pnl=0.0, unit_size=5.00
+        )
+        assert r.risk_approval == "APPROVED_CAPPED_HARD_STOP"
+        assert r.contracts == 4
+        assert r.cost_dollars <= 2.00
+
+    def test_rejects_when_one_contract_breaches(self):
+        # 1 contract at 80c on a $5 bankroll = 16%; no smaller order exists.
+        r = size_order(
+            _opp(price=0.80), bankroll=5.0, open_positions=0, daily_pnl=0.0, unit_size=0.50
+        )
+        assert r.contracts == 0
+        assert r.risk_approval.startswith("REJECTED: hard_stop_position_pct")
+
+    def test_under_the_limit_is_untouched(self):
+        r = size_order(
+            _opp(price=0.50), bankroll=100.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+        )
+        assert r.risk_approval == "APPROVED"
+        assert r.cost_dollars <= 10.00

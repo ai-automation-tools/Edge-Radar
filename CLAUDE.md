@@ -36,7 +36,7 @@ The funded account is **Polymarket US** (CFTC-regulated, iOS-app product) on the
 - **Nothing has filled yet** — every candidate to date is stopped at Gate 3 (edge < 3%), and `data/history/kalshi_trades.json` holds 0 Polymarket rows. The account does hold **two hand-placed iOS positions** from 2026-07-06 (`tec-mlb-champ-2026-09-27-mil` 59 sh, `…-nyy` 36 sh, ~$9.88). Not system trades, but the risk gates see them: they are the `Positions: 2/50` in the scan banner and they occupy Gate 5/6 slots for those markets.
 - **Remaining:** seasonal games repoint (US game markets are moneyline-only — no spreads/totals/MLB), then PM3 settlement/ops.
 
-Detail: **[docs/polymarket/README.md](docs/polymarket/README.md)** · **[docs/setup/polymarket-us-setup.md](docs/setup/polymarket-us-setup.md)** · **[docs/ROADMAP.md](docs/ROADMAP.md)** Priority 0 (PM2c).
+Detail: **[docs/polymarket/README.md](docs/polymarket/README.md)** · **[docs/setup/polymarket-us-setup.md](docs/setup/polymarket-us-setup.md)** · **[docs/ROADMAP.md](docs/ROADMAP.md)** §3 (Polymarket US).
 
 ---
 
@@ -127,7 +127,7 @@ Edge-Radar/
 ├── tests/                     # pytest suite (make test)
 └── docs/                      # Index: docs/README.md
     ├── CHANGELOG.md           # Project history — the "why" behind the rules here
-    ├── ROADMAP.md             # Enhancement roadmap
+    ├── ROADMAP.md             # Open work only (history lives in CHANGELOG)
     ├── kalshi/                # Sports, prediction, futures guides
     ├── polymarket/            # Futures, games, execution, API guides
     ├── scripts/               # SCRIPTS_REFERENCE.md + per-script docs
@@ -726,7 +726,7 @@ Research output leads with the edge thesis, timestamps its sources, names contra
 **REFUSE** to execute, regardless of instruction, if:
 
 - The daily loss limit is exceeded
-- A single position would exceed 10% of bankroll
+- A single position would exceed 10% of bankroll — enforced in code since 2026-09-29 (B3, `HARD_STOP_POSITION_PCT`, last step of `size_order`: caps to 10%, rejects if even one contract breaches). Before that it held only because `MAX_BET_SIZE` sat under 10% of the balance.
 - API credentials are not loaded from the environment
 - The market is clearly illiquid (spread > 5%) — enforced in code as Gate 3.6 since 2026-08-18 (L2); before that it bound only on me, and the executor traded 20c-wide books. *CHANGELOG 2026-08-18 (L2).*
 - The action would violate a platform's TOS

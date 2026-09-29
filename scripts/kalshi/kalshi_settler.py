@@ -134,7 +134,7 @@ def trade_fees(trade: dict) -> float:
     if recorded > 0:
         return recorded
     return taker_fee(
-        int(get_filled_contracts(trade) or 0), float(trade.get("market_price_at_entry") or 0)
+        get_filled_contracts(trade) or 0, float(trade.get("market_price_at_entry") or 0)
     )
 
 
@@ -228,7 +228,7 @@ def build_settlement_record(
         "side": trade.get("side"),
         "result": pnl["result"],
         "won": pnl["won"],
-        "contracts": int(get_filled_contracts(trade)),
+        "contracts": get_filled_contracts(trade),
         "cost": pnl["cost"],
         "revenue": pnl["revenue"],
         "fees": pnl["fees"],
@@ -562,7 +562,7 @@ def _settlement_to_record(s: dict) -> dict:
         "ticker": s.get("ticker", ""),
         "event_ticker": s.get("event_ticker", ""),
         "side": side,
-        "contracts": int(contracts),
+        "contracts": contracts,
         "cost": round(cost, 4),
         "revenue": round(revenue, 4),
         "fees": round(fees, 4),
@@ -911,7 +911,7 @@ def local_open_positions(trade_log: list[dict]) -> dict[str, dict]:
             or (t.get("venue") or "kalshi") != "kalshi"
         ):
             continue
-        filled = int(get_filled_contracts(t))
+        filled = get_filled_contracts(t)
         if filled <= 0:
             continue
         ticker = t.get("ticker", "")
@@ -935,7 +935,7 @@ def reconcile_positions(client: KalshiClient):
     api_tickers = {}
     for p in api_positions.get("market_positions", []):
         ticker = p.get("ticker", "")
-        position = int(float(p.get("position_fp", "0")))
+        position = float(p.get("position_fp", "0") or 0)
         if position != 0:
             api_tickers[ticker] = {
                 "position": position,

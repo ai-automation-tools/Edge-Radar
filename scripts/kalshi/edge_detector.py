@@ -26,7 +26,8 @@ import math
 import time
 import logging  # noqa: F401  -- re-exported
 import argparse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path  # noqa: F401  -- re-exported
 from dataclasses import asdict  # noqa: F401  -- re-exported
 from scipy.stats import norm
@@ -1842,11 +1843,12 @@ _MONTHS = {
     "DEC": 12,
 }
 
-# Eastern Time is UTC-4 (EDT) through the bulk of the sports calendar. This
-# offset is used ONLY to disambiguate which odds event a Kalshi market refers
-# to (matching scheduled start times); a 1-hour EST/EDT slip is immaterial
-# against the multi-hour matching window, so we skip the tzdata dependency.
-_ET_UTC_OFFSET_HOURS = 4
+# Kalshi tickers and same-day matching are in US Eastern wall-clock time.
+# B6(d): this was a fixed UTC-4 offset, which is wrong Nov-Mar (EST). The
+# spread/total and NBA/NHL paths match on exact ET-date equality, so a game at
+# 04:00-05:00 UTC in winter (11pm-midnight EST) resolved to the next ET date
+# and was silently skipped. tzdata ships as a pandas dependency on Windows.
+_ET = ZoneInfo("America/New_York")
 
 
 def _extract_game_date(ticker: str) -> str | None:
@@ -1879,14 +1881,10 @@ def _ticker_scheduled_utc(ticker: str) -> datetime | None:
     if not month:
         return None
     try:
-        # Treat the ET wall-clock numerals as UTC, then shift by the ET offset
-        # to land on the true UTC instant (good enough for event matching).
-        et_as_utc = datetime(
-            2000 + int(yy), month, int(dd), int(hhmm[:2]), int(hhmm[2:]), tzinfo=timezone.utc
-        )
+        et = datetime(2000 + int(yy), month, int(dd), int(hhmm[:2]), int(hhmm[2:]), tzinfo=_ET)
     except ValueError:
         return None
-    return et_as_utc + timedelta(hours=_ET_UTC_OFFSET_HOURS)
+    return et.astimezone(timezone.utc)
 
 
 def _parse_iso_utc(value: str) -> datetime | None:
@@ -1904,7 +1902,7 @@ def _commence_et_date(event: dict) -> str | None:
     dt = _parse_iso_utc(event.get("commence_time", ""))
     if dt is None:
         return None
-    return (dt - timedelta(hours=_ET_UTC_OFFSET_HOURS)).date().isoformat()
+    return dt.astimezone(_ET).date().isoformat()
 
 
 def _event_has_matchup(event: dict, team_a: str, team_b: str) -> bool:
