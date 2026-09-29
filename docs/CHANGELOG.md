@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-09-29 -- docs/UPSTREAMS.md, and a biweekly upstream check
+
+- New `docs/UPSTREAMS.md`: every external API and library Edge-Radar depends on
+  (Kalshi, Polymarket US, The Odds API, ESPN/MLB/NHL feeds, NWS, CoinGecko,
+  Resend, ...), what the code assumes about each, and where to check it.
+- It is the worklist for the new **Edge-Radar Upstream Check** routine (every
+  other Monday 08:00, `upstream/auto-*` PRs against `master`). The routine fixes
+  integration-layer drift with tests and queues money-path findings as ROADMAP
+  items. Its PRs are not auto-merged; Mike reviews them.
+
 ## 2026-09-27 -- Longshot strategy retired
 
 - The longshot strategy (P1 `longshot` profile, Kalshi subaccount 1, `DRY_RUN=true`)
