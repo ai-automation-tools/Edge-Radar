@@ -1,7 +1,7 @@
 # Edge-Radar — Python Dependencies
 
 # === Core ===
-python-dotenv>=1.0.0
+python-dotenv>=1.2.3
 requests>=2.31.0
 cryptography>=44.0.0              # RSA-PSS signing for Kalshi API auth
 # aiohttp==3.9.1                  # planned — async HTTP
