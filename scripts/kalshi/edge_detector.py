@@ -593,8 +593,12 @@ def weighted_median(values: list[float], weights: list[float]) -> float:
     total_weight = sum(w for _, w in pairs)
     half = total_weight / 2.0
     cumulative = 0.0
-    for val, w in pairs:
+    for i, (val, w) in enumerate(pairs):
         cumulative += w
+        # B1: an exact tie at the 50% mark sits between two values; take the
+        # midpoint rather than always resolving DOWN to the lower one.
+        if i + 1 < len(pairs) and math.isclose(cumulative, half, rel_tol=1e-9, abs_tol=1e-12):
+            return (val + pairs[i + 1][0]) / 2.0
         if cumulative >= half:
             return val
     return pairs[-1][0]
@@ -870,8 +874,9 @@ def consensus_spread_prob(
     sportsbook spreads and a normal-distribution model.
 
     Instead of the old linear adjustment (3% per point), we:
-    1. Collect the median book spread and implied cover probability
-    2. Use those to infer the expected margin (mean of the distribution)
+    1. Infer each book's expected margin from ITS OWN (spread, devigged
+       cover probability) quote
+    2. Take the book-weighted median of those means (B1)
     3. Model the final margin as Normal(mean, stdev) where stdev is
        sport-specific
     4. Calculate P(margin > strike) = 1 - Phi((strike - mean) / stdev)
@@ -954,28 +959,26 @@ def consensus_spread_prob(
         )
         return None
 
-    # Weighted median using sharp book weights
-    sd_weights = [_book_weight(s["book"]) for s in spread_data]
-    sd_spreads = [s["spread"] for s in spread_data]
-    sd_implieds = [s["implied"] for s in spread_data]
-    median_spread = weighted_median(sd_spreads, sd_weights)
-    median_implied = weighted_median(sd_implieds, sd_weights)
-
     stdev = _get_margin_stdev(ticker) + stdev_adjustment
 
-    # The book says the team covers median_spread with median_implied probability.
+    # Each book says the team covers its `spread` with its devigged `implied`.
     # Book spread is negative for favorites: spread=-5.5 means "favored by 5.5".
-    # P(margin > -spread) = median_implied
-    # margin ~ Normal(mean, stdev)
-    # median_implied = 1 - Phi((-median_spread - mean) / stdev)
-    # Solve for mean:
-    #   Phi((-median_spread - mean) / stdev) = 1 - median_implied
-    #   (-median_spread - mean) / stdev = Phi_inv(1 - median_implied)
-    #   mean = -median_spread - stdev * Phi_inv(1 - median_implied)
-
-    # Clamp implied to avoid infinities at 0 or 1
-    clamped_implied = max(0.01, min(0.99, median_implied))
-    mean_margin = -median_spread - stdev * norm.ppf(1.0 - clamped_implied)
+    # P(margin > -spread) = implied, margin ~ Normal(mean, stdev), so
+    #   mean = -spread - stdev * Phi_inv(1 - implied)
+    # B1 (2026-09-29): invert PER BOOK, then take the weighted median of the
+    # means. The old code took the median spread and the median probability
+    # independently and inverted that pair -- a quote no book made. Books
+    # usually agree on the line (median error 0.00pt over 1,452 cached rows),
+    # but the tail reached 8.8pt, mostly NFL, and all 12 rows above 3pt pushed
+    # P(cover) UP -- a one-sided error the gate then selects on.
+    sd_weights = [_book_weight(s["book"]) for s in spread_data]
+    for s in spread_data:
+        clamped = max(0.01, min(0.99, s["implied"]))  # avoid ppf infinities
+        s["mean"] = round(-s["spread"] - stdev * norm.ppf(1.0 - clamped), 4)
+    mean_margin = weighted_median([s["mean"] for s in spread_data], sd_weights)
+    # Kept for display/logging only; no longer feed the model.
+    median_spread = weighted_median([s["spread"] for s in spread_data], sd_weights)
+    median_implied = weighted_median([s["implied"] for s in spread_data], sd_weights)
 
     # Now calculate P(margin > strike)
     adjusted_prob = 1.0 - norm.cdf(strike, loc=mean_margin, scale=stdev)
@@ -1037,8 +1040,8 @@ def consensus_total_prob(
     and a normal-distribution model.
 
     Same approach as spread model:
-    1. Collect median book total line and implied over probability
-    2. Infer the expected total (mean of distribution)
+    1. Infer each book's expected total from its own (line, devigged over prob)
+    2. Take the book-weighted median of those means (B1)
     3. Calculate P(total > strike) using normal CDF
     """
     total_data = []
@@ -1099,22 +1102,17 @@ def consensus_total_prob(
         )
         return None
 
-    # Weighted median using sharp book weights
-    td_weights = [_book_weight(t["book"]) for t in total_data]
-    td_lines = [t["line"] for t in total_data]
-    td_implieds = [t["implied"] for t in total_data]
-    median_line = weighted_median(td_lines, td_weights)
-    median_implied = weighted_median(td_implieds, td_weights)
-
     stdev = _get_total_stdev(ticker) + stdev_adjustment
 
-    # The book says P(total > median_line) = median_implied
-    # total ~ Normal(mean, stdev)
-    # median_implied = 1 - Phi((median_line - mean) / stdev)
-    # Solve for mean:
-    #   mean = median_line - stdev * Phi_inv(1 - median_implied)
-    clamped_implied = max(0.01, min(0.99, median_implied))
-    mean_total = median_line - stdev * norm.ppf(1.0 - clamped_implied)
+    # Each book says P(total > line) = implied, total ~ Normal(mean, stdev):
+    #   mean = line - stdev * Phi_inv(1 - implied)
+    # B1: invert per book, then weighted-median the means (see the spread model).
+    td_weights = [_book_weight(t["book"]) for t in total_data]
+    for t in total_data:
+        clamped = max(0.01, min(0.99, t["implied"]))
+        t["mean"] = round(t["line"] - stdev * norm.ppf(1.0 - clamped), 4)
+    mean_total = weighted_median([t["mean"] for t in total_data], td_weights)
+    median_line = weighted_median([t["line"] for t in total_data], td_weights)
 
     # P(total > strike)
     adjusted_prob = 1.0 - norm.cdf(strike, loc=mean_total, scale=stdev)

@@ -4,7 +4,8 @@ betting_analysis.py — Comprehensive post-hoc betting performance report.
 Reads `data/history/kalshi_settlements.json` and produces a detailed markdown
 report of every settled bet in a rolling window, plus slice-by-slice breakdowns
 (sport, category, side, edge bucket, confidence, price bucket, calibration,
-streaks, volume).
+streaks, volume). The CLV section (S9) comes first after the headline: it is
+the primary decision signal, because realized ROI cannot resolve at this stake.
 
 Usage:
     python scripts/kalshi/betting_analysis.py                       # 30d to stdout
@@ -17,7 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
+import random
 import statistics
 import sys
 from collections import defaultdict
@@ -38,6 +39,7 @@ DEFAULT_OUT_DIR = Path("reports/Performance")
 
 
 # ── Data loading ─────────────────────────────────────────────────────────────
+
 
 def _parse_iso(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -64,6 +66,7 @@ def load_settlements(path: Path, days: int, now: datetime | None = None) -> list
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
 
 def _pct(n: float, d: float) -> float:
     return (n / d * 100.0) if d else 0.0
@@ -171,8 +174,17 @@ def _fv_bucket(fv: float | None) -> str:
 
 
 _FV_BUCKET_ORDER = [
-    "0–10%", "10–20%", "20–30%", "30–40%", "40–50%",
-    "50–60%", "60–70%", "70–80%", "80–90%", "90–100%", "n/a",
+    "0–10%",
+    "10–20%",
+    "20–30%",
+    "30–40%",
+    "40–50%",
+    "50–60%",
+    "60–70%",
+    "70–80%",
+    "80–90%",
+    "90–100%",
+    "n/a",
 ]
 
 
@@ -181,6 +193,7 @@ def _confidence_rank(c: str | None) -> int:
 
 
 # ── Metric aggregation ───────────────────────────────────────────────────────
+
 
 @dataclass
 class SliceStats:
@@ -248,6 +261,7 @@ def _bucket(rows: Iterable[dict], key_fn) -> dict[str, SliceStats]:
 
 # ── Streak math ──────────────────────────────────────────────────────────────
 
+
 def _streaks(rows: list[dict]) -> tuple[str, int, int, int]:
     """Return (current_streak_str, current_len, longest_win, longest_loss)."""
     if not rows:
@@ -276,6 +290,7 @@ def _streaks(rows: list[dict]) -> tuple[str, int, int, int]:
 
 # ── Report rendering ─────────────────────────────────────────────────────────
 
+
 def _write(lines: list[str], s: str = "") -> None:
     lines.append(s)
 
@@ -289,7 +304,11 @@ def _render_headline(rows: list[dict], days: int, now: datetime) -> list[str]:
     _write(lines, f"# Betting Analysis — Last {days} Days")
     _write(lines)
     _write(lines, f"*Generated: {now.strftime('%Y-%m-%d %H:%M UTC')}*")
-    _write(lines, f"*Window: {(now - timedelta(days=days)).strftime('%Y-%m-%d')} → {now.strftime('%Y-%m-%d')}*")
+    _write(
+        lines,
+        f"*Window: {(now - timedelta(days=days)).strftime('%Y-%m-%d')} → "
+        f"{now.strftime('%Y-%m-%d')}*",
+    )
     _write(lines, f"*Source: `{SETTLEMENTS_PATH}` ({total.count} settled bets)*")
     _write(lines)
     _write(lines, "## Headline")
@@ -302,7 +321,9 @@ def _render_headline(rows: list[dict], days: int, now: datetime) -> list[str]:
     _write(lines, f"| Total cost | {_fmt_money(total.cost)} |")
     _write(lines, f"| Net P&L | {_fmt_money(total.pnl)} |")
     _write(lines, f"| ROI | {total.roi:+.1f}% |")
-    _write(lines, f"| Avg bet size | {_fmt_money(total.cost / total.count) if total.count else '—'} |")
+    _write(
+        lines, f"| Avg bet size | {_fmt_money(total.cost / total.count) if total.count else '—'} |"
+    )
     _write(lines, f"| Pace | {bets_per_day:.1f} bets/day |")
     if total.brier is not None:
         _write(lines, f"| Brier score | {total.brier:.4f} *(0.25 = coin-flip; lower is better)* |")
@@ -314,8 +335,120 @@ def _render_headline(rows: list[dict], days: int, now: datetime) -> list[str]:
     return lines
 
 
-def _render_slice_table(title: str, buckets: dict[str, SliceStats], order: list[str] | None = None,
-                        extra_cols: bool = False) -> list[str]:
+# ── CLV (S9) ─────────────────────────────────────────────────────────────────
+
+CLV_MIN_COVERAGE = 0.60  # below this, the capture job is the problem (S15)
+
+
+def _bootstrap_ci(
+    vals: list[float], n_boot: int = 2000, seed: int = 0
+) -> tuple[float, float] | None:
+    """95% percentile-bootstrap CI on the mean. Seeded so a report is reproducible."""
+    if len(vals) < 2:
+        return None
+    rng = random.Random(seed)
+    n = len(vals)
+    means = sorted(sum(rng.choices(vals, k=n)) / n for _ in range(n_boot))
+    return means[int(0.025 * n_boot)], means[int(0.975 * n_boot) - 1]
+
+
+def _clv_eligible(row: dict) -> bool:
+    """A row that could carry a CLV: it filled. Zero-fill resting orders settle
+    into the log too, but have no entry price, so clv_capture skips them by
+    design -- counting them would read as a capture failure that isn't one."""
+    try:
+        return float(row.get("contracts") or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _clv_cells(rows: list[dict]) -> tuple[str, str, str]:
+    """(mean pts, 95% CI, captured/settled) for one slice of FILLED rows."""
+    vals = [float(r["clv"]) * 100 for r in rows if r.get("clv") is not None]
+    cov = f"{len(vals)}/{len(rows)} ({_pct(len(vals), len(rows)):.0f}%)"
+    if not vals:
+        return "—", "—", cov
+    ci = _bootstrap_ci(vals)
+    ci_s = f"[{ci[0]:+.2f}, {ci[1]:+.2f}]" if ci else "n<2"
+    return f"{statistics.mean(vals):+.2f}", ci_s, cov
+
+
+def _render_clv(rows: list[dict], slices: list[tuple[str, object, list[str] | None]]) -> list[str]:
+    """S9: mean CLV in percentage points, bootstrap CI, coverage beside every figure.
+
+    CLV is `close_mid - entry`, both bet-side (clv_capture.py), so positive means
+    the market moved toward us before the event. Every figure carries
+    `n_captured / n_settled`: misses are not random -- they concentrate in thin
+    markets, where the bad bets live -- so low coverage biases the mean UP.
+    """
+    lines: list[str] = []
+    _write(lines, "## Closing Line Value (CLV)")
+    _write(lines)
+    rows = [r for r in rows if _clv_eligible(r)]
+    if not rows:
+        _write(lines, "*No filled bets in this window.*")
+        _write(lines)
+        return lines
+    n_cap = sum(1 for r in rows if r.get("clv") is not None)
+    if not n_cap:
+        _write(
+            lines,
+            f"*No settled bet in this window carries a CLV yet (0/{len(rows)}). "
+            "Capture started 2026-09-10; there is nothing to backfill.*",
+        )
+        _write(lines)
+        return lines
+    mean, ci, cov = _clv_cells(rows)
+    _write(lines, f"**All bets: {mean} pts, 95% CI {ci}, captured {cov}.**")
+    reasons: dict[str, int] = defaultdict(int)
+    for r in rows:
+        reasons[r.get("close_capture_reason") or "no capture attempted"] += 1
+    _write(
+        lines,
+        "Capture outcome (filled bets): "
+        + ", ".join(f"{k} {v}" for k, v in sorted(reasons.items()))
+        + ". "
+        "Bets placed before capture shipped (2026-09-10) can never carry a CLV; "
+        "they age out of a 30-day window by 2026-10-10.",
+    )
+    if n_cap / len(rows) < CLV_MIN_COVERAGE:
+        _write(lines)
+        _write(
+            lines,
+            f"> ⚠ Coverage is below {CLV_MIN_COVERAGE:.0%}. Fix capture before reading "
+            "this mean: misses concentrate in thin markets, so it reads optimistic.",
+        )
+    _write(lines)
+    _write(
+        lines,
+        "Fee role is not sliced: settlement rows do not record it, and every fill "
+        "to date has been a taker (S23b). It becomes a slice when S14's maker test runs.",
+    )
+    _write(lines)
+    for title, key_fn, order in slices:
+        groups: dict[str, list[dict]] = defaultdict(list)
+        for r in rows:
+            groups[key_fn(r)].append(r)
+        _write(lines, f"### CLV by {title}")
+        _write(lines)
+        _write(lines, "| Slice | Mean CLV (pts) | 95% CI | Captured / Settled |")
+        _write(lines, "|---|---:|---|---:|")
+        keys = order if order is not None else sorted(groups)
+        for k in keys:
+            if k not in groups:
+                continue
+            m, c, cv = _clv_cells(groups[k])
+            _write(lines, f"| {k} | {m} | {c} | {cv} |")
+        _write(lines)
+    return lines
+
+
+def _render_slice_table(
+    title: str,
+    buckets: dict[str, SliceStats],
+    order: list[str] | None = None,
+    extra_cols: bool = False,
+) -> list[str]:
     lines: list[str] = []
     _write(lines, f"## {title}")
     _write(lines)
@@ -349,10 +482,12 @@ def _render_ledger(rows: list[dict]) -> list[str]:
     lines: list[str] = []
     _write(lines, "## Trade Ledger")
     _write(lines)
-    _write(lines,
-           "| Date | Sport | Type | Matchup | Side | N | Cost | Price | Edge | Conf | Result | P&L | ROI |")
-    _write(lines,
-           "|---|---|---|---|---|---:|---:|---:|---:|---|---|---:|---:|")
+    _write(
+        lines,
+        "| Date | Sport | Type | Matchup | Side | N | Cost | Price | Edge | Conf | Result "
+        "| P&L | ROI |",
+    )
+    _write(lines, "|---|---|---|---|---|---:|---:|---:|---:|---|---|---:|---:|")
     for r in rows:
         date = r["_ts"].strftime("%m-%d")
         sport = sport_from_ticker(r.get("ticker", "")) or "—"
@@ -368,10 +503,12 @@ def _render_ledger(rows: list[dict]) -> list[str]:
         pnl = float(r.get("net_pnl") or 0.0)
         price_str = f"{price * 100:.0f}¢" if price is not None else "—"
         edge_str = f"{edge * 100:+.1f}%" if edge is not None else "—"
-        _write(lines,
-               f"| {date} | {sport} | {btype} | {matchup} | {side} | {n} | "
-               f"{_fmt_money(cost)} | {price_str} | {edge_str} | {conf} | "
-               f"{result} | {_fmt_money(pnl)} | {_fmt_roi(pnl, cost)} |")
+        _write(
+            lines,
+            f"| {date} | {sport} | {btype} | {matchup} | {side} | {n} | "
+            f"{_fmt_money(cost)} | {price_str} | {edge_str} | {conf} | "
+            f"{result} | {_fmt_money(pnl)} | {_fmt_roi(pnl, cost)} |",
+        )
     _write(lines)
     return lines
 
@@ -379,9 +516,11 @@ def _render_ledger(rows: list[dict]) -> list[str]:
 def _render_longshot(rows: list[dict]) -> list[str]:
     """Longshot detail — market price < 15¢ (≈ 5.67:1 or longer)."""
     lines: list[str] = []
-    longshots = [r for r in rows
-                 if r.get("market_price_at_entry") is not None
-                 and float(r["market_price_at_entry"]) < 0.15]
+    longshots = [
+        r
+        for r in rows
+        if r.get("market_price_at_entry") is not None and float(r["market_price_at_entry"]) < 0.15
+    ]
     _write(lines, "## Longshots (Market Price < 15¢, ≈ 5.67:1+)")
     _write(lines)
     if not longshots:
@@ -391,8 +530,11 @@ def _render_longshot(rows: list[dict]) -> list[str]:
     agg = SliceStats()
     for r in longshots:
         agg.add(r)
-    _write(lines, f"*{agg.count} bets · {agg.wins}W–{agg.losses}L · "
-                  f"WR {agg.win_rate:.1f}% · P&L {_fmt_money(agg.pnl)} · ROI {agg.roi:+.1f}%*")
+    _write(
+        lines,
+        f"*{agg.count} bets · {agg.wins}W–{agg.losses}L · "
+        f"WR {agg.win_rate:.1f}% · P&L {_fmt_money(agg.pnl)} · ROI {agg.roi:+.1f}%*",
+    )
     _write(lines)
     _write(lines, "| Date | Sport | Matchup | Side | Price | Edge | Fair | Result | P&L |")
     _write(lines, "|---|---|---|---|---:|---:|---:|---|---:|")
@@ -408,11 +550,13 @@ def _render_longshot(rows: list[dict]) -> list[str]:
         pnl = float(r.get("net_pnl") or 0.0)
         edge_str = f"{edge * 100:+.1f}%" if edge is not None else "—"
         fv_str = f"{fv * 100:.0f}%" if fv is not None else "—"
-        _write(lines,
-               f"| {date} | {sport} | {matchup} | {side} | "
-               f"{price * 100:.0f}¢ | "
-               f"{edge_str} | {fv_str} | "
-               f"{result} | {_fmt_money(pnl)} |")
+        _write(
+            lines,
+            f"| {date} | {sport} | {matchup} | {side} | "
+            f"{price * 100:.0f}¢ | "
+            f"{edge_str} | {fv_str} | "
+            f"{result} | {_fmt_money(pnl)} |",
+        )
     _write(lines)
     return lines
 
@@ -445,9 +589,11 @@ def _render_daily_pnl(rows: list[dict]) -> list[str]:
     for day in sorted(by_day.keys()):
         s = by_day[day]
         running += s.pnl
-        _write(lines,
-               f"| {day} | {s.count} | {s.wins}–{s.losses} | {s.win_rate:.1f}% | "
-               f"{_fmt_money(s.cost)} | {_fmt_money(s.pnl)} | {s.roi:+.1f}% |")
+        _write(
+            lines,
+            f"| {day} | {s.count} | {s.wins}–{s.losses} | {s.win_rate:.1f}% | "
+            f"{_fmt_money(s.cost)} | {_fmt_money(s.pnl)} | {s.roi:+.1f}% |",
+        )
     _write(lines)
     _write(lines, f"*Running total matches headline P&L: {_fmt_money(running)}*")
     _write(lines)
@@ -456,14 +602,39 @@ def _render_daily_pnl(rows: list[dict]) -> list[str]:
 
 # ── Main renderer ────────────────────────────────────────────────────────────
 
+
 def build_report(rows: list[dict], days: int, now: datetime) -> str:
     if not rows:
-        return (f"# Betting Analysis — Last {days} Days\n\n"
-                f"*No settled bets in the last {days} days.*\n")
+        return (
+            f"# Betting Analysis — Last {days} Days\n\n"
+            f"*No settled bets in the last {days} days.*\n"
+        )
 
     sections: list[str] = []
 
     sections.append("\n".join(_render_headline(rows, days, now)))
+
+    sections.append(
+        "\n".join(
+            _render_clv(
+                rows,
+                [
+                    ("Sport", lambda r: sport_from_ticker(r.get("ticker", "")) or "Unknown", None),
+                    (
+                        "Category",
+                        lambda r: bet_type_from_ticker(r.get("ticker", "")) or "Unknown",
+                        None,
+                    ),
+                    ("Side", lambda r: (r.get("side") or "unknown").upper(), None),
+                    (
+                        "Price at Entry",
+                        lambda r: _price_bucket(r.get("market_price_at_entry")),
+                        _PRICE_BUCKET_ORDER,
+                    ),
+                ],
+            )
+        )
+    )
 
     by_sport = _bucket(rows, lambda r: sport_from_ticker(r.get("ticker", "")) or "Unknown")
     sections.append("\n".join(_render_slice_table("By Sport", by_sport)))
@@ -475,21 +646,35 @@ def build_report(rows: list[dict], days: int, now: datetime) -> str:
     sections.append("\n".join(_render_slice_table("By Side (YES vs NO)", by_side)))
 
     by_edge = _bucket(rows, lambda r: _edge_bucket(r.get("edge_estimated")))
-    sections.append("\n".join(_render_slice_table(
-        "By Claimed Edge Bucket", by_edge, order=_EDGE_BUCKET_ORDER)))
+    sections.append(
+        "\n".join(_render_slice_table("By Claimed Edge Bucket", by_edge, order=_EDGE_BUCKET_ORDER))
+    )
 
     by_conf = _bucket(rows, lambda r: (r.get("confidence") or "n/a").title())
-    sections.append("\n".join(_render_slice_table(
-        "By Confidence", by_conf, order=["High", "Medium", "Low", "N/A"])))
+    sections.append(
+        "\n".join(
+            _render_slice_table("By Confidence", by_conf, order=["High", "Medium", "Low", "N/A"])
+        )
+    )
 
     by_price = _bucket(rows, lambda r: _price_bucket(r.get("market_price_at_entry")))
-    sections.append("\n".join(_render_slice_table(
-        "By Market Price at Entry", by_price, order=_PRICE_BUCKET_ORDER)))
+    sections.append(
+        "\n".join(
+            _render_slice_table("By Market Price at Entry", by_price, order=_PRICE_BUCKET_ORDER)
+        )
+    )
 
     by_fv = _bucket(rows, lambda r: _fv_bucket(r.get("fair_value")))
-    sections.append("\n".join(_render_slice_table(
-        "Calibration (Predicted Probability vs Realized Win Rate)",
-        by_fv, order=_FV_BUCKET_ORDER, extra_cols=True)))
+    sections.append(
+        "\n".join(
+            _render_slice_table(
+                "Calibration (Predicted Probability vs Realized Win Rate)",
+                by_fv,
+                order=_FV_BUCKET_ORDER,
+                extra_cols=True,
+            )
+        )
+    )
 
     sections.append("\n".join(_render_longshot(rows)))
     sections.append("\n".join(_render_streaks(rows)))
@@ -501,14 +686,21 @@ def build_report(rows: list[dict], days: int, now: datetime) -> str:
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--days", type=int, default=30,
-                    help="Lookback window in days (default: 30)")
-    ap.add_argument("--save", action="store_true",
-                    help=f"Save to {DEFAULT_OUT_DIR}/betting_analysis_YYYY-MM-DD_Nd.md")
-    ap.add_argument("--out", type=Path, default=None,
-                    help="Explicit output path (overrides --save default)")
-    ap.add_argument("--settlements", type=Path, default=SETTLEMENTS_PATH,
-                    help=f"Path to settlements JSON (default: {SETTLEMENTS_PATH})")
+    ap.add_argument("--days", type=int, default=30, help="Lookback window in days (default: 30)")
+    ap.add_argument(
+        "--save",
+        action="store_true",
+        help=f"Save to {DEFAULT_OUT_DIR}/betting_analysis_YYYY-MM-DD_Nd.md",
+    )
+    ap.add_argument(
+        "--out", type=Path, default=None, help="Explicit output path (overrides --save default)"
+    )
+    ap.add_argument(
+        "--settlements",
+        type=Path,
+        default=SETTLEMENTS_PATH,
+        help=f"Path to settlements JSON (default: {SETTLEMENTS_PATH})",
+    )
     return ap.parse_args(argv)
 
 

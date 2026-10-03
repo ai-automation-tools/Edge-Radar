@@ -15,17 +15,15 @@ until S15 says otherwise.
 
 | ID | Item | Effort |
 |----|------|--------|
-| **B1** | **Spread and total consensus take the median line and the median probability separately,** which pairs values no single book quoted. Error is up to 8.8pt, mostly NFL, and always leans toward YES. Invert per book first, then take the weighted median of the inferred means. Fix the downward tie-break in `weighted_median` in the same change. | S |
 | **B2** | **Unmapped sports fall back to a 12.0 stdev** (`edge_detector.py:861, 1028`). This is latent while those sports only trade moneylines. Fail closed (`None`, no edge) and add the soccer-league and WNCAAB entries. | S |
 | **B6(a-c)** | (a) The weather adjustment is applied after the side is chosen. (b) `CATEGORY_MAP` prefix shadowing sends a future `KXEPLSPREAD` to `game`. (c) Lower the log level of the "0 candidate events" warnings to DEBUG, and check why June markets still get scanned. | S |
 
 ## 2. Measurement: CLV and strategy state (Priority 0a, phases 2-4)
 
-S8 (CLV capture) shipped 2026-09-10. Everything below reads from it.
+S8 (CLV capture) shipped 2026-09-10 and S9 (the CLV section of `betting_analysis.py`) on 2026-09-29. Everything below reads from them.
 
 | ID | Item | Effort |
 |----|------|--------|
-| **S9** | **CLV reporting slice** in `betting_analysis.py`: mean CLV with a bootstrap CI by sport, category, side, price band and fee role, with `n_captured / n_settled` printed next to every figure. | S |
 | **S10** | **`strategy_state.json`, protective only.** Per segment it records `last_settled_at`, `evidence_status`, `expires_after_days` and a default of dry-run when stale. It can demote a segment to dry-run, raise a floor or cap a stake, and nothing else. **Once it ships, remove the `.env` pilot floors** (`MIN_EDGE_THRESHOLD_NFL`, `_NCAAF`, `_MLB_SPREAD`). | M |
 | **S6** | **`risk_config_fingerprint()`**: hash the inputs the executor actually runs with (`.env`, `.bat` overrides, post-import module globals, strategy-state and eligibility-cache versions). Print it from `doctor.py` and the daily summary. This also closes S23 (balances quoted in docs going stale): `doctor.py` becomes the only place a balance is stated. | S |
 | **S11** | **Shadow diagnostics, log only:** `calibrated_edge` at lambda 0.16/0.25/0.40, `gate3_ceiling_would_reject` at 0.20/0.30, and a `legacy_gateset` label. Review firing rates after one full cycle. | S |
@@ -35,19 +33,11 @@ S8 (CLV capture) shipped 2026-09-10. Everything below reads from it.
 | **S14** | **Maker-fill A/B.** Every fill today is a taker fill, and fees cost 3.14pt of ROI. Assign by deterministic ticker hash, 25% maker / 75% taker, with sizing unchanged. Recompute edge at the limit price, and log scan, limit and fill prices plus fee role. | M |
 | **S15** | **Day-90 checkpoint, around 2026-12-09.** If coverage is below 60%, fix capture first. If the CI straddles zero, shrink the book or stop. If the lower bound is above 0 with 150 or more captures, raise `UNIT_SIZE` to $1.50, and only that. | S |
 
-## 3. Polymarket US
+## 3. Model and gate follow-ups
 
 | ID | Item | Effort |
 |----|------|--------|
-| **PM2e** | **Decide whether to keep the venue armed.** Futures and games have no settlement history. `POLYMARKET_DRY_RUN=true` halts the venue without affecting Kalshi. | XS |
-| **B5** | **Futures N-way devig is proportional**, which inflates longshot fair values. Switch to power or Shin devig, and skip incomplete books (raw implied total < 1.05). Futures are the only orderable US surface. | M |
-| **PM-games** | **Seasonal games repoint.** US game markets are moneyline-only (no spreads, totals or MLB). T4 applies here. | M |
-| **PM3** | **Settlement and ops:** a settler (resolution, redeem, venue-tagged trade log), venue columns in the digest and analysis, and series dedup that is aware of both venues. | M-L |
-
-## 4. Model and gate follow-ups
-
-| ID | Item | Effort |
-|----|------|--------|
+| **B5** | **Futures N-way devig is proportional**, which inflates longshot fair values. Switch to power or Shin devig, and skip incomplete books (raw implied total < 1.05). Affects Kalshi futures (`futures_edge.py`). | M |
 | **T4** | **Newly covered market types flood the book before they can be calibrated.** Options: a higher floor until first calibration, a per-shape batch cap, or a per-(sport, category) share cap. | S-M |
 | **GT1** | **Three unaligned NO-side knobs** (Gate 4.6, 4.6b and F4 damping). Check whether one edge-vs-price surface can reproduce all three before merging any of them. | M |
 | **MLB** | Re-check MLB totals after about 20 more settles under Gate 3.55. Align the totals `n_books` floor (3) with moneyline (5). Once rows carry `n_books`, re-run `book_width_check.py` in direct mode. | S |
@@ -56,7 +46,7 @@ S8 (CLV capture) shipped 2026-09-10. Everything below reads from it.
 | **C9** | Soccer total stdev is 1.5, but realized data shows 1.86. Change it only with a backtest, because soccer totals are currently profitable. | S |
 | **C4b** | Cap the edge for the `high` confidence label. Measure first, since High underperforms even at low edge. | S |
 
-## 5. Scheduled checks and watch items
+## 4. Scheduled checks and watch items
 
 | ID | When | Check |
 |----|------|-------|
@@ -66,7 +56,7 @@ S8 (CLV capture) shipped 2026-09-10. Everything below reads from it.
 | **S26b** | One quota cycle | Keep the daily `x-requests-used` readings per key to learn the Odds API reset model. Check key `...44681c` (401, likely a typo in `ODDS_API_KEYS`). |
 | **S24** | Next occurrence | MLS LAG-NE 09-05 produced no edge because `find_market_event` found 0 candidates, likely a team-name mapping miss. |
 
-## 6. Hygiene and tooling
+## 5. Hygiene and tooling
 
 | ID | Item | Effort |
 |----|------|--------|
@@ -81,7 +71,7 @@ S8 (CLV capture) shipped 2026-09-10. Everything below reads from it.
 | **Q6** | Package `scripts/` and retire the `sys.path` hacks. | L |
 | **R19** | Complete `FUTURES_ALIASES` for NBA/NHL/MLB. See the archive for the rest of the scope. | M |
 
-## 7. Dormant until prediction markets are re-enabled
+## 6. Dormant until prediction markets are re-enabled
 
 `ALLOW_PREDICTION_BETS=false` (Gate 4.7) blocks all of these today. If it is ever flipped, **C10c must land first.**
 

@@ -267,7 +267,6 @@ In addition, NO bets priced below `NO_SIDE_KELLY_PRICE_FLOOR` (default $0.35) ar
 > - `APPROVED_CAPPED_MAX_BET` — downsized by gate 8
 > - `APPROVED_CAPPED_BET_RATIO` — downsized by gate 9
 > - `APPROVED_CAPPED_EXPOSURE` — downsized by gate 2b's remaining headroom
-> - `APPROVED_BUMPED_MIN_SHARES` — raised to a venue's minimum order size (Polymarket US)
 
 ### Risk Parameters
 

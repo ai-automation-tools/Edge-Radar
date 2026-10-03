@@ -2,7 +2,7 @@
 """Render an Edge-Radar markdown report to HTML and email it -- no model involved.
 
     python scripts/schedulers/automation/render_report_email.py same-day
-    python scripts/schedulers/automation/render_report_email.py polymarket --dry-run out.html
+    python scripts/schedulers/automation/render_report_email.py daily-summary --dry-run out.html
 
 Replaces the `claude -p` sessions in scripts/custom/Shell-Scripts/Run-Reports/*.sh
 (2026-09-23 consolidation audit #6). Each of those spawned a headless Claude
@@ -15,9 +15,10 @@ never "the file named with today's date": report filenames carry the UTC date,
 so a PT evening run (NextDay 20:30, Weekly-Analysis 23:45) writes tomorrow's
 name, and a date match against the local clock misses it.
 
-A missing report exits 2 without sending, except for presets with a scan log
-(Polymarket), where no report is the normal zero-opportunity case and the email
-is proof-of-life led by the log's execution outcome.
+A missing report exits 2 without sending, except for presets with a scan log,
+where no report is the normal zero-opportunity case and the email is
+proof-of-life led by the log's execution outcome. (No preset uses one since the
+Polymarket preset was removed 2026-09-29.)
 
 Sends through scripts/custom/Python/send_report_email.py, which stays the one
 send path (Resend key resolution + delivery stamp live there).
@@ -80,14 +81,6 @@ PRESETS = {
         "next-day",
         "email_nextday.log",
         None,
-    ),
-    "polymarket": (
-        "reports/Polymarket",
-        "*_polymarket_scan.md",
-        "Edge-Radar | Daily Polymarket Execution Report",
-        "polymarket-execution",
-        "email_polymarket_dryrun.log",
-        "logs/polymarket_dryrun_scan.log",
     ),
     "weekly-futures": (
         "reports/Futures/schedulers",

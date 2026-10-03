@@ -52,10 +52,6 @@ pandas>=2.1.4                     # Dataframes for backtesting & report generati
 # === Odds & Stats APIs ===
 # No official SDK — use requests directly with API keys
 
-# === Polymarket US (PM2 execution) ===
-# No SDK — Ed25519-signed requests to api.polymarket.us via `cryptography`
-# (already required above for Kalshi) + `requests`. See polymarket_us_auth.py.
-
 
 # === Utilities ===
 rich>=13.7.0                      # Terminal tables & formatted output

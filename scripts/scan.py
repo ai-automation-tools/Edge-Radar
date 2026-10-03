@@ -20,17 +20,14 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PYTHON = sys.executable
 
 SCANNERS = {
-    "sports":     PROJECT_ROOT / "scripts" / "kalshi"      / "edge_detector.py",
-    "futures":    PROJECT_ROOT / "scripts" / "kalshi"      / "futures_edge.py",
-    "prediction": PROJECT_ROOT / "scripts" / "prediction"  / "prediction_scanner.py",
-    "polymarket": PROJECT_ROOT / "scripts" / "polymarket"  / "polymarket_futures_edge.py",
+    "sports": PROJECT_ROOT / "scripts" / "kalshi" / "edge_detector.py",
+    "futures": PROJECT_ROOT / "scripts" / "kalshi" / "futures_edge.py",
+    "prediction": PROJECT_ROOT / "scripts" / "prediction" / "prediction_scanner.py",
 }
 
 ALIASES = {
     "sport": "sports",
-    "pred":  "prediction",
-    "poly":  "polymarket",
-    "pm":    "polymarket",
+    "pred": "prediction",
 }
 
 
@@ -100,7 +97,8 @@ def _extract_profile(args: list[str]) -> tuple[list[str], str | None]:
 
 
 def print_help():
-    print("""Edge-Radar Unified Scanner
+    print(
+        """Edge-Radar Unified Scanner
 =========================
 
 Usage:  python scripts/scan.py <market-type> [flags]
@@ -109,10 +107,8 @@ Market types:
   sports       Kalshi sports betting (NBA, NHL, MLB, NFL, NCAA, etc.)
   futures      Championship & season-long futures
   prediction   Crypto, weather, S&P 500, politics
-  polymarket   Polymarket US futures + games (execution wired; orders blocked
-               until DRY_RUN=false AND POLYMARKET_DRY_RUN=false)
 
-Aliases:  sport, pred, poly, pm
+Aliases:  sport, pred
 
 Common flags (all scanners):
   --filter X       Filter by sport/asset/category
@@ -132,9 +128,9 @@ Examples:
   python scripts/scan.py sports --filter mlb --date today --save
   python scripts/scan.py futures --filter nba-futures --top 10
   python scripts/scan.py prediction --filter crypto
-  python scripts/scan.py polymarket --filter worldcup
 
-Run with <market-type> --help for the full flag list of each scanner.""")
+Run with <market-type> --help for the full flag list of each scanner."""
+    )
 
 
 if __name__ == "__main__":

@@ -19,6 +19,9 @@
 <details>
 <summary><b>Changelog</b></summary>
 
+- **2026-10-03** — **every action of every task now launches through `scripts/schedulers/run-hidden.vbs`.** `All-Sports-NextDay-Execution`, `Weekly-Analysis` and `Weekly-Futures-Execution` were the last three whose first action ran the `.bat` directly (the 2026-09-11 change left weekly tasks visible, and NextDay was missed despite running five nights a week). Since the wrapper gained `run-hidden-guard.ps1`, a Task Scheduler stop or time limit kills the process tree only for wrapped actions, so the direct `.bat` was the one path where a stop left a live-order scan running. Action 1 is now `wscript.exe "<repo>\scripts\schedulers\run-hidden.vbs" "<repo>\scripts\schedulers\...\<task>.bat"`. The wrapper waits and returns the `.bat`'s exit code, so action 2 (the email) still runs after it and Last Result is unchanged in meaning. Only action 1 changed (COM `RegisterTaskDefinition`, update mode): triggers, settings and run history are untouched. Pre-change XML: `D:\AI_Agents\_maintenance\backups\task-xml-2026-10-03-optimize\`. The futures install snippet below is the original 2026-06-20 one and still shows the direct `.bat`.
+
+- **2026-09-29** — **`Daily-Polymarket-Execution` retired** (unregistered). The Polymarket US venue was removed from Edge-Radar entirely (operator decision; see CHANGELOG 2026-09-29): `scripts/polymarket/`, the `scan.py polymarket` market type and the `polymarket` email preset are gone. `\AI-Projects\Edge-Radar-MikesAILab\` now holds 15 tasks. Pre-delete XML in `.claude/temp/task-backup-2026-09-29/`.
 - **2026-09-27** — **`Longshot` retired** (unregistered). The longshot strategy (P1 `longshot` profile, Kalshi subaccount 1, dry-run) was abandoned; the task and its two gitignored `.bat` files are gone. The P1 profile mechanism itself stays in the code. `\AI-Projects\Edge-Radar-MikesAILab\` now holds 16 tasks. Pre-delete XML in `.claude/temp/task-backup-2026-09-27/`.
 - **2026-09-23** — **report emails no longer spawn a Claude session, and each `Email-*` task was folded into its scan task.** The 8 `Run-Reports/*.sh` scripts (each a `claude --dangerously-skip-permissions -p` run) are retired to `scripts/custom/Shell-Scripts/Run-Reports/_retired-2026-09-23/`, replaced by the tracked `scripts/schedulers/automation/render_report_email.py <preset>`: it renders the report markdown to inline-styled HTML (markdown-it-py) and sends through the unchanged `send_report_email.py` (Resend). No model involved, tables byte-exact, subjects and tags unchanged. Then **13 scan→email pairs became 13 tasks with two actions each** (scan, then email) — Task Scheduler runs action 2 even when action 1 exits non-zero (verified with a probe task), so the email fires the moment its scan finishes instead of 10–20 min later on a separate clock that could drift across DST. Unregistered: the 9 `Email-*` tasks in `\Edge-Radar-MikesAILab\` (incl. `Email-Longshot`, whose action is still `maintenance/email_longshot_scan.bat`) plus 4 in `\AI-Projects\Edge-Radar-AltAgents\` for the Edge-Radar-Agy fork (Day/Evening/Late/Settle). Time limits unchanged; pre-change XML in `.claude/temp/task-backup-2026-09-23/`. Verified: `Daily-Summary` run via Task Scheduler → `LastTaskResult=0`, email sent. Net: ~41 fewer Claude sessions a week, 13 fewer tasks, and `--dangerously-skip-permissions` gone from every unattended email job. The Weekly-Analysis email lost its model-written summary bullets — it is now just the rendered report. Consolidation audit 2026-09-23 #6 and #7.
 - **2026-09-11** — **every daily-or-more-frequent task now launches through `scripts/schedulers/run-hidden.vbs`**, so no console window flashes on the desktop. Task Scheduler runs a `.bat`/`.sh`/`python.exe` action through a visible `cmd.exe` under an interactive token; `CLV-Capture` at every 5 minutes made that 288 interruptions a day. The wrapper is `wscript.exe "run-hidden.vbs" "<original exe>" <original args>` — it `Run()`s the original command with window style 0 and `WScript.Quit(rc)`, **so the exit code still reaches the scheduler** and a real failure is still a real failure. Applied to 15 tasks (the three `All-Sports-*` executions, `Daily-Polymarket-Execution`, `Daily-Summary`, all six `Email-*` dailies, `Longshot`, `Reconcile`, `Hourly-Settle`, `NightlySettle`); **weekly and one-shot tasks were deliberately left visible** — one flash a week is not worth the indirection. Verified on `Hourly-Settle` and `Daily-Summary`: `LastTaskResult=0`, report regenerated, `kalshi_settlements.json`/`kalshi_trades.json` written. Triggers, principals and settings unchanged (`Set-ScheduledTask -Action` only); pre-change XML for all 15 is in `.claude/temp/task-backup-2026-09-11/`. `pythonw.exe` was tried first for the two settle tasks and **rejected**: it gives the process no console, so `sys.stdout` is `None` — bare `print()` silently no-ops, but any `sys.stdout.write`/`flush` or logging `StreamHandler` anywhere in the settler's import graph would raise. The wrapper keeps a real (hidden) console, so nothing in that graph has to be audited. The `.vbs` lives under the gitignored `scripts/schedulers/`, so this appears in no diff.
@@ -68,9 +71,9 @@
 | 24 | `WeeklyOddsKeyProbe` | **Sun** 6:00 PM | Probes every Odds API key live (`check_odds_keys.py --live`) and refreshes `data/cache/odds_api_quota.json`. 14 requests/week against a 500/key/month allowance. **Added 2026-09-09** — a cached zero used to be believed forever, so a drained key was never contacted again and any reset went unobserved; 12 of 14 keys read 0 while 5154 requests were actually available. The root-cause fix is the `_ZERO_TTL_HOURS` expiry in `scripts/shared/odds_api.py`; this task catches a key going bad **before** a scan needs it. Runs the gitignored `scripts/schedulers/maintenance/odds_keys.bat`, so it appears in no diff. |
 | 19 | `Weekly-Futures-Execution` ⚠️ **RE-ENABLED 2026-08-24** | **Sat** 9:00 AM | ⚠️ **PLACES REAL ORDERS.** Scans + executes championship/outright **futures** (NFL Super Bowl, NBA/NHL/MLB titles, NCAAB MOP, golf majors) via `scan.py futures --execute` (budget 10%, max 3, unit $1, `--exclude-open`). Offseason series with no Odds API outright data are skipped; golf only prices the 4 majors during their weeks, **then emails the report** (every week, 0-order weeks included). First futures automation (added 2026-06-20) |
 | ~~20~~ | ~~`Email-Weekly-Futures`~~ | — | **MERGED 2026-09-23 into #19** |
-| 21 | `Daily-Polymarket-Execution` | Daily 9:40 AM | ⚠️ **PLACES REAL ORDERS since 2026-07-23** (renamed from `Daily-Polymarket-DryRun` same day). Polymarket scan — championship futures **+ per-game ML/spread/total (PM1d)** — `scan.py polymarket --filter all --min-edge 0.01 --top 40 --max-bets 2 --budget 10% --save --execute`. Still appends the full funnel to `data/polymarket/dryrun_log.jsonl` + markdown to `reports/Polymarket/`. **Only futures are orderable** — Gamma-sourced games carry no US `market_slug` and are auto-excluded from execution. Full risk-gate chain applies; batch capped at 2 bets / 10% of bankroll. Halt this venue with `POLYMARKET_DRY_RUN=true`. **Then emails the report** led by the execution outcome, or a proof-of-life on 0-opportunity days |
+| ~~21~~ | ~~`Daily-Polymarket-Execution`~~ | — | **REMOVED 2026-09-29.** Polymarket US venue removed from Edge-Radar (see CHANGELOG 2026-09-29); task unregistered, pre-delete XML in `.claude/temp/task-backup-2026-09-29/` |
 | 22 | `Hourly-Settle` | **Every hour** at :35 | U1: runs `kalshi_settler.py settle` hourly (direct python, no .bat wrapper). Keeps the trade log fresh all day → Gate 1 daily-loss checks see intraday settlements. Safe alongside the execute tasks via the M2 cross-process lock. Replaced `NightlySettle`, retired 2026-09-23 |
-| ~~23~~ | ~~`Email-Polymarket-Execution`~~ | — | **MERGED 2026-09-23 into #21** |
+| ~~23~~ | ~~`Email-Polymarket-Execution`~~ | — | **MERGED 2026-09-23 into #21** (itself removed 2026-09-29) |
 | 27 | `CLV-Capture` | **Every 5 min** | S8: samples the market book shortly before each open position's event starts and writes the whole closing book + CLV to the trade row. **Read-only at the venue** — calls `get_market()` only, never places/cancels/modifies an order. A pass with nothing due makes **zero API calls**, which is what makes the 5-minute cadence affordable; cadence buys capture coverage, and coverage is what makes a mean CLV trustworthy. Safe alongside the execute tasks: venue reads happen outside the M2 lock and captures are re-applied by `trade_id` against a fresh read inside it. Runs the gitignored `maintenance/clv_capture.bat`, log `logs/clv_capture.log`. **Added 2026-09-10** — CLV had returned nothing across 426 settlements because the settler derived it from a market that had already settled. |
 | 28 | `Shadow-Book-NCAAF` | Daily 6:00 AM | **S21b: the exit ramp for the S21 NCAAF freeze.** **PLACES NO ORDERS AND RISKS NO MONEY** — `shadow_book.py settle` then `collect --filter ncaafb`. A freeze stops orders, so it also stops the settlements that would ever justify lifting it; NFL escaped that only because 19 positions were already in flight when S1 landed, while NCAAF was frozen holding nothing, pinning it at 11 settled forever against `nfl_week1_review`'s bar of 20. A Brier head-to-head needs only (model probability, market price, outcome) and **never needed a filled order**, so the model keeps scoring the sport and Kalshi settles the markets anyway. Taps **upstream of the risk gates** on purpose — `last_scan.json` is written post-gate and holds nothing at a 1.0 floor, while `scan_all_markets()` applies only the global min-edge. ~96 rows/scan. Read it with `shadow_book.py review --sport ncaaf --save`, which prints the S18 Brier pair plus a **margin-stdev sweep** — the direct read on S21's finding that the whole NCAAF edge was one uncalibrated parameter. Runs the gitignored `maintenance/shadow_book.bat`, log `logs/shadow_book.log`. **Added 2026-09-13.** |
 | ~~25~~ | ~~`Longshot-Scan`~~ | — | **REMOVED 2026-09-27.** The longshot strategy was abandoned; task unregistered and its gitignored `maintenance/longshot_scan.bat` + `email_longshot_scan.bat` deleted. Pre-delete XML in `.claude/temp/task-backup-2026-09-27/`. It ran `--profile longshot` under `DRY_RUN=true` on Kalshi subaccount 1, so it never placed a real order |
@@ -99,7 +102,6 @@
  5:05 AM  Daily    ─ All-Sports-SameDay-Execution [+email]
  9:00 AM  Sun      ─ WeeklyAccountGraph    (refresh + publish account graph to Pages)
  9:00 AM  Sat      ─ Weekly-Futures-Execution [+email] (futures scan + execute) [LIVE - re-enabled 2026-08-24]
- 9:40 AM  Daily    ─ Daily-Polymarket-Execution [+email] (PM scan + EXECUTE -- places real orders)
 11:00 AM  Daily    ─ All-Sports-NoDateFilter-Midday-Execution [+email]
  2:00 PM  Daily    ─ All-Sports-SameDay-Late-Execution [+email]
  8:30 PM  Sun-Thu  ─ All-Sports-NextDay-Execution [+email]
@@ -118,10 +120,10 @@ Emails are no longer separate fires — each rides its scan task.
 
 | Day | Morning | Midday | Afternoon | Evening | Nightly | Day total |
 |:----|:-------:|:------:|:---------:|:-------:|:-------:|:---------:|
-| Mon-Thu | 2 (same-day + Polymarket @ 9:40) | 1 (Midday-NoDateFilter) | 1 (Late-SameDay) | 1 (NextDay) | 1 | **6** |
-| Fri | 2 (same-day + Polymarket) | 1 | 1 | 0 | 1 | **5** |
-| Sat | 3 (same-day + Futures-Execution @ 9:00 + Polymarket @ 9:40) | 1 | 1 | 0 | 1 | **6** |
-| Sun | 2 (same-day + Polymarket) + WeeklyAccountGraph @ 9:00 | 1 | 1 | 3 (NextDay + Calibration + Backtest) | 2 (Reconcile + Weekly-Analysis) | **10** |
+| Mon-Thu | 1 (same-day) | 1 (Midday-NoDateFilter) | 1 (Late-SameDay) | 1 (NextDay) | 1 | **5** |
+| Fri | 1 (same-day) | 1 | 1 | 0 | 1 | **4** |
+| Sat | 2 (same-day + Futures-Execution @ 9:00) | 1 | 1 | 0 | 1 | **5** |
+| Sun | 1 (same-day) + WeeklyAccountGraph @ 9:00 | 1 | 1 | 3 (NextDay + Calibration + Backtest) | 2 (Reconcile + Weekly-Analysis) | **9** |
 
 **Monthly add-on:** none. `MonthlyCalibration` was removed 2026-07-31 — the weekly Sunday `Calibration` (#11) covers it.
 
@@ -216,12 +218,11 @@ No template to copy: the emailer is a tracked script, `scripts/schedulers/automa
 | `nodatefilter-midday` | `All-Sports-NoDateFilter-Midday-Execution` | `Edge-Radar \| NoDateFilter Midday Execution Report` |
 | `same-day-late` | `All-Sports-SameDay-Late-Execution` | `Edge-Radar \| Same-Day Late Execution Report` |
 | `next-day` | `All-Sports-NextDay-Execution` | `Edge-Radar \| Next Day Edge Report` |
-| `polymarket` | `Daily-Polymarket-Execution` | `Edge-Radar \| Daily Polymarket Execution Report` |
 | `weekly-futures` | `Weekly-Futures-Execution` | `Edge-Radar \| Weekly Futures Execution Report` |
 | `weekly-analysis` | `Weekly-Analysis` | `Edge-Radar \| Weekly Performance Analysis` |
 
 - **Which report:** the newest file in the preset's folder modified within the last 3 hours (`--max-age-hours`), **not** the one named with today's date. Report filenames carry the UTC date, so the PT evening runs (NextDay 8:30 PM, Weekly-Analysis 11:45 PM) write tomorrow's name.
-- **No report:** exits 2 and sends nothing, so a failed scan never produces a stale email. The exception is `polymarket`, where no report is the normal zero-opportunity case: it sends a proof-of-life instead. The Polymarket email always leads with an **Execution outcome** section — the last run of `logs/polymarket_dryrun_scan.log`, minus INFO lines.
+- **No report:** exits 2 and sends nothing, so a failed scan never produces a stale email.
 - **Log:** one result line per run, appended to the same `logs/email_*.log` file the retired `.sh` scripts used.
 - **Preview without sending:** `python scripts/schedulers/automation/render_report_email.py same-day --dry-run out.html`.
 
@@ -586,35 +587,9 @@ MSYS_NO_PATHCONV=1 schtasks /create /tn "\Edge-Radar\Weekly-Futures-Execution" \
 
 ---
 
-### 21. `Daily-Polymarket-Execution` — Daily 9:40 AM PST (12:40 PM ET)
+### ~~21. `Daily-Polymarket-Execution`~~ — REMOVED 2026-09-29
 
-> **Renamed 2026-07-23** from `Daily-Polymarket-DryRun`. The task passes `--execute` and places real orders; the old name asserted the opposite.
-
-| Property | Value |
-|:---------|:------|
-| **Schedule** | Daily |
-| **Script** | `scripts\schedulers\polymarket_scans\daily_polymarket_scan.bat` |
-| **Runs** | `scan.py polymarket --filter all --min-edge 0.01 --top 40 --max-bets 2 --budget 10% --save --execute` (widened 2026-07-20 from `--filter futures`; `--execute` + batch caps added 2026-07-23) |
-| **Purpose** | ⚠️ **Places real orders.** Polymarket scan: championship futures (NFL, MLB World Series, NBA, NHL Stanley Cup) **plus PM1d per-game markets** (MLB/NFL/NBA/NHL moneyline, run-line spread, game total — priced by the same calibrated consensus model as Kalshi sports). Appends every run — timestamp, filter, opportunity count, each opportunity with its preflight gate verdict and `executable` flag, **including 0-opportunity runs** — to the evidence log (`--save` runs outside the execute branch, so the funnel is recorded either way). `--min-edge 0.01` widens what gets *recorded*; the risk gates still enforce the real floors (3% edge). **Only futures are orderable** — Gamma-sourced games carry no US `market_slug` and are auto-excluded from execution |
-| **Output** | `data\polymarket\dryrun_log.jsonl` (append-only evidence) + `reports\Polymarket\YYYY-MM-DD_futures_polymarket_scan.md` (only when rows surface) |
-| **Log** | `logs\polymarket_dryrun_scan.log` |
-| **Email** | Action 2: `render_report_email.py polymarket` → `mikeschecht@gmail.com`, subject `Edge-Radar \| Daily Polymarket Execution Report`, log `logs/email_polymarket_dryrun.log` (name kept — history predates the rename). Always leads with an **Execution outcome** section: the last run of `logs\polymarket_dryrun_scan.log` minus INFO lines. On 0-opportunity days (no report written) it still sends, as proof-of-life. Replaced `Email-Polymarket-Execution` (#23) 2026-09-23 |
-| **Cost** | ~4 Odds API requests per run (one per active outright sport key) |
-
-**Why daily 9:40 AM PST:** quiet slot — after the 5:05 morning run, before the 11:00 midday run, and clear of Saturday's 9:00 futures run. Morning outright lines are posted and sharp. Daily (vs the weekly Kalshi futures cadence) because the edge-proving window wants sample size, and a read-only run is cheap.
-
-**Places REAL orders (since 2026-07-23):** the task passes `--execute`, and both `DRY_RUN` and `POLYMARKET_DRY_RUN` are `false` in `.env`, so any row clearing the risk gates becomes an unattended wager. Batch capped at `--max-bets 2 --budget 10%`. To halt this venue without touching Kalshi, set `POLYMARKET_DRY_RUN=true`. The `.bat` sets `PYTHONIOENCODING=utf-8` — required because the rich table output contains Unicode that crashes cp1252 when the console is redirected to the log file.
-
-**Install (one-time, from PowerShell):**
-```powershell
-schtasks /Create /TN "\Edge-Radar-MikesAILab\Daily-Polymarket-Execution" `
-  /TR "D:\AI_Agents\Projects\Mikes_AI_Lab\Repos\AI-Automation-Tools\Live_Apps\Edge-Radar\scripts\schedulers\polymarket_scans\daily_polymarket_scan.bat" `
-  /SC DAILY /ST 09:40 /F
-```
-
-**Re-validated 2026-07-23 (post-rename):** re-registered as `Daily-Polymarket-Execution` preserving the trigger/principal, fired via `Start-ScheduledTask` → `LastTaskResult=0`; 4 opportunities risk-checked, **0 orders placed** (all rejected on `edge_below_threshold`, 1.1–2.6% vs the 3.0% floor), evidence log appended.
-
-**Validated 2026-07-20 (install day):** registered (State=Ready, next run 2026-07-21 9:40 AM), fired via `Start-ScheduledTask` → `LastTaskResult=0`; evidence record appended to `dryrun_log.jsonl` and the day's report written (1 opportunity: NBA Spurs +4.0%, low confidence, correctly gated on score → 0 would-bet).
+Ran `scan.py polymarket ... --execute` daily at 9:40 AM against Polymarket US (live orders since 2026-07-23; none ever filled). The Polymarket venue was removed from Edge-Radar on 2026-09-29 and the task unregistered — see CHANGELOG 2026-09-29. Pre-delete XML in `.claude/temp/task-backup-2026-09-29/`.
 
 ---
 
@@ -627,7 +602,7 @@ schtasks /Create /TN "\Edge-Radar-MikesAILab\Daily-Polymarket-Execution" `
 | **Arguments** | `scripts\kalshi\kalshi_settler.py settle` |
 | **Purpose** | U1: settle throughout the day instead of once at 11 PM. Keeps `data/history` fresh so **Gate 1 (daily loss limit)** sees intraday settlements, positions clear as games end, and R4 resting-order cleanup runs timely |
 | **Why now** | Enabled by **M2** (2026-07-20): the cross-process trade-log lock + merge-safe `append_trades` make a settle that overlaps an execute task merge instead of clobber — exactly the race that made hourly settling unsafe before |
-| **Why :35** | The only minute slot clear of every existing task (:00 executes, :05 SameDay, :30 Reconcile/NextDay, :40 Polymarket, :45 Weekly-Analysis, :50 Daily-Summary; emails ride their scan task since 2026-09-23) |
+| **Why :35** | The only minute slot clear of every existing task (:00 executes, :05 SameDay, :30 Reconcile/NextDay, :45 Weekly-Analysis, :50 Daily-Summary; emails ride their scan task since 2026-09-23) |
 | **NightlySettle** | Kept as belt-and-suspenders during validation, **retired 2026-09-23** — settle is idempotent, so its 11:00 PM run only ever found nothing new after the 10:35 PM sweep |
 
 **Install (one-time, from PowerShell):**
@@ -637,15 +612,13 @@ schtasks /Create /TN "\Edge-Radar\Hourly-Settle" `
   /SC HOURLY /MO 1 /ST 00:35 /F
 ```
 
-**Re-validated 2026-07-23 (post-rename):** re-registered as `Daily-Polymarket-Execution` preserving the trigger/principal, fired via `Start-ScheduledTask` → `LastTaskResult=0`; 4 opportunities risk-checked, **0 orders placed** (all rejected on `edge_below_threshold`, 1.1–2.6% vs the 3.0% floor), evidence log appended.
-
 **Validated 2026-07-20 (install day):** registered, fired via `Start-ScheduledTask` → `LastTaskResult=0`, next fire on the :35.
 
 ---
 
 ### ~~23. `Email-Polymarket-Execution`~~ — MERGED 2026-09-23 into #21
 
-Now the second action of `Daily-Polymarket-Execution`; its still-true behaviour (execution-outcome lead, proof-of-life on empty days) is in that section.
+Became the second action of `Daily-Polymarket-Execution`, which was itself removed 2026-09-29 with the Polymarket venue.
 
 ---
 
@@ -726,7 +699,6 @@ Every task below except `Reconcile`, `Calibration` and `Backtest` emails its own
 ### A typical Mon-Thu
 ```
 05:05 AM  All-Sports-SameDay-Execution         → bets today's NBA/MLB/NHL games
-09:40 AM  Daily-Polymarket-Execution           → PM scan + EXECUTE (places real orders)
 11:00 AM  All-Sports-NoDateFilter-Midday-Exec  → midday wide-net (no date filter)
 02:00 PM  All-Sports-SameDay-Late-Execution    → late same-day catch-up
 08:30 PM  All-Sports-NextDay-Execution         → bets tomorrow's games
@@ -736,7 +708,6 @@ Every task below except `Reconcile`, `Calibration` and `Backtest` emails its own
 ### A typical Sunday
 ```
 05:05 AM  All-Sports-SameDay-Execution  (Sunday's NBA/MLB/NFL)
-09:40 AM  Daily-Polymarket-Execution    (PM scan + EXECUTE)
 11:00 AM  All-Sports-NoDateFilter-Midday-Execution
 02:00 PM  All-Sports-SameDay-Late-Execution
 07:00 PM  Calibration                   (weekly Brier refresh)
@@ -749,7 +720,6 @@ Every task below except `Reconcile`, `Calibration` and `Backtest` emails its own
 ### A typical Fri
 ```
 05:05 AM  All-Sports-SameDay-Execution
-09:40 AM  Daily-Polymarket-Execution        (PM scan + EXECUTE)
 11:00 AM  All-Sports-NoDateFilter-Midday-Execution
 02:00 PM  All-Sports-SameDay-Late-Execution
           (All-Sports-NextDay-Execution skipped — Sunday morning run will handle Sunday NFL)
@@ -760,7 +730,6 @@ Every task below except `Reconcile`, `Calibration` and `Backtest` emails its own
 ```
 05:05 AM  All-Sports-SameDay-Execution
 09:00 AM  Weekly-Futures-Execution          (futures scan + execute; often 0 bets)
-09:40 AM  Daily-Polymarket-Execution        (PM scan + EXECUTE)
 11:00 AM  All-Sports-NoDateFilter-Midday-Execution
 02:00 PM  All-Sports-SameDay-Late-Execution
           (All-Sports-NextDay-Execution skipped — Sunday morning run will handle Sunday NFL)
@@ -798,9 +767,6 @@ MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\All-Sports-NextDay-Execution"
 
 # Email only, no scan (sends the newest report under 3h old; add --dry-run out.html to preview)
 .venv/Scripts/python.exe scripts/schedulers/automation/render_report_email.py same-day
-
-# Polymarket scan + EXECUTE (places real orders) + its email
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar-MikesAILab\Daily-Polymarket-Execution"
 
 # Maintenance
 MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Hourly-Settle"
@@ -897,7 +863,6 @@ Created 2026-04-22 for maintenance tasks that need consistent CWD + venv python:
 | `All-Sports-NoDateFilter-Midday-Execution` | `logs/email_nodatefilter_midday.log` |
 | `All-Sports-SameDay-Late-Execution` | `logs/email_sameday_late.log` |
 | `All-Sports-NextDay-Execution` | `logs/email_nextday.log` |
-| `Daily-Polymarket-Execution` | `logs/email_polymarket_dryrun.log` (name kept — history predates the rename) |
 | `Weekly-Futures-Execution` | `logs/email_futures.log` |
 | `Weekly-Analysis` | `logs/email_weekly_analysis.log` |
 
@@ -905,7 +870,7 @@ Created 2026-04-22 for maintenance tasks that need consistent CWD + venv python:
 
 ### Exit code 2 (email action)
 
-No fresh report: nothing in the preset's folder was modified within `--max-age-hours` (default 3), so the scan failed before its save step or wrote somewhere else. Nothing is sent, by design — a stale email is worse than none. (`polymarket` does not exit 2 here; no report is its normal zero-opportunity case, and it sends proof-of-life.)
+No fresh report: nothing in the preset's folder was modified within `--max-age-hours` (default 3), so the scan failed before its save step or wrote somewhere else. Nothing is sent, by design — a stale email is worse than none.
 
 ### Send failures
 
@@ -1042,7 +1007,7 @@ Writes report file to reports/<...>/*.md
 Scan task, action 2 (runs even if action 1 exited non-zero)
          ↓
 render_report_email.py <preset>
-  picks newest report < 3h old  →  none? exit 2, no send (polymarket: proof-of-life)
+  picks newest report < 3h old  →  none? exit 2, no send
   markdown → inline-styled HTML (markdown-it-py; tables byte-exact)
          ↓
 send_report_email.py → Resend, from <YOUR_SENDER> → mikeschecht@gmail.com

@@ -1,6 +1,6 @@
 # Edge-Radar
 
-> Multi-agent edge-detection and execution system for prediction markets and sports betting on **Kalshi** and **Polymarket US**.
+> Multi-agent edge-detection and execution system for prediction markets and sports betting on **Kalshi**. (Polymarket US was removed 2026-09-29 — *CHANGELOG 2026-09-29*.)
 > Research-first, execute-second. No action without documented rationale, risk check, and position-size calculation.
 
 ---
@@ -21,22 +21,9 @@
 | **Sports betting** | NBA, NHL, MLB, NFL, NCAA, MLS, soccer, UFC, boxing, F1, NASCAR, PGA, IPL, Wimbledon tennis, esports (30 filters). **World Cup (F3) is OFF; NFL and NCAAF are both on a 0.06 pilot floor (S1b/S21c, lowered from 0.08 on 2026-09-19)** | The Odds API, ESPN, NHL/MLB Stats, NWS |
 | **Prediction markets** | Crypto (BTC, ETH, XRP, DOGE, SOL), weather (13 cities), S&P 500 | CoinGecko, Yahoo Finance, NWS |
 | **Championship futures** | NFL, NBA, NHL, MLB, PGA | Sportsbook futures odds |
-| **Execution pipeline** | Unified scan → risk-check → size → execute | Kalshi API (RSA-signed), Polymarket US (Ed25519) |
+| **Execution pipeline** | Unified scan → risk-check → size → execute | Kalshi API (RSA-signed) |
 
 **Planned, not built:** Manifold, Alpaca stocks/options, Coinbase/Binance, DFS + sportsbook APIs, Fed/CPI/GDP markets.
-
----
-
-## 🔴 Priority 0 — Polymarket US
-
-The funded account is **Polymarket US** (CFTC-regulated, iOS-app product) on the **Ed25519 retail API** at `api.polymarket.us` — *not* the international EIP-712 / `py-clob-client` scheme. The pipeline is wired and live-verified: `scan.py polymarket --execute` → shared risk gates and Kelly sizing → venue min-share bump → `create_order`, venue-tagged trade log.
-
-- **The venue is LIVE.** Orders require `DRY_RUN=false` **and** `POLYMARKET_DRY_RUN=false`; both have been false since 2026-07-23, and the `Daily-Polymarket-Execution` task passes `--execute`. Any row clearing the gates becomes a real unattended wager. **To halt this venue without touching Kalshi: `POLYMARKET_DRY_RUN=true`.**
-- **Blast radius** is bounded by that task's `--max-bets 2 --budget 10%` and by futures being the only orderable surface (Gamma game rows carry no US `market_slug` and are auto-excluded).
-- **Nothing has filled yet** — every candidate to date is stopped at Gate 3 (edge < 3%), and `data/history/kalshi_trades.json` holds 0 Polymarket rows. The account does hold **two hand-placed iOS positions** from 2026-07-06 (`tec-mlb-champ-2026-09-27-mil` 59 sh, `…-nyy` 36 sh, ~$9.88). Not system trades, but the risk gates see them: they are the `Positions: 2/50` in the scan banner and they occupy Gate 5/6 slots for those markets.
-- **Remaining:** seasonal games repoint (US game markets are moneyline-only — no spreads/totals/MLB), then PM3 settlement/ops.
-
-Detail: **[docs/polymarket/README.md](docs/polymarket/README.md)** · **[docs/setup/polymarket-us-setup.md](docs/setup/polymarket-us-setup.md)** · **[docs/ROADMAP.md](docs/ROADMAP.md)** §3 (Polymarket US).
 
 ---
 
@@ -76,7 +63,7 @@ EDGE_RADAR_PROFILE=longshot python scripts/doctor.py    # non-scan entry points
   typo'd `--profile longshto` that silently resolved to `main` would run one
   strategy's intent against the other's bankroll, live. Same reasoning as S3's
   venue-eligibility check.
-- **Every trade row carries `"profile"`**, mirroring PM2c's `"venue"` one level
+- **Every trade row carries `"profile"`**, mirroring the `"venue"` field one level
   up. Absent on pre-P1 rows, so **readers must default to `"main"`**. One trade
   log holds both books — and this is *better* evidence than two repos gave,
   because both now run identical code, odds cache, fees and calibration, so a
@@ -118,7 +105,6 @@ Edge-Radar/
 │   ├── scan.py                # Unified entry point
 │   ├── doctor.py              # Environment validator
 │   ├── kalshi/                # client, executor, settler, edge, risk
-│   ├── polymarket/            # US client + futures/games edge
 │   ├── prediction/            # Crypto, weather, S&P
 │   ├── shared/                # Stats, weather, logging, odds cache
 │   ├── backtest/              # backtester.py, correlation_check.py
@@ -129,7 +115,6 @@ Edge-Radar/
     ├── CHANGELOG.md           # Project history — the "why" behind the rules here
     ├── ROADMAP.md             # Open work only (history lives in CHANGELOG)
     ├── kalshi/                # Sports, prediction, futures guides
-    ├── polymarket/            # Futures, games, execution, API guides
     ├── scripts/               # SCRIPTS_REFERENCE.md + per-script docs
     ├── setup/                 # Setup, architecture, automation, MCP servers
     └── task-schedules/        # Scheduled task inventory
@@ -458,7 +443,7 @@ Standing rules — do not reverse them without new settled evidence.
   ~5x optimistic until this is re-measured. **Do not add sizing aggression without re-running
   `scripts/backtest/calibration_study.py` first.** *CHANGELOG 2026-08-25 (F3).*
 
-- **Every composite scales edge as `min(edge / 0.01, 10)`.** The futures and Polymarket-games paths originally used `edge * 20`, saturating at a 50% edge instead of 10%, which made Gate 4 structurally unreachable (0 futures bets in 85 settled trades; 0 of 362 Gamma game rows ever reached 6.0). **Never reintroduce `edge * 20`.** *CHANGELOG 2026-07-23 (C10), 2026-07-31 (C10b).* The Polymarket-games liquidity term intentionally stays `book_spread * 100`.
+- **Every composite scales edge as `min(edge / 0.01, 10)`.** The futures and (since-removed) Polymarket-games paths originally used `edge * 20`, saturating at a 50% edge instead of 10%, which made Gate 4 structurally unreachable (0 futures bets in 85 settled trades; 0 of 362 Gamma game rows ever reached 6.0). **Never reintroduce `edge * 20`.** *CHANGELOG 2026-07-23 (C10), 2026-07-31 (C10b).*
 - **Confidence bumps are one-way — down only.** `supports` is a no-op; only `contradicts` drops a tier. See `_adjust_confidence_with_stats()` in `scripts/kalshi/edge_detector.py`. *CHANGELOG 2026-04-24 (R13).*
 
 - **`market_price_at_entry` and `fair_value` are already SIDE-RELATIVE — never flip them for
@@ -484,7 +469,7 @@ Standing rules — do not reverse them without new settled evidence.
   bookmaker is only as fresh as its stalest market. Still fails closed when nothing is
   dateable. **Fixtures must model the per-event shape too**; every one modelling only the
   sport-level shape is why this went unseen. *CHANGELOG 2026-08-31 (S19).*
-- **The sports composite caps `high` to the `medium` weight** (`{low:3, medium:6, high:6}`) — at equal claimed edge, High underperformed Medium. The `high` *label* is retained because Gate 4.6 still uses it. **Futures and Polymarket keep `high: 9`** — that evidence is Kalshi sports only, and there is no settled futures or Polymarket data yet. Revisit when PM3 settlement lands. *CHANGELOG 2026-06-24 (C4).*
+- **The sports composite caps `high` to the `medium` weight** (`{low:3, medium:6, high:6}`) — at equal claimed edge, High underperformed Medium. The `high` *label* is retained because Gate 4.6 still uses it. **Futures keep `high: 9`** — that evidence is Kalshi sports only, and there is no settled futures data yet. *CHANGELOG 2026-06-24 (C4).*
 
 ### Venue eligibility (S3) — fails CLOSED
 
@@ -518,7 +503,7 @@ Standing rules — do not reverse them without new settled evidence.
 
 ### Dry run
 
-- Default `DRY_RUN=true`; set `false` only for live execution. Polymarket additionally requires `POLYMARKET_DRY_RUN=false`.
+- Default `DRY_RUN=true`; set `false` only for live execution.
 - Dry runs log identically to live, so backtests stay valid.
 
 ---
@@ -658,7 +643,6 @@ pip install -r requirements.txt
 python scripts/scan.py sports --filter mlb,nhl --date today --save
 python scripts/scan.py futures --filter nba-futures
 python scripts/scan.py prediction --filter crypto
-python scripts/scan.py polymarket
 
 # Strategy profile (P1) -- overlays `.env.<name>`, routes to its Kalshi subaccount
 python scripts/scan.py sports --profile longshot --filter mlb --date today
@@ -691,7 +675,7 @@ Full CLI reference: `docs/scripts/SCRIPTS_REFERENCE.md`. Scheduled tasks: `docs/
 1. `git sync-master` — local master goes stale otherwise (work happens on `mike_desktop`, pushes go to remote master).
 2. Read `data/positions/open_positions.json` (exposure) and `data/history/today_trades.json` (today's P&L).
 3. If the daily loss limit is breached, **no new positions**.
-4. Confirm `DRY_RUN` / `POLYMARKET_DRY_RUN` in `.env`.
+4. Confirm `DRY_RUN` in `.env`.
 5. `python scripts/shared/check_odds_keys.py` — cached Odds API quota (`--live` probes each key and costs N requests).
    A cached **zero** expires after 24h (`_ZERO_TTL_HOURS`) and reads as `unknown` until re-probed — a zero is only ever a fact
    about the past, and an un-expiring one hid a whole reset and hoarded a single key. `WeeklyOddsKeyProbe` (Sun 6 PM) refreshes

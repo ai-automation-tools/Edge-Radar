@@ -204,7 +204,7 @@ Edge-Radar ships with two slash commands for [Claude Code](https://claude.ai/cla
 
 | Skill | Definition | Description |
 |:------|:-----------|:------------|
-| [`/edge-radar`](skills/edge-radar/SKILL.md) | `skills/edge-radar/SKILL.md` | Unified command center — scan, bet, status, settle, risk, detail, backtest across Kalshi sports, futures, and prediction markets plus Polymarket US. |
+| [`/edge-radar`](skills/edge-radar/SKILL.md) | `skills/edge-radar/SKILL.md` | Unified command center — scan, bet, status, settle, risk, detail, backtest across Kalshi sports, futures, and prediction markets. |
 | [`/edge-radar-analysis`](skills/edge-radar-analysis/SKILL.md) | `skills/edge-radar-analysis/SKILL.md` | Post-hoc performance report — trade ledger + slices by sport, category, side, edge bucket, confidence, price, calibration, longshots, streaks, daily P&L. |
 
 > The skill source of truth lives in [`skills/`](skills/). Claude Code loads them from `.claude/skills/`, which on Windows are directory junctions to `skills/` (git-ignored, since `core.symlinks=false`). After a fresh clone, recreate the junctions once: `pwsh -File scripts/setup/link_skills.ps1`.
@@ -267,7 +267,7 @@ Want the **complete** pipeline — emails, midday/late runs, weekly calibration/
 | **[Prediction Markets](docs/kalshi/kalshi-prediction-betting/PREDICTION_MARKETS_GUIDE.md)** | Crypto, weather, S&P 500, politics |
 | **[Architecture](docs/setup/ARCHITECTURE.md)** | Pipeline, edge models, risk gates, data flow, and project structure |
 | **[MLB Filtering](docs/kalshi/kalshi-sports-betting/MLB_FILTERING_GUIDE.md)** | 10 filter categories for MLB picks |
-| **[Roadmap](docs/ROADMAP.md)** | All enhancements — completed & pending (top item: Polymarket integration) |
+| **[Roadmap](docs/ROADMAP.md)** | Open enhancement work |
 | **[Changelog](docs/CHANGELOG.md)** | Full project history |
 
 ---

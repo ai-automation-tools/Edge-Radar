@@ -1,6 +1,6 @@
 ---
 name: edge-radar
-description: Unified Edge-Radar skill for scanning markets, placing wagers, managing portfolio, settling bets, and researching edge across Kalshi sports, futures, and prediction markets plus Polymarket US. Covers all scripts, filters, risk gates, and workflows.
+description: Unified Edge-Radar skill for scanning markets, placing wagers, managing portfolio, settling bets, and researching edge across Kalshi sports, futures, and prediction markets. Covers all scripts, filters, risk gates, and workflows.
 argument-hint: <action> [market/filter] [flags] — e.g., "scan nba", "bet mlb --unit-size 2", "status", "settle", "detail TICKER"
 user-invocable: true
 allowed-tools: Read, Bash, Glob, Grep
@@ -31,7 +31,6 @@ Parse the user's intent from the arguments. The skill supports natural language 
 | `odds <sport>` | **Raw Odds** | Show sportsbook odds without edge detection |
 | `data <type>` | **Market Data** | Fetch stock/crypto/prediction market data |
 | `backtest`, `analyze`, `performance` | **Backtest** | Run backtester on settled trades |
-| `polymarket`, `poly`, `pm` | **Polymarket Scan** | Polymarket US futures + games — see the Polymarket section below |
 | Any sport/market name alone (e.g., `nba`, `mlb`, `crypto`) | **Scan** | Default to scan for that filter |
 
 ### Flag Parsing
@@ -67,11 +66,10 @@ python scripts/scan.py sports --filter mlb --date today --save
 python scripts/scan.py sports --unit-size 1 --max-bets 5 --budget 10% --date today --exclude-open --execute
 python scripts/scan.py futures --filter nba-futures
 python scripts/scan.py prediction --filter crypto
-python scripts/scan.py polymarket --filter all --min-edge 0.01 --top 40 --save
 ```
 
-Market types: `sports`, `futures`, `prediction`, `polymarket`.
-Aliases: `sport` = `sports`, `pred` = `prediction`, `poly` / `pm` = `polymarket`.
+Market types: `sports`, `futures`, `prediction`. (`polymarket` / `poly` / `pm` were removed 2026-09-29 with the Polymarket venue — see CHANGELOG.)
+Aliases: `sport` = `sports`, `pred` = `prediction`.
 
 The `scan` subcommand is auto-inserted if omitted. All flags are forwarded directly.
 
@@ -103,8 +101,6 @@ make install           # Install dependencies
 make hooks             # Install pre-commit hooks
 make help              # List all targets
 ```
-
-> There is **no `make` target for Polymarket** — use `scan.py polymarket` directly.
 
 ---
 
@@ -160,35 +156,6 @@ make help              # List all targets
 | `companies`, `bankruptcy`, `ipo` | Corporate events | Partial | Historical baseline |
 | `politics`, `impeach` | Political events | Yes | Time-decay model |
 | `techscience`, `quantum`, `fusion` | Tech milestones | Yes | Time-decay model |
-
-### Polymarket US — `polymarket_futures_edge.py` + `polymarket_games_edge.py`
-
-Second venue, live since 2026-07-23. This is the **CFTC-regulated Polymarket US** product (iOS app + KYC), which authenticates with **Ed25519 API keys against `api.polymarket.us`** — *not* the international EIP-712 / `py-clob-client` scheme. If you find yourself reaching for `py-clob-client`, you're on the wrong API.
-
-```bash
-python scripts/scan.py polymarket --filter all --min-edge 0.01 --top 40 --save
-python scripts/scan.py polymarket --filter futures
-python scripts/scan.py polymarket --filter nhl --max-bets 2 --budget 10% --save --execute
-```
-
-| Filter | Scans |
-|---|---|
-| `all` *(default)* | futures + games |
-| `futures` | all championship futures |
-| `worldcup`, `nfl`, `mlb`, `nba`, `nhl` | that sport's championship future |
-| `games` | all per-game markets |
-| `mlb-games`, `nfl-games`, `nba-games`, `nhl-games` | that sport's per-game markets |
-
-**Two things constrain this venue — know both before reporting on it:**
-
-1. **Only futures are orderable.** Game rows are Gamma-sourced, carry no US `market_slug`, and are auto-excluded from execution — they exist as dry-run evidence only until the seasonal US repoint. A scan will say so explicitly: `N opportunit(ies) without a US market_slug (Gamma-sourced games) excluded from execution`.
-2. **Two-flag execution rule.** Orders place for real only when **`DRY_RUN=false` AND `POLYMARKET_DRY_RUN=false`**. The venue flag defaults to `true`, so Polymarket can be halted without touching Kalshi. **Both are currently false — the venue is live.** Anything else returns `dry_run_blocked`.
-
-Beyond that it uses the **same shared risk gates and Kelly sizing as Kalshi**, plus one venue-specific step: a **minimum-share bump** (`min_order_shares` from the venue's `minimumTradeQty`) applied *after* the sizing caps, which rejects with `below_venue_min_shares` if bumping would breach `MAX_BET_SIZE` or bankroll.
-
-Every run appends to `data/polymarket/dryrun_log.jsonl` (including zero-opportunity runs — that's the edge-proving evidence trail); markdown lands in `reports/Polymarket/` only when rows surface.
-
-> **No Polymarket order has ever filled.** As of 2026-07-23 every observed candidate is rejected at Gate 3 with edges of 1.1–2.6% against the 3% floor. Do not describe this venue as "trading" — it is live but has never transacted. Note also that Gate 1 (daily loss) deliberately spans both venues.
 
 ### Raw Ticker Prefixes
 
@@ -458,9 +425,6 @@ After execution, summarize:
 | `/edge-radar nba-futures` | `scan.py futures --filter nba-futures` |
 | `/edge-radar superbowl` | `scan.py futures --filter nfl-futures` |
 | `/edge-radar crypto` | `scan.py prediction --filter crypto` |
-| `/edge-radar polymarket` | `scan.py polymarket --filter all --save` |
-| `/edge-radar poly futures` | `scan.py polymarket --filter futures` |
-| `/edge-radar pm nhl` | `scan.py polymarket --filter nhl` |
 | `/edge-radar weather --min-edge 0.05` | `scan.py prediction --filter weather --min-edge 0.05` |
 | `/edge-radar status` | `kalshi_executor.py status` |
 | `/edge-radar settle` | `kalshi_settler.py settle` + `report --detail` |
@@ -512,10 +476,10 @@ When `--save` is used, the report format depends on whether `--unit-size` was pa
 > **Always run `make doctor` (or `python scripts/doctor.py`) before quoting a limit.** The live `.env` overrides many shipped defaults — the account is small (**~$122 equity as of 2026-08-27** — **$88.06 cash + $33.77 in positions**, after two operator deposits totalling $40; the historical reviews quote the ~$92 it stood at). **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3 (Tennis & Baseball); `doctor.py` prints the split. Because the account is that small, `MAX_DAILY_LOSS` is $30 not $250, and several floors are tuned down accordingly. Quoting the code default as if it were in force is the most common error in this area.
 - **Max per event:** 2 positions on the same game (reject gate)
 - **Series dedup (C5, 2026-04-18; R9, 2026-04-27):** Reject a new bet if the same matchup (sport + team pair, date-agnostic) was bet within the dedup window. Global default `SERIES_DEDUP_HOURS=48`; per-sport overrides via `SERIES_DEDUP_HOURS_<SPORT>` (live: MLB=72, NHL=72 to cover 3-game series cycles after F12 — a NYM/LAD MLB pair bet 49h apart slipped the global window and both lost). Catches consecutive-night series bleeds like the LA Angels @ NY Yankees Apr 13/14/15 pattern. 0 disables (global or per-sport).
-- **Daily loss limit:** code default $250, **live `.env` is $30** (reject gate). Spans both venues by design.
+- **Daily loss limit:** code default $250, **live `.env` is $30** (reject gate).
 - **Max open positions:** 50 (reject gate)
 - **Minimum edge (C3, 2026-04-18; lowered 2026-06-14):** 3% global; **4% MLB/NBA/NCAAB** (per-sport overrides via `MIN_EDGE_THRESHOLD_<SPORT>` env). Lowered 0.06 → 0.04 on 2026-06-14 after the 06-03/06-05 edge-matching fixes de-inflated edges — the higher floor had been double-correcting the model's ~15% over-claim (running as a 2-4 week experiment; recalibrate on fresh post-fix data). Rejection message shows the sport-specific floor in use.
-- **Venue eligibility preflight (S3, 2026-08-26):** Before any **live** order, `execute_pipeline` reads `data/cache/venue_eligibility.json` keyed on **venue + product** and refuses to place when the verdict is `blocked` **or `unknown`**. **Fails closed on purpose** — the opposite of gates 3.6/3.7/2b, which fail *open* on missing data: an unmeasurable spread is a sizing question whose worst case is a bad bet, an unverified jurisdiction is a legality question whose worst case is an order the venue is barred from filling. **Dry runs skip it** (they never reach the venue, and blocking them would silence the Polymarket dry-run evidence log). A **structural** rejection (jurisdiction / permission / KYC) aborts the batch on the **first** occurrence and records the block — those errors are deterministic, so the next order fails identically; between 2026-08-20 and 08-25 Kalshi rejected **16 orders across 6 runs** (3 within one second on 08-20, 4 on 08-23) because the loop kept going. Transient patterns (`insufficient_balance`, rate limits, `deprecated_v1_order_endpoint`, closed market, invalid price) are checked **first** and can never disable a venue. **Nothing clears a block automatically** — only a real venue acceptance (a `dry_run_blocked` response deliberately does not count) or `python scripts/doctor.py --verify-eligibility --ticker <open sports ticker>`, which places a **real** 1¢ unfillable order and cancels it. An `ok` verdict decays to `unknown` after 30 days (`ELIGIBILITY_TTL_DAYS`): Kalshi says it will send further instructions "as necessary to maintain access", so eligibility is a lease. A `blocked` never decays — time passing is not evidence a restriction was lifted. `doctor.py` reports `unknown` as **FAIL**, not WARN.
+- **Venue eligibility preflight (S3, 2026-08-26):** Before any **live** order, `execute_pipeline` reads `data/cache/venue_eligibility.json` keyed on **venue + product** and refuses to place when the verdict is `blocked` **or `unknown`**. **Fails closed on purpose** — the opposite of gates 3.6/3.7/2b, which fail *open* on missing data: an unmeasurable spread is a sizing question whose worst case is a bad bet, an unverified jurisdiction is a legality question whose worst case is an order the venue is barred from filling. **Dry runs skip it** (they never reach the venue). A **structural** rejection (jurisdiction / permission / KYC) aborts the batch on the **first** occurrence and records the block — those errors are deterministic, so the next order fails identically; between 2026-08-20 and 08-25 Kalshi rejected **16 orders across 6 runs** (3 within one second on 08-20, 4 on 08-23) because the loop kept going. Transient patterns (`insufficient_balance`, rate limits, `deprecated_v1_order_endpoint`, closed market, invalid price) are checked **first** and can never disable a venue. **Nothing clears a block automatically** — only a real venue acceptance (a `dry_run_blocked` response deliberately does not count) or `python scripts/doctor.py --verify-eligibility --ticker <open sports ticker>`, which places a **real** 1¢ unfillable order and cancels it. An `ok` verdict decays to `unknown` after 30 days (`ELIGIBILITY_TTL_DAYS`): Kalshi says it will send further instructions "as necessary to maintain access", so eligibility is a lease. A `blocked` never decays — time passing is not evidence a restriction was lifted. `doctor.py` reports `unknown` as **FAIL**, not WARN.
 - **Never truncate the tail of a venue error.** These messages put the instruction last, and all three surfaces cut it off: the console at 80 chars, the trade log at 200, the daily digest at 110 — which landed on **"Check you…"**, 25 characters short of "Check your email for more details", the entire fix for a six-day outage. All three now route through `venue_eligibility.actionable_reason()`, which elides the **middle** and keeps both ends; the trade log stores the full body. **If you are reporting a venue rejection to the user, quote the end of the message.**
 - **Cumulative exposure ceilings (S4, 2026-08-26):** Gate 2b — `MAX_OPEN_EXPOSURE_PCT` (total open at-risk / equity) and `MAX_SEGMENT_EXPOSURE_PCT` (same, per sport). Code defaults 0/0 = off; **live `.env` is 0.50 / 0.33**. **The only gate that measures a standing total** — `MAX_OPEN_POSITIONS` counts rows, `MAX_PER_EVENT` binds one game, `MAX_BET_RATIO` and `--budget` each bind a single batch, and every one of them passed the whole way while 26 NFL positions accumulated to **31% of a ~$92 bankroll** across roughly a dozen scans over three months. **Denominated in equity (cash + position value), not cash** — every dollar bought subtracts from cash *and* adds to exposure, so a cash denominator climbs at twice the rate of the risk. Segment = `_detect_sport(ticker)`, falling back to `category`, then `unknown`; deliberately *not* the event key, which Gate 6 already binds and which passed 26 times across 26 events. **Rejects when a ceiling is already breached AND trims** the order to the smaller remaining headroom (`APPROVED_CAPPED_EXPOSURE`) — reject-only would let a book at 49.9% add a full `MAX_BET_SIZE`. The batch loop accumulates approved cost into both counters, so N individually-compliant orders can't walk through together; the R26 replay path re-checks it like gates 5/6/7. **Fails open on unknown equity.** Positions are read from `market_exposure_dollars`, which the v2 API returns as a *string*. **The live 0.50/0.33 was the operator's call over the review's 0.20/0.10, knowing the current book passes** (27.8% total, all NFL) — so it binds on the next pileup, not this one, and doesn't jam other sports behind the frozen NFL book. Not visible in preflight (portfolio state); the scan banner prints standing exposure and the largest segment instead.
 - **Time-to-event cap (S5, 2026-08-26):** Gate 3.7 rejects a **game** market more than `MAX_DAYS_TO_EVENT_FOR_GAME_MARKETS` days before its event. Code default 0 = off; **live `.env` is 14**. **Futures are exempt by category**, not by ticker prefix — `KXMLB-26-LAD` (World Series) and `KXMLBGAME-26AUG26...` share a prefix, so only the scanner's own `category` reliably separates them; a championship's "event" is a whole season. **This caps lead time, not sports:** near-dated college football at 3-4 days out is untouched, while all 26 NFL positions (min 25d, median 35d, max 112d, 20 of them from the one scheduled task with no date filter) would have been blocked. The mechanism it targets: nothing settled for months, so no feedback arrived while exposure stacked. **Fails open** on an unparseable date, like Gate 3.6. Preflight label: `far`. 0 disables.
@@ -531,8 +495,7 @@ When `--save` is used, the report format depends on whether `--unit-size` was pa
 - **Live/in-play safety gate (L1, 2026-07):** Gate 4.8 rejects opportunities on already-started games (`is_game_started`) unless `ALLOW_LIVE_BETS=true`. Default off. Preview label: `live-off`. Two supporting knobs for when it *is* enabled: `MAX_LIVE_BOOK_AGE_SECONDS=1200` drops bookmakers whose in-play line is staler than 20 min from the consensus, and `MIN_LIVE_CONSENSUS_BOOKS=3` skips a game whose consensus the stale filter thinned below 3 fresh books (fires only when staleness actually removed books; pre-game is unaffected). `ODDS_LIVE_TTL_SECONDS=45` shortens both cache layers when a sport response contains an in-play event.
 - **NBA consensus-book minimum (R29, 2026-06-23):** NBA games with fewer than `MIN_CONSENSUS_BOOKS_NBA=8` agreeing books drop to `low` confidence, which Gate 4.5 then rejects. Filters stale recreational lines. 0 disables.
 - **High-confidence composite cap (C4, 2026-06-24):** The sports composite weight caps `high` to `medium` (`{low:3, medium:6, high:6}`), so "high" no longer earns a score premium — it can't float no-signal bets up the `--max-bets` queue or help clear Gate 4. The 306-bet review found High at 41.5% WR / +13.5% ROI vs Medium 53.2% / +44.4%, and — decisively — High losing to Medium *at equal claimed edge* (5–10% bucket: 34% vs 63% WR). A tight ≥8-sharp-book consensus means the price is efficient, so a large model edge against it is more likely model error than signal. The `high` **label** is retained and still gates NO-favorite bets at 4.6. Sizing never used confidence. **Scoped to sports only** — futures and prediction earn "high" by different rules and were explicitly out of scope.
-- **Futures composite edge scale (C10, 2026-07-23):** The futures composite used `min(10, edge * 20)` (saturating at a 50% edge) while sports used `min(edge / 0.01, 10)` (saturating at 10%) — one term 5x stricter, dating to a copy-paste on the launch-day commit. Clearing `MIN_COMPOSITE_SCORE=6.0` therefore needed ~11% edge at high confidence / 23% medium / 34% low, against championship futures edges that run 1–4% in practice. **Gate 4 was unreachable**, which explains **0 futures bets in 85 logged trades** and made Polymarket US (futures-only) permanently unexecutable. Both paths (`futures_edge.py`, `polymarket_futures_edge.py`) now use the sports scale. Not a floodgate — replayed against 4 days of live Polymarket evidence it approves none of the 9 observed candidates. The futures `high: 9` weight is deliberately untouched (C4 scoped futures out, and there's still no futures settlement data).
-- **Games composite edge scale (C10b, 2026-07-31):** C10 missed `polymarket_games_edge.py`, written 3 days earlier, which had copied `edge * 20` from the futures file — itself a copy of its own `liquidity` line. Same unreachable Gate 4: clearing 6.0 needed ~15%/26%/38% edge at high/medium/low against game edges of 1–7%, and **none of 362 logged game rows ever exceeded composite 5.30**. Now aligned. Not a floodgate — 5 of 362 (1.4%) newly clear Gate 4, marginally, and 330 never reach it (stopped at Gate 3). No live behavior change: Gamma game rows have no US `market_slug` and are auto-excluded from execution. Liquidity stays `book_spread * 100` (the 0.10 spread ceiling makes `* 20` uninformative) and `high: 9` stays uncapped, both deliberately.
+- **Futures composite edge scale (C10, 2026-07-23):** The futures composite used `min(10, edge * 20)` (saturating at a 50% edge) while sports used `min(edge / 0.01, 10)` (saturating at 10%) — one term 5x stricter, dating to a copy-paste on the launch-day commit. Clearing `MIN_COMPOSITE_SCORE=6.0` therefore needed ~11% edge at high confidence / 23% medium / 34% low, against championship futures edges that run 1–4% in practice. **Gate 4 was unreachable**, which explains **0 futures bets in 85 logged trades**. `futures_edge.py` now uses the sports scale. The futures `high: 9` weight is deliberately untouched (C4 scoped futures out, and there's still no futures settlement data).
 - **Pre-wager calibration preflight (2026-07-31):** `execute_pipeline` compares the cached stdevs against what `model_calibration` would compute from current settled data, and warns when they disagree. Deliberately not an age check — the C8 loop spent its whole life writing hardcoded defaults back on schedule with exit 0, so every age-based check said "fresh". A legitimate skip (too few samples) or hold (gap within noise) recomputes to the same value and stays silent. `REQUIRE_FRESH_CALIBRATION=true` turns the warning into a hard stop on `--execute`; default false warns and continues, because most sports are legitimately out of season and halting all betting on a diagnostic is the worse failure.
 - **Calibration staleness TTL (C8, 2026-06-23):** `CALIBRATION_STDEVS_TTL_DAYS=30` caps how old the auto-recalibrated per-sport stdevs in `data/cache/calibration_stdevs.json` may be before the code falls back to hardcoded defaults. Scans log the age on load (`age 17.8 days`) — worth a glance when edges look off.
 - **Prediction-market safety gate (R25, 2026-04-24):** Gate 4.7 rejects opportunities where `opp.category` is `crypto`, `weather`, `spx`, `mentions`, `companies`, or `politics` unless `ALLOW_PREDICTION_BETS=true`. Default off. 2026-04-24 audit surfaced that all 6 prediction modules cache stale data with zero TTL, produce nonsense fair values (Miami weather at $1.00 fair on a 1°F window, crypto +80% "edges" on 4¢ tails), and have placed zero of 173 historical settled bets — no calibration data exists. Kept blocked until R25b (TTL caches) and R25c (rebuild one model with tests) are shipped.
@@ -543,7 +506,7 @@ When `--save` is used, the report format depends on whether `--unit-size` was pa
 - **File-backed scan cache + row-order lock (R26, 2026-04-29):** Each preview's post-dedup, post-risk-gate, post-budget-cap rows are persisted to `data/cache/last_scan.json`. When `--execute --pick/--ticker` is invoked, the executor replays the cached rows instead of rescanning live — so row indices map to the same tickers the user saw in the preview, even if Kalshi prices or composite scores drift between calls. Knobs: `SCAN_CACHE_TTL_SECONDS=600` (10 min default), `SCAN_CACHE_ENABLED=true`. New `--rescan` CLI flag opts out per-call. **Fingerprint mismatch warning:** if any of `{scanner, filter, category, date, exclude_open, min_edge, top}` differ between the preview and the execute call (e.g. `--exclude-open` dropped on the second call), the executor prints a bold red banner explaining `--pick` row numbers will reference a NEW ranking, lists the differing args, and rescans. Pass `--rescan` to silence the warning intentionally. Banner on hit: `Replaying cached preview (N rows, age Xs)`. Motivated by 2026-04-29 user bug where two back-to-back live scans reordered rows and `--pick '1,3,4,5'` placed the wrong bets.
 - **Truthful post-pick cost line (R26 follow-up, 2026-04-29):** When `--pick` or `--ticker` is filtering, the summary now prints `Placing N orders, total cost: $X.XX (selected from M-row menu totaling $Y.YY)` — replacing the old misleading `Total cost: $9.40 of $70.99 available` which showed the menu total even when only 3 of 10 rows were actually placed.
 
-Gates 1-7 (including 2b, 3.5, 3.6, 3.7, 4.5, 4.6, 4.6b, 4.7, 4.8) reject orders outright. Gates 8-9 downsize and approve, logging the approval subtype (`APPROVED`, `APPROVED_CAPPED_MAX_BET`, `APPROVED_CAPPED_BET_RATIO`, `APPROVED_CAPPED_EXPOSURE`, `APPROVED_BUMPED_MIN_SHARES`). **Gate 2b does both** — it rejects at/over a ceiling and trims otherwise.
+Gates 1-7 (including 2b, 3.5, 3.6, 3.7, 4.5, 4.6, 4.6b, 4.7, 4.8) reject orders outright. Gates 8-9 downsize and approve, logging the approval subtype (`APPROVED`, `APPROVED_CAPPED_MAX_BET`, `APPROVED_CAPPED_BET_RATIO`, `APPROVED_CAPPED_EXPOSURE`). **Gate 2b does both** — it rejects at/over a ceiling and trims otherwise.
 
 Preview rows carry a **Gate** column (R18) naming the first gate that would reject at execute time: `ok` · `edge` (3) · `off` (3, sport switched off) · `price` (3.5) · `illiq` (3.6) · `far` (3.7) · `score` (4) · `conf` (4.5) · `no-fav` (4.6) · `pred-off` (4.7) · `live-off` (4.8). **Static only** — gates 1, 2, 2b, 5, 6 and 7 need live portfolio state, so `ok` means the row itself has no blockers, not that execution will succeed.
 
@@ -637,13 +600,12 @@ Get-ScheduledTask -TaskPath "\Edge-Radar-MikesAILab\*" |
   Sort-Object LastRun -Descending | Format-Table -AutoSize
 ```
 
-As of 2026-07-23 the live execution cadence is four Kalshi runs a day plus one Polymarket run, each paired with an email report ~20 min later:
+The live execution cadence is four Kalshi runs a day, each emailing its report as a second action (since 2026-09-23; `Daily-Polymarket-Execution` was removed 2026-09-29):
 
 | Time (PT) | Task | Notes |
 |---|---|---|
 | 4:50 AM | `Daily-Summary` | emailed 5:00 AM |
 | 5:05 AM | `All-Sports-SameDay-Execution` | `--date today` |
-| 9:40 AM | `Daily-Polymarket-Execution` | **passes `--execute`** — renamed from `Daily-Polymarket-DryRun`, capped at `--max-bets 2 --budget 10%` |
 | 11:00 AM | `All-Sports-NoDateFilter-Midday-Execution` | no date filter — *can bet games several days out* |
 | 2:00 PM | `All-Sports-SameDay-Late-Execution` | |
 | 8:30 PM | `All-Sports-NextDay-Execution` | `--date tomorrow` |
@@ -718,7 +680,7 @@ Orders are logged to `data/history/kalshi_trades.json` with **fill-based account
 - `requested_contracts` / `requested_cost` — what we asked for
 - `filled_contracts` / `filled_cost` — what the exchange actually executed
 - `fill_status` — `resting` | `partial` | `filled`
-- `venue` — `kalshi` | `polymarket` (added with PM2c; records written before that are Kalshi and lack the field)
+- `venue` — always `kalshi` now (added with PM2c for Polymarket, which was removed 2026-09-29; older records lack the field, and readers default to `kalshi`)
 
 Resting orders (zero fills) are excluded from exposure calculations and settlement. The settler, risk dashboard, and P&L reports all use filled values, not requested. Writes go through a cross-process lock (M2) so concurrent settle/execute merge safely.
 
@@ -760,7 +722,7 @@ Flags: `--sport`, `--category`, `--confidence`, `--min-edge`, `--after`, `--simu
 1. **Always check status first** before any scan or bet — if daily loss limit is breached, STOP.
 2. **Never execute without confirmation** unless `--execute`/`--go` was explicitly passed.
 3. **Preview is the default** — every scan shows a table first, orders only placed with `--execute`.
-4. **Fifteen risk gates enforced** — daily loss, position count, edge (per-sport), market price floor (3.5, R7), composite score, min confidence (4.5), NO-side favorite guard (4.6, R1), NO-side global edge floor (4.6b, R28), prediction-market safety (4.7, R25), live/in-play safety (4.8, L1), duplicate ticker, per-event cap, series dedup, max bet size, bet ratio cap — plus the venue min-share bump on Polymarket. All checked before every order, on both venues. Plus the resting-order janitor at the top of every live execute run.
+4. **Fifteen risk gates enforced** — daily loss, position count, edge (per-sport), market price floor (3.5, R7), composite score, min confidence (4.5), NO-side favorite guard (4.6, R1), NO-side global edge floor (4.6b, R28), prediction-market safety (4.7, R25), live/in-play safety (4.8, L1), duplicate ticker, per-event cap, series dedup, max bet size, bet ratio cap All checked before every order. Plus the resting-order janitor at the top of every live execute run.
 5. **API keys are in `.env`** — never print, log, or expose them.
 6. **R26 row-order lock for `--pick`** — when running `--execute --pick/--ticker`, keep filter args identical to the previous preview so the cached row→ticker mapping replays. If anything differs, the executor prints a bold red banner and rescans (different rows). Pass `--rescan` only when you intend a fresh ranking.
 7. **R8 cross-category dedup is opt-in** — by default ML+Total+Spread on the same game survive as 3 distinct bets (current behavior). To collapse them per sport, set `CROSS_CATEGORY_DEDUP_<SPORT>=true` (e.g. `CROSS_CATEGORY_DEDUP_NBA=true`); when active, the dedup banner names the sports (`Deduped correlated brackets: 12 -> 8 opportunities (cross-category: ['nba'])`). Per-sport `false` overrides the global flag in either direction.

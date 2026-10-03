@@ -3,9 +3,10 @@ market_client.py — the venue-neutral execution-client contract (PM2 seam).
 
 `MarketClient` is the ~7-method interface the money paths actually use
 (executor, settler, risk_check, daily_summary). `KalshiClient` already
-satisfies it; the Phase 2 `PolymarketClient` must implement the same surface
-so a normalized `Opportunity` can execute on either venue through the
-existing risk-gate chain unchanged. See docs/ROADMAP.md Priority 0 (PM2).
+satisfies it, and any future venue must implement the same surface so a
+normalized `Opportunity` executes through the existing risk-gate chain
+unchanged. (Polymarket US implemented it until the venue was removed on
+2026-09-29; see CHANGELOG.)
 
 Conventions every implementation must honor (set by KalshiClient, the
 reference implementation):
@@ -26,9 +27,8 @@ route through it rather than instantiating `KalshiClient()` directly.
 
 from typing import Protocol, runtime_checkable
 
-# Venues the factory understands. "polymarket" targets the Polymarket US
-# retail API (Ed25519-signed); the client refuses only when its API keys are unset.
-VENUES = ("kalshi", "polymarket")
+# Venues the factory understands.
+VENUES = ("kalshi",)
 
 
 @runtime_checkable
@@ -91,17 +91,12 @@ class MarketClient(Protocol):
 def get_market_client(venue: str = "kalshi") -> MarketClient:
     """Build the execution client for `venue`.
 
-    Imports lazily so a venue's dependency stack (Kalshi RSA signing,
-    Polymarket US Ed25519 signing) is only loaded when that venue is selected.
+    Imports lazily so a venue's dependency stack (Kalshi RSA signing) is only
+    loaded when that venue is selected.
     """
     v = (venue or "kalshi").strip().lower()
     if v == "kalshi":
         from kalshi_client import KalshiClient
+
         return KalshiClient()
-    if v == "polymarket":
-        # PM2 write half (Polymarket US retail API). Raises FileNotFoundError
-        # with setup guidance when POLYMARKET_KEY_ID / POLYMARKET_SECRET_KEY
-        # are unset — same contract as KalshiClient without credentials.
-        from polymarket_exec_client import PolymarketClient
-        return PolymarketClient()
     raise ValueError(f"Unknown venue {venue!r}. Valid venues: {', '.join(VENUES)}")
