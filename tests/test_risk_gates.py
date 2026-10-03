@@ -375,6 +375,48 @@ class TestMinMarketPriceGate:
             kalshi_executor.MIN_MARKET_PRICE = orig_floor
 
 
+class TestMaxEdgeGate:
+    """Gate 3.05 (B7): a claimed edge above MAX_EDGE is a model bug, not edge."""
+
+    def _opp(self, edge: float) -> Opportunity:
+        return Opportunity(
+            ticker="KXMLBGAME-99MAR301840CWSMIA-MIA",
+            title="Test Game",
+            category="game",
+            side="yes",
+            market_price=0.30,
+            fair_value=0.30 + edge,
+            edge=edge,
+            edge_source="test",
+            confidence="high",
+            liquidity_score=8.0,
+            composite_score=8.5,
+            details={},
+        )
+
+    def _size(self, edge):
+        return size_order(
+            self._opp(edge), bankroll=500.0, open_positions=0, daily_pnl=0.0, unit_size=1.00
+        )
+
+    def test_rejected_above_ceiling(self, monkeypatch):
+        import kalshi_executor
+
+        monkeypatch.setattr(kalshi_executor, "MAX_EDGE", 0.50)
+        result = self._size(0.51)
+        assert "edge_implausible" in result.risk_approval
+        assert result.contracts == 0
+        assert kalshi_executor.preflight_gate_status(self._opp(0.51)) == "edge-hi"
+
+    def test_passes_at_ceiling_and_when_disabled(self, monkeypatch):
+        import kalshi_executor
+
+        monkeypatch.setattr(kalshi_executor, "MAX_EDGE", 0.50)
+        assert "edge_implausible" not in self._size(0.50).risk_approval
+        monkeypatch.setattr(kalshi_executor, "MAX_EDGE", 1.0)
+        assert "edge_implausible" not in self._size(0.65).risk_approval
+
+
 class TestMaxMarketPriceGate:
     """Gate 3.55: reject opportunities whose cost/payout ratio exceeds
     MAX_MARKET_PRICE. A contract pays $1 if it wins, so market price IS the
