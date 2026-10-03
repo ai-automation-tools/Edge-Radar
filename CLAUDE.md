@@ -159,6 +159,7 @@ Every gate runs before any trade executes:
 | 2 | Open position count under max | Reject |
 | 2b | Total open exposure < `MAX_OPEN_EXPOSURE_PCT` and per-sport < `MAX_SEGMENT_EXPOSURE_PCT`, both as fractions of equity (S4) | Reject **+ Cap** |
 | 3 | Edge >= minimum threshold (per-sport or global) **+ exchange fee** (F1) | Reject |
+| 3.05 | Claimed edge <= `MAX_EDGE` (0.50) — larger is a model/matching bug (B7) | Reject |
 | 3.5 | Market price >= `MIN_MARKET_PRICE` (lottery-ticket floor, R7) | Reject |
 | 3.55 | Market price <= `MAX_MARKET_PRICE` (cost/payout ratio ceiling) | Reject |
 | 3.6 | Bid/ask spread <= `MAX_BID_ASK_SPREAD` and 24h volume >= `MIN_MARKET_VOLUME_24H` (L2) | Reject |
@@ -510,7 +511,7 @@ Standing rules — do not reverse them without new settled evidence.
 
 ## Risk Limits
 
-Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_EDGE_THRESHOLD_MLB_SPREAD=0.08` (category-scoped floor, 2026-09-27: MLB spreads 0-9 while totals ran 11-2 — *CHANGELOG 2026-09-27*), `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.06` (S1b pilot since 2026-09-13 at 0.08, lowered to 0.06 on 2026-09-19) and `MIN_EDGE_THRESHOLD_NCAAF=0.06` (S21c pilot since 2026-09-16 at 0.08, lowered to 0.06 on 2026-09-19; was the 1.0 S21 freeze) — none of these are in the code defaults**.
+Code defaults below. The live `.env` overrides several (equity ≈ **$121.83** — **$88.06 cash + $33.77 in positions**, verified 2026-08-27 after two operator deposits totalling **$40**; historical entries below quote the ~$92 it stood at, so the shipped defaults are sized for a much larger account. **The cash figure is the sum across exchange shards** — $73.07 on shard 0, $15.00 on shard 3; run `doctor.py` for the split): `UNIT_SIZE=1.00`, `KELLY_FRACTION=0.5`, `MAX_BET_SIZE=8`, `MAX_DAILY_LOSS=30`, `MAX_BET_RATIO=5`, `MIN_EDGE_THRESHOLD_MLB=0.03`, `MIN_EDGE_THRESHOLD_MLB_SPREAD=1.0` (**off** since 2026-10-03: 0-9 lifetime, all YES big covers, postseason on a regular-season stdev; was 0.08 from 09-27 — *CHANGELOG 2026-10-03*), `MIN_EDGE_THRESHOLD_NHL_TOTAL=0.06` (2026-10-03: overs -17% lifetime), `MIN_MARKET_PRICE=0.10`, and **`MIN_EDGE_THRESHOLD_NFL=0.06` (S1b pilot since 2026-09-13 at 0.08, lowered to 0.06 on 2026-09-19) and `MIN_EDGE_THRESHOLD_NCAAF=0.06` (S21c pilot since 2026-09-16 at 0.08, lowered to 0.06 on 2026-09-19; was the 1.0 S21 freeze) — none of these are in the code defaults**.
 
 ```env
 UNIT_SIZE=1.00                  # Kelly floor per bet — the longshot knob (binds below ~30c)
@@ -567,6 +568,8 @@ MIN_EDGE_THRESHOLD_NCAAF=<unset> # S21/S21c: live-only, code default unset. FROZ
 MIN_MARKET_PRICE=0.12           # R7 lottery-ticket floor; 0 disables. Pure reject threshold,
                                 #   independent of sizing. The live 0.10 is an OPEN EXPERIMENT
                                 #   re-opening the longshot lane — recheck after ~30 more settles.
+MAX_EDGE=0.50                   # B7: Gate 3.05, reject claimed edge above this. An 81% edge
+                                #   (ETSU, 2026-09-26) passed every gate at 44 contracts. 1.0 disables.
 MAX_MARKET_PRICE=1.0            # Gate 3.55: cost/payout ratio ceiling; 1.0 disables (price
                                 #   can't exceed $1 anyway). A 76c bet to win $1 (76%) is
                                 #   rejected; 75c (75%) passes. Live `.env` sets 0.75 — operator

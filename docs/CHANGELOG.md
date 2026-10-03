@@ -2,6 +2,48 @@
 
 ---
 
+## 2026-10-03 -- B7 edge ceiling; MLB spreads off; NHL totals floor; relative stdev sweep
+
+### B7: Gate 3.05 rejects claimed edges above `MAX_EDGE` (default 0.50)
+
+`KXNCAAFSPREAD-26SEP26WCUETSU-ETSU15` (2026-09-26) claimed **80.7%** edge: model
+0.937 against a 13c market, 7 books. It passed every gate, was sized to 44
+contracts ($5.72, 5.4% of bankroll) and won $37.93 -- the whole two-week P&L
+(+$34.74 on $38; about -$3 without it). An edge that size is a matching or sign
+bug, not a signal, and nothing rejected it. Ex-ETSU, settled edges >= 0.30 made
++$4.72 on $38 over 40 bets. The scan preview labels it `edge-hi`; `MAX_EDGE=1.0`
+disables.
+
+### MLB alternate spreads off (live `.env`, `MIN_EDGE_THRESHOLD_MLB_SPREAD=1.0`)
+
+Lifetime **0-9, -$8.68**, every bet YES on "wins by over N.5" -- the S21
+one-sided-book diagnostic. The 0.08 floor of 09-27 still passed SD3 on 10-01.
+Shadow book (all postseason, from 09-28): 37/37 rows YES, model above market on
+every one, **2 of 22** settled hit against ~21% implied. `margin_stdev` 4.025 is
+the R2 fallback, never fitted, and nothing distinguishes the postseason.
+**Not refit**: the shadow book records only positive-edge rows, so a fit on it is
+the S21c selection trap (the sweep pins to its 0.5x grid edge on 22 rows).
+Revisit in spring.
+
+### NHL totals floor (live `.env`, `MIN_EDGE_THRESHOLD_NHL_TOTAL=0.06`)
+
+Overs are 16-15 lifetime at -17.3% (model Brier 0.243 vs market 0.221); unders
+6-3, +21.8%. All 7 picks since 09-28 were YES over 5.5 at 4.9-6.5% edge; 0.06
+blocks them while leaving NHL ML/spreads alone. The model's o5.5 probability is
+not over-biased against a Poisson benchmark (-0.2pts, 25 events) -- Kalshi
+prices o5.5 5-9pts below the books. Unverified: whether KXNHLTOTAL settles
+differently (shootouts). **Correction:** a first pass called these preseason
+games; the NHL schedule API puts the regular-season start at 2026-09-29, and a
+same-day `MIN_EDGE_THRESHOLD_NHL=1.0` hold on that premise was reverted.
+
+### `shadow_book.py review`: sweep is relative to the in-code stdev
+
+The sweep was a fixed 7-18 grid sized for football's 15.0, so for MLB (4.025)
+or NHL totals (2.2) it reported a meaningless "best fit 7.0". It now sweeps
+0.5-1.4x each row's own stdev and prints both the multiple and its value.
+
+---
+
 ## 2026-09-29 -- Polymarket removed; B1 per-book consensus; S9 CLV reporting
 
 ### Polymarket US removed

@@ -255,6 +255,11 @@ class GateThresholds:
     # 76c bet to win $1 is a 76% ratio). 1.0 disables (any price up to $1 is
     # already the natural ceiling). Companion to min_market_price's R7 floor.
     max_market_price: float = 1.0
+    # Gate 3.05 (B7, 2026-10-03): reject claimed edges above this. A 0.81 edge
+    # (ETSU -14.5 at 13c, 2026-09-26) is a matching/sign bug, not a signal;
+    # 0.3+ edges ex-ETSU returned +12% on 40 bets, mostly loser NCAAB rows.
+    # 1.0 disables.
+    max_edge: float = 0.50
     min_composite_score: float = 6.0
     min_confidence: str = "medium"
     series_dedup_hours: int = 48
@@ -293,6 +298,7 @@ class GateThresholds:
             min_edge_threshold=_float("MIN_EDGE_THRESHOLD", 0.03),
             min_market_price=_float("MIN_MARKET_PRICE", 0.12),
             max_market_price=_float("MAX_MARKET_PRICE", 1.0),
+            max_edge=_float("MAX_EDGE", 0.50),
             min_composite_score=_float("MIN_COMPOSITE_SCORE", 6.0),
             min_confidence=_str("MIN_CONFIDENCE", "medium").strip().lower(),
             series_dedup_hours=_int("SERIES_DEDUP_HOURS", 48),
@@ -616,6 +622,8 @@ class Config:
             raise ValueError(
                 f"MAX_MARKET_PRICE must be in [0, 1], got {self.gates.max_market_price}"
             )
+        if not 0.0 < self.gates.max_edge <= 1.0:
+            raise ValueError(f"MAX_EDGE must be in (0, 1], got {self.gates.max_edge}")
         if not 0.0 <= self.gates.max_bid_ask_spread <= 1.0:
             raise ValueError(
                 f"MAX_BID_ASK_SPREAD must be in [0, 1], got {self.gates.max_bid_ask_spread}"

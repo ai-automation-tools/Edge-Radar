@@ -106,6 +106,9 @@ MIN_MARKET_PRICE = _cfg.gates.min_market_price
 # price can't exceed $1 anyway, so a 1.0 ceiling never rejects).
 MAX_MARKET_PRICE = _cfg.gates.max_market_price
 
+# Gate 3.05 (B7): claimed edge above this is a model/matching bug, not edge.
+MAX_EDGE = _cfg.gates.max_edge
+
 # R4 (2026-04-21): auto-cancel resting orders older than this with zero fills.
 # 14-day review showed 16% of new-log orders (4/25) resting 25-66h with zero
 # fills. 0 disables. Triggered at the top of execute_pipeline() when
@@ -520,7 +523,7 @@ def reload_risk_config() -> None:
     global MIN_EDGE_THRESHOLD, KELLY_FRACTION, MAX_PER_EVENT, MAX_PER_EVENT_FUTURES, MAX_BET_RATIO
     global MAX_OPEN_EXPOSURE_PCT, MAX_SEGMENT_EXPOSURE_PCT
     global MIN_COMPOSITE_SCORE, KELLY_EDGE_CAP, KELLY_EDGE_DECAY, SERIES_DEDUP_HOURS
-    global MIN_MARKET_PRICE, MAX_MARKET_PRICE, RESTING_ORDER_MAX_HOURS, MIN_CONFIDENCE
+    global MIN_MARKET_PRICE, MAX_MARKET_PRICE, MAX_EDGE, RESTING_ORDER_MAX_HOURS, MIN_CONFIDENCE
     global NO_SIDE_FAVORITE_THRESHOLD, NO_SIDE_MIN_EDGE, NO_SIDE_MIN_EDGE_GLOBAL
     global NO_SIDE_KELLY_PRICE_FLOOR, NO_SIDE_KELLY_PRICE_CEILING
     global NO_SIDE_KELLY_MULTIPLIER, NO_SIDE_KELLY_MULTIPLIER_GLOBAL
@@ -550,6 +553,7 @@ def reload_risk_config() -> None:
     SERIES_DEDUP_HOURS = cfg.gates.series_dedup_hours
     MIN_MARKET_PRICE = cfg.gates.min_market_price
     MAX_MARKET_PRICE = cfg.gates.max_market_price
+    MAX_EDGE = cfg.gates.max_edge
     RESTING_ORDER_MAX_HOURS = cfg.gates.resting_order_max_hours
     MIN_CONFIDENCE = cfg.gates.min_confidence
     NO_SIDE_FAVORITE_THRESHOLD = cfg.gates.no_side_favorite_threshold
@@ -656,6 +660,7 @@ def preflight_gate_status(opp: "Opportunity") -> str:
         "edge"     — Gate 3   (edge below per-sport floor)
         "off"      — Gate 3   (sport switched off: floor set to an
                      unreachable >= 100%)
+        "edge-hi"  — Gate 3.05 (claimed edge above MAX_EDGE: likely a bug)
         "price"    — Gate 3.5  (market price below R7 floor)
         "price-hi" — Gate 3.55 (cost/payout ratio above MAX_MARKET_PRICE)
         "illiq"    — Gate 3.6 (bid/ask spread or 24h volume below floor)
@@ -680,6 +685,10 @@ def preflight_gate_status(opp: "Opportunity") -> str:
     floor = min_edge_for(opp)
     if opp.edge < floor:
         return "off" if floor >= 1.0 else "edge"
+
+    # Gate 3.05: implausible-edge ceiling (B7)
+    if MAX_EDGE < 1.0 and opp.edge > MAX_EDGE:
+        return "edge-hi"
 
     # Gate 3.5: R7 market-price floor (disabled if MIN_MARKET_PRICE == 0)
     if MIN_MARKET_PRICE > 0 and opp.market_price < MIN_MARKET_PRICE:
@@ -1389,6 +1398,13 @@ def size_order(
                 + (f", incl. {_fee:.1%} fee" if _fee > 0 else "")
                 + ")"
             )
+
+    # ── Risk Gate 3.05: Implausible-edge ceiling (B7)
+    #   An 81% claimed edge on a 13c contract (ETSU -14.5, 2026-09-26) is the
+    #   model disagreeing with every book -- a matching or sign bug. It won by
+    #   luck at 44 contracts. MAX_EDGE=1.0 disables.
+    elif MAX_EDGE < 1.0 and opp.edge > MAX_EDGE:
+        rejection = f"edge_implausible ({opp.edge:.1%} > {MAX_EDGE:.0%})"
 
     # ── Risk Gate 3.5: Minimum market-price floor (R7)
     #   Lottery-ticket filter. F10 from the 14-day review: sub-10¢ bets went

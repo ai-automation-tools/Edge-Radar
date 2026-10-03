@@ -60,9 +60,10 @@ from scipy.stats import norm  # noqa: E402
 
 SHADOW_LOG = Path(paths.DATA_DIR) / "history" / "shadow_book.json"
 
-#: Stdevs the sweep re-projects each row at. Brackets the 9.5 the market
-#: implied and the 15.0 the code uses (S21), with room either side.
-SWEEP_STDEVS = [7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0]
+#: Multiples of each row's OWN stdev the sweep re-projects at. Relative, not
+#: absolute: a fixed 7-18 grid (sized for football's 15.0) is meaningless for
+#: MLB (4.025) or NHL totals (2.2), and silently reported "best fit 7.0".
+SWEEP_SCALES = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4]
 
 #: Below this the sweep is noise-fitting, not measurement. Printed either way,
 #: but flagged, so a 6-row "optimum" is never read as a result.
@@ -198,6 +199,13 @@ def settle(limit: int | None = None) -> dict:
 # -- the stdev sweep ----------------------------------------------------------
 
 
+def _own_stdev(details: dict, category: str) -> float | None:
+    try:
+        return float(details["margin_stdev"] if category == "spread" else details["total_stdev"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def reproject(details: dict, category: str, side: str, stdev: float) -> float | None:
     """This row's probability had the model used `stdev` instead of its own.
 
@@ -236,19 +244,34 @@ def reproject(details: dict, category: str, side: str, stdev: float) -> float | 
 
 
 def sweep(rows: list[dict]) -> list[dict]:
-    """Model Brier at each candidate stdev, over rows that can be re-projected."""
+    """Model Brier at each multiple of the in-code stdev, over re-projectable rows.
+
+    `stdev` in each result is the scale times the median in-code stdev, so a
+    single-sport review reads in that sport's units.
+    """
     usable = [
         r
         for r in rows
         if r.get("won") is not None
         and r.get("category") in ("spread", "total")
-        and reproject(r.get("details") or {}, r["category"], r["side"], 15.0) is not None
+        and reproject(
+            r.get("details") or {},
+            r["category"],
+            r["side"],
+            _own_stdev(r.get("details") or {}, r["category"]) or 0,
+        )
+        is not None
     ]
+    if not usable:
+        return []
+    owns = sorted(_own_stdev(r["details"], r["category"]) for r in usable)
+    median_own = owns[len(owns) // 2]
     out = []
-    for s in SWEEP_STDEVS:
+    for k in SWEEP_SCALES:
         ps, ys = [], []
         for r in usable:
-            p = reproject(r["details"], r["category"], r["side"], s)
+            own = _own_stdev(r["details"], r["category"])
+            p = reproject(r["details"], r["category"], r["side"], k * own)
             if p is None:
                 continue
             ps.append(p)
@@ -256,7 +279,8 @@ def sweep(rows: list[dict]) -> list[dict]:
         if ps:
             out.append(
                 {
-                    "stdev": s,
+                    "scale": k,
+                    "stdev": k * median_own,
                     "n": len(ps),
                     "brier": sum((p - y) ** 2 for p, y in zip(ps, ys)) / len(ps),
                 }
@@ -342,11 +366,15 @@ def review(sport: str | None = None) -> str:
         return "\n".join(out)
 
     best = min(sw, key=lambda d: d["brier"])
-    out += ["| stdev | model Brier |", "|------:|------------:|"]
+    out += ["| x code | ~stdev | model Brier |", "|------:|------:|------------:|"]
     for d in sw:
-        mark = "  <- best" if d is best else ("  <- in code" if d["stdev"] == 15.0 else "")
-        out.append(f"| {d['stdev']:.1f} | {d['brier']:.4f}{mark} |")
-    out += ["", f"Best fit **{best['stdev']:.1f}** over {best['n']} rows."]
+        mark = "  <- best" if d is best else ("  <- in code" if d["scale"] == 1.0 else "")
+        out.append(f"| {d['scale']:.1f} | {d['stdev']:.2f} | {d['brier']:.4f}{mark} |")
+    out += [
+        "",
+        f"Best fit **{best['scale']:.1f}x** the in-code stdev "
+        f"(~{best['stdev']:.2f}) over {best['n']} rows.",
+    ]
     if best["n"] < MIN_SWEEP_ROWS:
         out.append(
             f"**Under {MIN_SWEEP_ROWS} rows -- treat this as a shape, not a "
@@ -397,6 +425,15 @@ def self_check() -> None:
     # Junk details must return None, never a plausible-looking number.
     assert reproject({}, "spread", "yes", 15.0) is None
     assert reproject({"margin_stdev": 0}, "spread", "yes", 15.0) is None
+    # The sweep is relative: a row at 4.025 is swept around 4.025, not 7-18,
+    # and the 1.0x column reproduces the row's own probability.
+    m = dict(
+        d, margin_stdev=4.025, kalshi_strike=2.5, median_book_spread=-1.5, inferred_mean_margin=1.0
+    )
+    sw = sweep([{"won": True, "category": "spread", "side": "yes", "details": m}])
+    at1 = next(x for x in sw if x["scale"] == 1.0)
+    assert abs(at1["stdev"] - 4.025) < 1e-9
+    assert abs(at1["brier"] - (reproject(m, "spread", "yes", 4.025) - 1.0) ** 2) < 1e-9
     print("shadow_book self-check: OK")
 
 
