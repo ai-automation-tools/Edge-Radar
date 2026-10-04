@@ -2,6 +2,28 @@
 
 ---
 
+## 2026-10-03 -- M1: NFL/NBA team matching broken by Kalshi "Pro Football" wording
+
+Kalshi now words NFL rules "... in the DEN Broncos vs SF 49ers **Pro Football**
+game" (NBA: "Pro Basketball") and NFL spread subtitles "DEN Broncos wins by over
+7.5 points". Two failures, both silent:
+
+- `extract_event_teams()` expected `professional|NFL|...` after the home team, so
+  **every NFL and NBA moneyline** returned None. Spreads/totals fell to the
+  fallback regex, which captured `'SF 49ers Pro Football'` as the home team.
+- `extract_team_from_market()` returned the whole spread subtitle. Other sports
+  only matched on the tier-1 first-word city ("tampa"); NFL's abbreviated "DEN"
+  cannot hit that.
+
+Net effect: tomorrow's slate scanned **33 of 650** NFL markets, all DEN@SF, which
+matched only because `sf` sits in `TEAM_ALIASES`. The trade log shows the drought:
+5 NFL bets since 09-01, the last (09-29) also DEN@SF. **"No opportunities" was
+a matching failure, not an absence of edge** -- the same silent-zero shape as
+the S21c `--filter` bug. Fix: accept `pro\b` in the rules regex and strip
+" wins by over/more than ..." from subtitles. Post-fix: 650/650 markets, all 14
+games. Regression tests in `TestProLeagueRulesWording`. The first post-fix
+next-day run placed ARI -8.5 YES x4 @ 28c.
+
 ## 2026-10-03 -- B7 edge ceiling; MLB spreads off; NHL totals floor; relative stdev sweep
 
 ### B7: Gate 3.05 rejects claimed edges above `MAX_EDGE` (default 0.50)
