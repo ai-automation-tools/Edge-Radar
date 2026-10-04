@@ -2,6 +2,26 @@
 
 ---
 
+## 2026-10-04 -- Public site for edge-radar.ai-automation-tools.dev
+
+Every public org repo with a front end gets a `<repo>.ai-automation-tools.dev` page, and the
+org landing page only had a footnote pointing at `edge-radar.mikesailab.com`. That page is the
+personal ops deck (scheduler times, task paths), and it already holds this repo's one GitHub
+Pages slot, so the public page could not be a second Pages site.
+
+- **`site/`** -- new static page (Tailwind CDN, no build), deployed by a **Vercel** project
+  with root directory `site/`, the same host as Edge Spectrum. Reuses the ops page's How It
+  Works diagram and pipeline strip; drops schedulers, run commands and anything about the
+  live bankroll; adds Coverage and Quick Start.
+- Carries the org **source bar** (full-bleed, top of page, "View source") and the shared
+  `consent.js`, per the `ai-automation-tools.github.io` README.
+- `.claude/html/` and `edge-radar.mikesailab.com` are unchanged. Edit `site/` for the public
+  page, `.claude/html/` for the personal one.
+- Fixed two stale links on the ops page too: the skill lives at `skills/edge-radar/` (the
+  `.claude/skills` junction is gitignored) and the scripts reference at `docs/scripts/`.
+
+---
+
 ## 2026-10-03 -- M1: NFL/NBA team matching broken by Kalshi "Pro Football" wording; Integration-Drift-Check
 
 Kalshi now words NFL rules "... in the DEN Broncos vs SF 49ers **Pro Football**

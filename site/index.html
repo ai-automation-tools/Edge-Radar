@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Edge-Radar &middot; Ops Dashboard</title>
-  <meta name="description" content="Personal ops dashboard for the Kalshi edge-detection pipeline." />
+  <title>Edge-Radar</title>
+  <meta name="description" content="Open-source edge detection and risk-gated execution for Kalshi sports and prediction markets." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -12,45 +12,53 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
-    summary::-webkit-details-marker { display: none; }
-    summary { list-style: none; }
     pre, code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
     html { scroll-behavior: smooth; }
+    /* Org source bar: ai-automation-tools.github.io README, "Source bar - required on every site" */
+    .src-bar        { display: flex; align-items: center; gap: 16px; height: 34px; padding: 0 16px;
+                      background: #0b0b0c; border-bottom: 1px solid #18181b; font-size: 12px; }
+    .src-note       { margin: 0; min-width: 0; overflow: hidden; white-space: nowrap;
+                      text-overflow: ellipsis; color: #71717a; }
+    .src-note strong{ font-weight: 600; color: #34d399; }
+    .src-link       { margin-left: auto; flex: none; display: inline-flex; align-items: center;
+                      gap: 6px; color: #a1a1aa; text-decoration: none; }
+    .src-link:hover { color: #fafafa; }
   </style>
 </head>
 <body class="bg-[#060606] text-zinc-100 min-h-screen antialiased">
 
+  <div class="src-bar">
+    <p class="src-note"><strong>Open source</strong> &middot; edge detection and risk-gated execution for Kalshi markets.</p>
+    <a class="src-link" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      View source
+    </a>
+  </div>
+
   <!-- ============ TOPBAR ============ -->
-  <div class="fixed top-0 inset-x-0 z-40 h-12 bg-[#060606]/95 backdrop-blur border-b border-zinc-900">
+  <div class="sticky top-0 z-40 h-12 bg-[#060606]/95 backdrop-blur border-b border-zinc-900">
     <div class="flex items-center h-full max-w-5xl mx-auto px-4 sm:px-6 gap-3">
       <a href="#top" class="flex items-center gap-2 text-zinc-200 hover:text-white transition">
         <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
         <span class="text-sm font-semibold tracking-wide">Edge-Radar</span>
       </a>
       <nav class="ml-4 hidden sm:flex items-center gap-1 text-sm">
-        <a href="#quicklinks" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Quick Links</a>
-        <a href="#schedulers" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Schedulers</a>
         <a href="#how-it-works" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">How It Works</a>
-        <a href="#dataflow" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Data Flow</a>
+        <a href="#dataflow" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Pipeline</a>
+        <a href="#coverage" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Coverage</a>
+        <a href="#quickstart" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Quick Start</a>
       </nav>
-      <div class="ml-auto flex items-center gap-2">
-        <a href="https://mikesailab.com" class="hidden sm:inline-flex text-xs text-zinc-500 hover:text-zinc-300 transition">mikesailab.com</a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener noreferrer"
-           class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-900 hover:text-white hover:border-zinc-700 transition">
-          <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-          <span>Repo</span>
-        </a>
-      </div>
+      <a href="https://ai-automation-tools.dev" class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition">ai-automation-tools.dev</a>
     </div>
   </div>
 
-  <main class="flex-1 max-w-5xl w-full mx-auto px-6 pt-24 pb-24 sm:pt-28">
+  <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-12 pb-24 sm:pt-16">
 
     <!-- ============ HERO ============ -->
     <section id="top" class="mb-16">
-      <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-sky-400 mb-3">
-        <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
-        <span>Live &middot; Personal Ops Dashboard</span>
+      <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-emerald-400 mb-3">
+        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+        <span>Kalshi &middot; Sports &middot; Prediction markets</span>
       </div>
       <div class="relative overflow-hidden rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-8 sm:p-10">
         <svg class="absolute -right-12 -bottom-12 h-56 w-56 text-emerald-500/20 pointer-events-none" viewBox="0 0 100 100" fill="none" stroke="currentColor" aria-hidden="true">
@@ -62,30 +70,19 @@
           <line x1="50" y1="50" x2="82" y2="18" stroke-width="1" stroke-linecap="round" />
           <circle cx="78" cy="22" r="2" fill="currentColor" stroke="none" />
         </svg>
-        <h1 class="relative text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-100">Edge-Radar command deck</h1>
+        <h1 class="relative text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-100">Research first. Execute second.</h1>
         <p class="relative mt-3 max-w-2xl text-zinc-400">
-          Single pane of glass for the Kalshi edge-detection pipeline &mdash; what's scheduled,
-          what's running, and where to click when something needs attention.
+          Edge-Radar compares Kalshi's price against an independent fair value built from sportsbook
+          consensus and public data feeds. A bet fires only when the gap clears the exchange fee and
+          every risk gate, and it is sized by fractional Kelly.
         </p>
-
-        <div class="relative mt-6 flex flex-col gap-3 max-w-sm">
-          <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener"
-             class="flex items-center gap-3 px-4 py-2.5 rounded-md border border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-900/40 hover:bg-blue-500 hover:border-blue-400 transition min-w-0">
-            <svg class="h-5 w-5 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-            <span class="flex flex-col leading-tight flex-1 min-w-0">
-              <span class="text-[10px] uppercase tracking-widest text-blue-100/90">Source</span>
-              <span class="text-sm font-semibold truncate">github.com / Edge-Radar</span>
-            </span>
-            <span class="text-base flex-shrink-0">&rarr;</span>
-          </a>
-        </div>
+        <p class="relative mt-3 max-w-2xl text-sm text-zinc-500">
+          Dry run by default. Not financial advice: the repo documents its losing segments as
+          carefully as its winning ones.
+        </p>
       </div>
 
-      <div class="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">5</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Wager schedulers</div>
-        </div>
+      <div class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
           <div class="text-2xl font-semibold text-zinc-100">21</div>
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Risk gates</div>
@@ -98,136 +95,11 @@
           <div class="text-2xl font-semibold text-zinc-100">30</div>
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Sport filters</div>
         </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 col-span-2 sm:col-span-1">
-          <div class="text-2xl font-semibold text-zinc-100">1,216</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Tests passing</div>
+        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
+          <div class="text-2xl font-semibold text-zinc-100">5</div>
+          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Agent roles</div>
         </div>
       </div>
-    </section>
-
-    <!-- ============ QUICK LINKS ============ -->
-    <section id="quicklinks" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Quick Links</h2>
-      <p class="text-sm text-zinc-600 mb-4">The stuff actually clicked on a normal day.</p>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Source</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">GitHub repo</div>
-          <div class="text-xs text-zinc-500">michaelschecht / Edge-Radar</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">History</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">CHANGELOG</div>
-          <div class="text-xs text-zinc-500">docs/CHANGELOG.md</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">System</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">CLAUDE.md</div>
-          <div class="text-xs text-zinc-500">risk gates &middot; limits &middot; agents</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/skills/edge-radar/SKILL.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Skill</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">/edge-radar</div>
-          <div class="text-xs text-zinc-500">skills/edge-radar</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Reference</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Scripts Reference</div>
-          <div class="text-xs text-zinc-500">docs/scripts/SCRIPTS_REFERENCE.md</div>
-        </a>
-      </div>
-    </section>
-
-    <!-- ============ SCHEDULERS ============ -->
-    <section id="schedulers" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Wager Schedulers</h2>
-      <p class="text-sm text-zinc-600 mb-4">
-        The five <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">\AI-Projects\Edge-Radar-MikesAILab\</code>
-        tasks that actually place bets &mdash; four daily sports runs plus a weekly futures run. Times in PT (system local). Each task emails its report as a second action; a daily <span class="mono text-zinc-400">Integration-Drift-Check</span> (4:15 AM) watches for Kalshi API and rules-wording drift that would silently blind the scanner.
-      </p>
-
-      <div class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-900/40">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left">
-              <th class="w-10 px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">#</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">Task</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">Cadence</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60 whitespace-nowrap">Trigger</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">What it does</th>
-            </tr>
-          </thead>
-          <tbody class="text-zinc-300">
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">1</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-SameDay-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">5:05 AM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Scans NBA/NHL/MLB/NFL for <span class="text-zinc-200">today's</span> games and places bets. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 5 --exclude-open</code></td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">2</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-NoDateFilter-Midday-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">11:00 AM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Midday wide-net scan across <span class="text-zinc-200">all sports + all dates</span>. Catches MLB starter confirmations and intraday line moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 12% --max-bets 5 --exclude-open</code> (no <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date</code>)</td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">3</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-SameDay-Late-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">2:00 PM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Late catch-up on <span class="text-zinc-200">tonight's</span> games &mdash; scratches, goalie confirmations, sharp-money moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 5 --exclude-open</code></td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">4</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-NextDay-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">Sun&ndash;Thu</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">8:30 PM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Locks in early lines for <span class="text-zinc-200">tomorrow's</span> games. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date tomorrow --budget 12% --max-bets 5 --exclude-open</code></td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 text-zinc-500">5</td>
-              <td class="px-4 py-3 mono text-emerald-300 whitespace-nowrap text-[13px]">Weekly-Futures-Execution</td>
-              <td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-violet-500/10 text-violet-300 border border-violet-500/30">Sat</span></td>
-              <td class="px-4 py-3 whitespace-nowrap text-zinc-400">9:00 AM</td>
-              <td class="px-4 py-3 text-zinc-400">Scans championship/outright <span class="text-zinc-200">futures</span> (NFL Super Bowl, NBA/NHL/MLB titles, golf majors) and places bets. Most weeks 0 fills &mdash; gates reject thin, longshot-heavy outrights. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 10% --max-bets 3 --unit-size 1 --exclude-open</code></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h3 class="mt-8 text-[11px] uppercase tracking-widest text-zinc-500 mb-2">Daily fire sequence</h3>
-      <pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400"> 5:05 AM  Sun Mon Tue Wed Thu Fri Sat  &mdash; All-Sports-SameDay-Execution              (today's games)
- 9:00 AM                          Sat  &mdash; Weekly-Futures-Execution               (futures, weekly)
-11:00 AM  Sun Mon Tue Wed Thu Fri Sat  &mdash; All-Sports-NoDateFilter-Midday-Execution  (multi-day wide-net)
- 2:00 PM  Sun Mon Tue Wed Thu Fri Sat  &mdash; All-Sports-SameDay-Late-Execution         (late catch-up)
- 8:30 PM  Sun Mon Tue Wed Thu          &mdash; All-Sports-NextDay-Execution              (tomorrow's games)</pre>
-
-      <details class="mt-4 rounded-sm border border-zinc-800/60 bg-zinc-900/40 open:bg-zinc-900/60 transition">
-        <summary class="flex items-center gap-2 cursor-pointer px-4 py-3 text-sm text-zinc-300 hover:text-white">
-          <svg class="h-3 w-3 text-zinc-500 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-          <span>Manual trigger commands (Git Bash)</span>
-        </summary>
-        <div class="px-4 pb-4">
-<pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400"># Prepend MSYS_NO_PATHCONV=1 to stop Git Bash from translating /tn
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NoDateFilter-Midday-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Late-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NextDay-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\Weekly-Futures-Execution"
-
-# PowerShell equivalent (no MSYS prefix)
-Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'All-Sports-NextDay-Execution'</pre>
-        </div>
-      </details>
-      <style>details[open] summary svg { transform: rotate(90deg); }</style>
     </section>
 
     <!-- ============ HOW IT WORKS (DIAGRAM) ============ -->
@@ -385,7 +257,7 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
 
             <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
               <div class="text-xs font-semibold text-zinc-100">Notify</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">email reports &middot; daily digest 4:50 AM PT</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">email reports &middot; daily digest</div>
               <div class="text-[10px] text-zinc-500">daily integration-drift check</div>
             </div>
           </div>
@@ -413,7 +285,7 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
 
     <!-- ============ DATA FLOW ============ -->
     <section id="dataflow" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Data Flow</h2>
+      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Pipeline</h2>
       <p class="text-sm text-zinc-600 mb-4">Seven sequential stages. Scan &rarr; Size &rarr; Execute &rarr; Settle.</p>
 
       <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
@@ -461,20 +333,72 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
       </div>
     </section>
 
+    <!-- ============ COVERAGE ============ -->
+    <section id="coverage" class="mb-14 scroll-mt-20">
+      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Coverage</h2>
+      <p class="text-sm text-zinc-600 mb-4">What the scanner prices. Each segment carries its own edge floor.</p>
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
+          <div class="text-[10px] uppercase tracking-widest text-emerald-400">Sports</div>
+          <div class="mt-1 text-sm text-zinc-300">NBA &middot; NHL &middot; MLB &middot; NFL &middot; NCAA &middot; MLS &middot; soccer &middot; UFC &middot; boxing &middot; F1 &middot; NASCAR &middot; PGA &middot; IPL &middot; tennis &middot; esports</div>
+          <div class="mt-2 text-xs text-zinc-500">Moneylines, spreads and totals</div>
+        </div>
+        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
+          <div class="text-[10px] uppercase tracking-widest text-sky-400">Prediction</div>
+          <div class="mt-1 text-sm text-zinc-300">Crypto (BTC, ETH, XRP, DOGE, SOL) &middot; weather in 13 cities &middot; S&amp;P 500</div>
+          <div class="mt-2 text-xs text-zinc-500">Off by default behind <span class="mono">ALLOW_PREDICTION_BETS</span></div>
+        </div>
+        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
+          <div class="text-[10px] uppercase tracking-widest text-amber-400">Futures</div>
+          <div class="mt-1 text-sm text-zinc-300">NFL &middot; NBA &middot; NHL &middot; MLB championships &middot; PGA majors</div>
+          <div class="mt-2 text-xs text-zinc-500">Priced from sportsbook outright odds</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ QUICK START ============ -->
+    <section id="quickstart" class="mb-14 scroll-mt-20">
+      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Quick Start</h2>
+      <p class="text-sm text-zinc-600 mb-4">Python 3.11+. A preview risks nothing, and <span class="mono text-zinc-400">DRY_RUN=true</span> is the default even with <span class="mono text-zinc-400">--execute</span>.</p>
+<pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400">git clone https://github.com/ai-automation-tools/Edge-Radar.git
+cd Edge-Radar
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env            # add Kalshi + Odds API keys
+
+python scripts/doctor.py        # validate the environment
+python scripts/scan.py sports --filter nba --date today   # preview only</pre>
+
+      <div class="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <a href="https://github.com/ai-automation-tools/Edge-Radar#readme" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
+          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Start</div>
+          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">README</div>
+        </a>
+        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
+          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Rules</div>
+          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Risk gates</div>
+        </a>
+        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
+          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Reference</div>
+          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Scripts</div>
+        </a>
+        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
+          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Evidence</div>
+          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Changelog</div>
+        </a>
+      </div>
+    </section>
+
   </main>
 
   <footer class="border-t border-zinc-900 py-8">
-    <div class="max-w-5xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
-      <div>Edge-Radar &middot; Personal Ops Dashboard</div>
-      <div class="flex items-center gap-4">
-        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener" class="hover:text-zinc-300 transition">github.com/ai-automation-tools/Edge-Radar</a>
-        <a href="https://mikesailab.com" class="hover:text-zinc-300 transition">mikesailab.com</a>
-      </div>
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
+      <div>Edge-Radar &middot; part of <a href="https://ai-automation-tools.dev" class="hover:text-zinc-300 transition">ai-automation-tools</a></div>
+      <a href="https://ai-automation-tools.dev/cookies.html" class="hover:text-zinc-300 transition">Cookies</a>
     </div>
   </footer>
 
-<!-- Consent gate. One shared copy served from the org apex, so the banner and the
-     notice it links to are maintained in a single place across every site. -->
+<!-- Shared consent banner, served from the org apex. -->
 <script src="https://ai-automation-tools.dev/consent.js" defer></script>
 </body>
 </html>
