@@ -130,7 +130,9 @@ def _git(*args: str, cwd: Path = MAIN, check: bool = True) -> str:
     )
     if check and out.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {out.stderr.strip()[-300:]}")
-    return out.stdout.strip()
+    # rstrip only: `git status --porcelain` lines start with a space (" M path"),
+    # and a full strip() shifted the first path by one char ("cripts/...").
+    return out.stdout.rstrip()
 
 
 def _open_fix_pr() -> str | None:

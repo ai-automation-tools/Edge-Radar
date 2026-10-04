@@ -37,6 +37,16 @@ healthy. On WARN/FAIL, and every Monday, it runs a headless `claude -p` restrict
 flags and reads Kalshi's API changelog; the analysis is appended to the report, which
 action 2 emails (`render_report_email.py drift-check`). Read-only throughout.
 
+**Auto-fix stage** (`scripts/kalshi/drift_autofix.py`, `--autofix`): on WARN/FAIL days a
+second Claude session edits a throwaway worktree of `origin/mike_desktop`, and **a PR exists
+only for a verified code change**. No diff means no PR. Paths outside parsing/matching code and
+tests, a deletion, fewer collected tests, a failing suite (one retry), or a probe that is not
+better on the fixed tree each mean rejected, no PR. A pass pushes `drift-fix/<date>` and opens a
+**draft** into `mike_desktop`. It never merges and can't edit the probe that grades it. An open
+`drift-fix/*` PR suppresses new attempts. Verification runs through `--in-tree`, because
+`edge_radar.pth` puts the main checkout's script dirs first on `sys.path`, so a plain `pytest` in
+the worktree would test the wrong code and pass.
+
 Its first run found two more silent zeros, both fixed here:
 - **Boxing had never been scored.** Rules read "... Murney vs Buczynskyj **boxing match**";
   neither `extract_event_teams` pattern accepted it. Parse 0% -> 100%.
