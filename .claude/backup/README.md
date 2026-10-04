@@ -14,6 +14,7 @@ folder ensures they don't get served publicly.
 |:-----|:-----------|
 | `index.html.backup-2026-05-11` | Snapshot of the old data-flow / pipeline reference page, taken just before the 2026-05-11 rewrite to the personal ops dashboard |
 | `index.html.backup-2026-05-15` | Snapshot of the personal ops dashboard with the original teal/Outfit/JetBrains Mono theme, taken just before the 2026-05-15 visual alignment with `mikesailab.com` (Tailwind CDN, Inter, zinc/black + emerald accent) |
+| `index.html.backup-2026-10-03` | Snapshot of the ops dashboard taken just before the 2026-10-03 refresh (gate count 13 -> 21, task path, batch caps, drift check, notify card) |
 | `dataflow.html` | The standalone bundled "dark modern" data-flow diagram (was embedded via iframe in the pre-rewrite `index.html`). Replaced by the simple 7-step CSS strip in the new page |
 | `index2.html` | An older alternate full-page variant that lived alongside `index.html` |
 

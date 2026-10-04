@@ -87,7 +87,7 @@
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Wager schedulers</div>
         </div>
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">21</div>
+          <div class="text-2xl font-semibold text-zinc-100">13</div>
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Risk gates</div>
         </div>
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
@@ -95,11 +95,11 @@
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Pipeline stages</div>
         </div>
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">30</div>
+          <div class="text-2xl font-semibold text-zinc-100">27</div>
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Sport filters</div>
         </div>
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 col-span-2 sm:col-span-1">
-          <div class="text-2xl font-semibold text-zinc-100">1,216</div>
+          <div class="text-2xl font-semibold text-zinc-100">449</div>
           <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Tests passing</div>
         </div>
       </div>
@@ -148,8 +148,8 @@
     <section id="schedulers" class="mb-14 scroll-mt-20">
       <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Wager Schedulers</h2>
       <p class="text-sm text-zinc-600 mb-4">
-        The five <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">\AI-Projects\Edge-Radar-MikesAILab\</code>
-        tasks that actually place bets &mdash; four daily sports runs plus a weekly futures run. Times in PT (system local). Each task emails its report as a second action; a daily <span class="mono text-zinc-400">Integration-Drift-Check</span> (4:15 AM) watches for Kalshi API and rules-wording drift that would silently blind the scanner.
+        The five <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">\Edge-Radar\</code>
+        tasks that actually place bets &mdash; four daily sports runs plus a weekly futures run. Times in PT (system local).
       </p>
 
       <div class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-900/40">
@@ -169,35 +169,35 @@
               <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-SameDay-Execution</td>
               <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
               <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">5:05 AM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Scans NBA/NHL/MLB/NFL for <span class="text-zinc-200">today's</span> games and places bets. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 5 --exclude-open</code></td>
+              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Scans NBA/NHL/MLB/NFL for <span class="text-zinc-200">today's</span> games and places bets. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 7 --exclude-open</code></td>
             </tr>
             <tr class="hover:bg-zinc-900/60 transition">
               <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">2</td>
               <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-NoDateFilter-Midday-Execution</td>
               <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
               <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">11:00 AM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Midday wide-net scan across <span class="text-zinc-200">all sports + all dates</span>. Catches MLB starter confirmations and intraday line moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 12% --max-bets 5 --exclude-open</code> (no <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date</code>)</td>
+              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Midday wide-net scan across <span class="text-zinc-200">all sports + all dates</span>. Catches MLB starter confirmations and intraday line moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 8% --max-bets 5 --exclude-open</code> (no <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date</code>)</td>
             </tr>
             <tr class="hover:bg-zinc-900/60 transition">
               <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">3</td>
               <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-SameDay-Late-Execution</td>
               <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
               <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">2:00 PM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Late catch-up on <span class="text-zinc-200">tonight's</span> games &mdash; scratches, goalie confirmations, sharp-money moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 5 --exclude-open</code></td>
+              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Late catch-up on <span class="text-zinc-200">tonight's</span> games &mdash; scratches, goalie confirmations, sharp-money moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 5% --max-bets 4 --exclude-open</code></td>
             </tr>
             <tr class="hover:bg-zinc-900/60 transition">
               <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">4</td>
               <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-NextDay-Execution</td>
               <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">Sun&ndash;Thu</span></td>
               <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">8:30 PM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Locks in early lines for <span class="text-zinc-200">tomorrow's</span> games. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date tomorrow --budget 12% --max-bets 5 --exclude-open</code></td>
+              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Locks in early lines for <span class="text-zinc-200">tomorrow's</span> games. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date tomorrow --budget 12% --max-bets 6 --exclude-open</code></td>
             </tr>
             <tr class="hover:bg-zinc-900/60 transition">
               <td class="px-4 py-3 text-zinc-500">5</td>
               <td class="px-4 py-3 mono text-emerald-300 whitespace-nowrap text-[13px]">Weekly-Futures-Execution</td>
               <td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-violet-500/10 text-violet-300 border border-violet-500/30">Sat</span></td>
               <td class="px-4 py-3 whitespace-nowrap text-zinc-400">9:00 AM</td>
-              <td class="px-4 py-3 text-zinc-400">Scans championship/outright <span class="text-zinc-200">futures</span> (NFL Super Bowl, NBA/NHL/MLB titles, golf majors) and places bets. Most weeks 0 fills &mdash; gates reject thin, longshot-heavy outrights. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 10% --max-bets 3 --unit-size 1 --exclude-open</code></td>
+              <td class="px-4 py-3 text-zinc-400">Scans championship/outright <span class="text-zinc-200">futures</span> (NFL Super Bowl, NBA/NHL/MLB titles, golf majors) and places bets. Most weeks 0 fills &mdash; gates reject thin, longshot-heavy outrights. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 5% --max-bets 3 --unit-size 1 --exclude-open</code></td>
             </tr>
           </tbody>
         </table>
@@ -217,14 +217,14 @@
         </summary>
         <div class="px-4 pb-4">
 <pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400"># Prepend MSYS_NO_PATHCONV=1 to stop Git Bash from translating /tn
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NoDateFilter-Midday-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Late-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NextDay-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\Weekly-Futures-Execution"
+MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\All-Sports-SameDay-Execution"
+MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\All-Sports-NoDateFilter-Midday-Execution"
+MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\All-Sports-SameDay-Late-Execution"
+MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\All-Sports-NextDay-Execution"
+MSYS_NO_PATHCONV=1 schtasks /run /tn "\Edge-Radar\Weekly-Futures-Execution"
 
 # PowerShell equivalent (no MSYS prefix)
-Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'All-Sports-NextDay-Execution'</pre>
+Start-ScheduledTask -TaskPath '\Edge-Radar\' -TaskName 'All-Sports-NextDay-Execution'</pre>
         </div>
       </details>
       <style>details[open] summary svg { transform: rotate(90deg); }</style>
@@ -235,7 +235,7 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
       <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">How It Works</h2>
       <p class="text-sm text-zinc-600 mb-4">
         Pull Kalshi's market price. Pull an independent fair value from sportsbooks / data feeds.
-        If the gap, net of the exchange fee, clears 21 risk gates, a Kelly-sized bet fires through the Kalshi trade API.
+        If the gap clears 13 risk gates, a Kelly-sized bet fires through the Kalshi trade API.
       </p>
 
       <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-5 sm:p-7">
@@ -323,14 +323,13 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
             <div class="rounded-sm border border-emerald-500/40 bg-emerald-500/[0.08] p-3">
               <div class="text-xs font-semibold text-emerald-200">Edge calculation</div>
               <div class="text-[10px] text-zinc-400 mt-0.5">fair &minus; ask, with confidence tier</div>
-              <div class="text-[10px] mono text-emerald-300/80 mt-1">edge &ge; 3% + fee (per-sport floors)</div>
+              <div class="text-[10px] mono text-emerald-300/80 mt-1">edge &ge; 3% (12% NBA)</div>
             </div>
 
             <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">21 risk gates</div>
+              <div class="text-xs font-semibold text-zinc-100">13 risk gates</div>
               <div class="text-[10px] text-zinc-500 mt-0.5">daily loss &middot; per-event cap &middot; series dedup</div>
               <div class="text-[10px] text-zinc-500">NO-favorite floor &middot; min price &middot; confidence</div>
-              <div class="text-[10px] text-zinc-500">edge ceiling 50% &middot; exposure caps &middot; 10% hard stop</div>
             </div>
 
             <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
@@ -385,8 +384,8 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
 
             <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
               <div class="text-xs font-semibold text-zinc-100">Notify</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">email reports &middot; daily digest 4:50 AM PT</div>
-              <div class="text-[10px] text-zinc-500">daily integration-drift check</div>
+              <div class="text-[10px] text-zinc-500 mt-0.5">SMTP &middot; daily digest 5:00 AM PT</div>
+              <div class="text-[10px] text-zinc-500">Slack webhook on anomaly</div>
             </div>
           </div>
 
@@ -404,7 +403,7 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
           <div class="flex items-center gap-3">
             <span><span class="text-emerald-300/90 mono">DRY_RUN=true</span> default</span>
             <span>&middot;</span>
-            <span>21 gates &middot; <a class="hover:text-emerald-300 transition" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">spec</a></span>
+            <span>13 gates &middot; <a class="hover:text-emerald-300 transition" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">spec</a></span>
           </div>
         </div>
 
@@ -440,7 +439,7 @@ Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'A
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
           <div class="text-[10px] mono text-emerald-400/80">05</div>
           <div class="mt-1 text-sm font-semibold text-zinc-100">Risk</div>
-          <div class="text-[11px] text-zinc-500">21 gates</div>
+          <div class="text-[11px] text-zinc-500">13 gates</div>
         </div>
         <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
           <div class="text-[10px] mono text-emerald-400/80">06</div>

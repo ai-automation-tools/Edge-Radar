@@ -2,7 +2,7 @@
 
 ---
 
-## 2026-10-03 -- M1: NFL/NBA team matching broken by Kalshi "Pro Football" wording
+## 2026-10-03 -- M1: NFL/NBA team matching broken by Kalshi "Pro Football" wording; Integration-Drift-Check
 
 Kalshi now words NFL rules "... in the DEN Broncos vs SF 49ers **Pro Football**
 game" (NBA: "Pro Basketball") and NFL spread subtitles "DEN Broncos wins by over
@@ -23,6 +23,31 @@ the S21c `--filter` bug. Fix: accept `pro\b` in the rules regex and strip
 " wins by over/more than ..." from subtitles. Post-fix: 650/650 markets, all 14
 games. Regression tests in `TestProLeagueRulesWording`. The first post-fix
 next-day run placed ARI -8.5 YES x4 @ 28c.
+
+### Integration-Drift-Check: a detector for the M1 failure class
+
+New scheduled task (daily 4:15 AM PT, 16th in `\AI-Projects\Edge-Radar-MikesAILab\`)
+running `scripts/kalshi/integration_drift.py --save --analyze auto`. Per game/spread/total
+series it measures schema fields, team/strike parse rate, suspect league filler in team
+names, odds-event match rate (cached odds only -- zero Odds API quota; a miss counts only
+when the feed carries both teams that day) and new `rules_primary` wording against
+`data/cache/drift_baseline.json`. New wording is auto-accepted only while its series stays
+healthy. On WARN/FAIL, and every Monday, it runs a headless `claude -p` restricted to
+`Read,Grep,Glob,WebFetch,WebSearch` (no `--dangerously-skip-permissions`) that diagnoses
+flags and reads Kalshi's API changelog; the analysis is appended to the report, which
+action 2 emails (`render_report_email.py drift-check`). Read-only throughout.
+
+Its first run found two more silent zeros, both fixed here:
+- **Boxing had never been scored.** Rules read "... Murney vs Buczynskyj **boxing match**";
+  neither `extract_event_teams` pattern accepted it. Parse 0% -> 100%.
+- **College totals garbled the home team** as "teams collectively score more than 84.5
+  points in the Eastern Washington" (`_clean_team` only stripped "teams in the ").
+  Pairing survived only when the school shared a word with the Odds API name, so
+  "Fresno St." failed. KXNCAAFTOTAL odds match 41% -> 92%.
+
+Open, from the first Claude pass (ROADMAP **M2**, **M3**): ATP/WTA markets outside
+Wimbledon have no odds feed and are never scored; Kalshi's web dialog now creates Ed25519
+API keys by default, which `kalshi_client.py` (RSA-only) cannot sign with.
 
 ## 2026-10-03 -- B7 edge ceiling; MLB spreads off; NHL totals floor; relative stdev sweep
 
@@ -65,6 +90,17 @@ or NHL totals (2.2) it reported a meaningless "best fit 7.0". It now sweeps
 0.5-1.4x each row's own stdev and prints both the multiple and its value.
 
 ---
+
+## 2026-10-03 -- Task schedules: every action now launches through `run-hidden.vbs`
+
+`All-Sports-NextDay-Execution`, `Weekly-Analysis` and `Weekly-Futures-Execution` were the
+last three tasks whose first action ran the `.bat` directly. Since the wrapper gained
+`run-hidden-guard.ps1`, a Task Scheduler stop or time limit kills the process tree only for
+wrapped actions, so a direct `.bat` was the one path where a stop could leave a live-order
+scan running. Action 1 is now `wscript.exe run-hidden.vbs <task>.bat`; the wrapper waits
+and returns the `.bat`'s exit code, so action 2 (the email) and Last Result are unchanged.
+Only action 1 changed; triggers, settings and history untouched. Pre-change XML:
+`D:\AI_Agents\_maintenance\backups\task-xml-2026-10-03-optimize\`.
 
 ## 2026-09-29 -- Polymarket removed; B1 per-book consensus; S9 CLV reporting
 
@@ -1218,6 +1254,17 @@ The 5 existing rows in `kalshi_settlements.json` are **left as-is** -- a
 backfill rewrites historical records and is the operator's call.
 
 ---
+
+## 2026-09-11 -- Task schedules: daily tasks launch hidden via `run-hidden.vbs`
+
+Every daily-or-more-frequent task now runs `wscript.exe scripts/schedulers/run-hidden.vbs
+<original command>`, which `Run()`s it with window style 0 and `WScript.Quit(rc)`, so the
+exit code still reaches the scheduler. `CLV-Capture` every 5 minutes had made the visible
+`cmd.exe` 288 desktop interruptions a day. Applied to 15 tasks with `Set-ScheduledTask
+-Action` only; weekly and one-shot tasks were left visible (extended to them 2026-10-03).
+`pythonw.exe` was rejected for the settle tasks: no console means `sys.stdout` is `None`,
+and any `sys.stdout.write` or logging `StreamHandler` in the import graph would raise.
+Pre-change XML in `.claude/temp/task-backup-2026-09-11/`.
 
 ## 2026-09-10 (final) -- Two dated reviews never ran, and nothing said so
 
@@ -4660,6 +4707,13 @@ sizing bug.
 
 ---
 
+## 2026-07-21 -- Task schedules: `Email-Polymarket-DryRun` added
+
+Daily 10:00 AM, 20 minutes after the 9:40 Polymarket dry-run scan. Emailed the day's
+`reports/Polymarket/` report, or a short no-opportunities proof-of-life from
+`logs/polymarket_dryrun_scan.log` on empty days. Renamed `Email-Polymarket-Execution`
+2026-07-25, merged into its scan task 2026-09-23, removed with the venue 2026-09-29.
+
 ## 2026-07-20 -- MLB spreads + totals wired (KXMLBSPREAD/KXMLBTOTAL coverage gap)
 
 ### What shipped
@@ -5412,6 +5466,14 @@ The 90-day review (302 settled trades) surfaced three structural P&L/calibration
 
 ---
 
+## 2026-06-20 -- Task schedules: first futures automation; per-task email logs
+
+- Added `Weekly-Futures-Execution` (Sat 9:00 AM: `scan.py futures --execute`, budget 10%,
+  max 3, unit $1) and the paired `Email-Weekly-Futures` (Sat 9:20 AM). `futures_edge.py`
+  now always writes a report on `--save`, so 0-order weeks still email proof-of-life.
+  Validated live: `LastTaskResult=0`, 0 bets, every candidate gated.
+- Every email shell script now logs to `logs/email_*.log` with exit-code banners.
+
 ## 2026-06-20 -- Live In-Play Odds Freshness Fix (L1 Phase 1)
 
 ### Why
@@ -5627,6 +5689,16 @@ The Kalshi account-growth graph (`/update-account-graph`) only existed locally u
 `.claude/html/index.html`, `scripts/schedulers/automation/refresh_account_graph.py`, `scripts/schedulers/automation/install_windows_task.py`, `.gitignore`, `docs/CHANGELOG.md`. Local-only (gitignored): `docs/my-documents/account-graph/Script/build_account_graph.py` (noindex tag), `docs/my-documents/account-graph/README.md`, `docs/my-documents/task-schedules/README.md`.
 
 ---
+
+## 2026-05-17 -- Task schedules: midday and late same-day runs; NextDay moved to 8:30 PM
+
+Per `timing-analysis-2026-05-17.md`: the no-date-filter scan hit every time while
+`--date today` was empty 71% of mornings, so the slate filter, not the clock, was the
+bottleneck. Added daily `All-Sports-NoDateFilter-Midday-Execution` (11:00 AM) and
+`All-Sports-SameDay-Late-Execution` (2:00 PM), each with an email pair. Moved
+`All-Sports-NextDay-Execution` from 6:00 PM to 8:30 PM PT (it was empty 43% of the time at
+6 PM, before next-day lines were posted). Retired the Mon/Thu 5:20 AM
+`All-Sports-NoDateFilter-Execution` and its email.
 
 ## 2026-05-15 -- Pages Site Theme Alignment with mikesailab.com
 
