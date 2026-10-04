@@ -98,6 +98,14 @@ PRESETS = {
         "email_weekly_analysis.log",
         None,
     ),
+    "drift-check": (
+        "reports/Maintenance/drift",
+        "drift_*.md",
+        "Edge-Radar | Integration Drift Check",
+        "drift-check",
+        "email_drift_check.log",
+        None,
+    ),
 }
 
 FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"

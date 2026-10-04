@@ -1,6 +1,6 @@
 # Edge-Radar Roadmap
 
-*Last updated: 2026-09-29.* This file lists open work only. Shipped items, review findings,
+*Last updated: 2026-10-03.* This file lists open work only. Shipped items, review findings,
 performance history and the reasoning behind each item are in [CHANGELOG.md](./CHANGELOG.md).
 The pre-cleanup roadmap is archived verbatim at the end of that file, and every item ID below
 resolves there.
@@ -16,6 +16,8 @@ until S15 says otherwise.
 | ID | Item | Effort |
 |----|------|--------|
 | **B2** | **Unmapped sports fall back to a 12.0 stdev** (`edge_detector.py:861, 1028`). This is latent while those sports only trade moneylines. Fail closed (`None`, no edge) and add the soccer-league and WNCAAB entries. | S |
+| **M2** | **Tennis markets are fetched but never scored outside Wimbledon.** `KALSHI_TO_ODDS_SPORT` maps `KXATPMATCH`/`KXWTAMATCH` only to `tennis_*_wimbledon`. Map tour-level Odds API keys per tournament, or drop tennis from the default scan deliberately. Surfaced by Integration-Drift-Check's "no fresh odds feed" line. | S |
+| **M3** | **Kalshi's web dialog now defaults new API keys to Ed25519**; `kalshi_client.py` signs RSA only. Document "choose RSA" in `docs/setup`, or add Ed25519 signing before the next key rotation. | S |
 | **B6(a-c)** | (a) The weather adjustment is applied after the side is chosen. (b) `CATEGORY_MAP` prefix shadowing sends a future `KXEPLSPREAD` to `game`. (c) Lower the log level of the "0 candidate events" warnings to DEBUG, and check why June markets still get scanned. | S |
 
 ## 2. Measurement: CLV and strategy state (Priority 0a, phases 2-4)

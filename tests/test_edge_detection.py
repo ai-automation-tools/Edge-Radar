@@ -2111,3 +2111,56 @@ class TestWeightedMedianTieBreak:
 
         assert weighted_median([1.0, 2.0, 3.0], [1.0, 1.0, 1.0]) == 2.0
         assert weighted_median([0.40, 0.60], [1.0, 3.0]) == 0.60
+
+
+class TestProLeagueRulesWording:
+    """2026-10: Kalshi words NFL/NBA rules "... Pro Football game" and NFL
+    spread subtitles "DEN Broncos wins by over 7.5 points". Both silently
+    blinded the scanner to 13 of 14 NFL games on a Sunday slate."""
+
+    def test_pro_football_moneyline_rules(self):
+        m = {
+            "rules_primary": "If Los Angeles R wins the BUF Bills vs LA Rams Pro Football "
+            "game originally scheduled for Oct 12, 2026, then the market resolves to Yes."
+        }
+        assert extract_event_teams(m) == ("BUF Bills", "LA Rams")
+
+    def test_pro_football_spread_rules_no_suffix_on_home_team(self):
+        m = {
+            "rules_primary": "If DET Lions wins by more than 7.5 points in the DET Lions vs "
+            "CAR Panthers Pro Football game originally scheduled for Oct 4, 2026"
+        }
+        assert extract_event_teams(m) == ("DET Lions", "CAR Panthers")
+
+    def test_pro_basketball_rules(self):
+        m = {"rules_primary": "If Houston wins the Houston vs Dallas Pro Basketball game"}
+        assert extract_event_teams(m) == ("Houston", "Dallas")
+
+    def test_spread_subtitle_suffix_stripped(self):
+        from edge_detector import extract_team_from_market
+
+        m = {"yes_sub_title": "DEN Broncos wins by over 7.5 points"}
+        assert extract_team_from_market(m) == "DEN Broncos"
+        assert (
+            extract_team_from_market({"yes_sub_title": "Tampa Bay wins by over 3.5 runs"})
+            == "Tampa Bay"
+        )
+        assert extract_team_from_market({"yes_sub_title": "Los Angeles D"}) == "Los Angeles D"
+
+
+class TestRulesWordingDriftFixes:
+    """Found by integration_drift.py on its first run, 2026-10-03."""
+
+    def test_boxing_match_rules(self):
+        m = {
+            "rules_primary": "If Paige Murney wins the Paige Murney vs Linzi Buczynskyj "
+            "boxing match"
+        }
+        assert extract_event_teams(m) == ("Paige Murney", "Linzi Buczynskyj")
+
+    def test_college_totals_prefix_stripped(self):
+        m = {
+            "rules_primary": "If the teams collectively score more than 84.5 points in the Eastern "
+            "Washington vs UC Davis college football game originally scheduled for Oct 3, 2026"
+        }
+        assert extract_event_teams(m) == ("Eastern Washington", "UC Davis")

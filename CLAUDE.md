@@ -289,6 +289,14 @@ Standing rules — do not reverse them without new settled evidence.
   floor is reachable by a filter of that name. **Fix filter bugs in code, not in the
   `.bat`** — schedulers are gitignored and do not survive a clone.
   *CHANGELOG 2026-09-16 (S21c).*
+- **"No opportunities" is a claim about edge only if the markets were actually scored.**
+  Kalshi reworded NFL rules to "... Pro Football game" and spread subtitles to "DEN
+  Broncos wins by over 7.5 points". Team extraction failed silently, and **13 of 14 NFL
+  games were never scored for ~2 weeks** (33 of 650 markets, the one survivor via a
+  `TEAM_ALIASES` hit). Every scan reported "no opportunities", same as a quiet slate.
+  Before reading a dry spell as an absence of edge, count how many markets got a detector
+  result versus how many were fetched. `Integration-Drift-Check` (daily 4:15 AM) does this
+  per series against a stored rules-wording baseline. *CHANGELOG 2026-10-03 (M1).*
 - **`won` is whether the PREDICTION was right, never whether the row profited.**
   `calculate_pnl` returned `revenue > cost`, which collapses to `0 > 0` on a zero-fill
   row, so every resting order that settled was logged as a loss whatever the outcome.

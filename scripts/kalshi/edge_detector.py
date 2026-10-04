@@ -1234,7 +1234,10 @@ def extract_team_from_market(market: dict) -> str | None:
     for field in ["subtitle", "yes_sub_title", "no_sub_title", "title"]:
         val = market.get(field, "")
         if val and len(val) > 1 and val.lower() not in ("yes", "no"):
-            return val
+            # Spread subtitles read "DEN Broncos wins by over 7.5 points". Left
+            # on, the suffix defeats every name tier but the first-word city
+            # match, which NFL's 2026-10 abbreviated names ("DEN") cannot hit.
+            return re.sub(r"\s+wins by (?:over|more than)\b.*$", "", val, flags=re.IGNORECASE)
 
     # Try rules
     rules = market.get("rules_primary", "")
@@ -1253,7 +1256,9 @@ def _clean_team(name: str) -> str:
     matches cleanly against odds-feed team names.
     """
     name = name.strip()
-    name = re.sub(r"^(?:the\s+)?teams\s+in\s+the\s+", "", name, flags=re.IGNORECASE)
+    # College totals read "If the teams collectively score more than 84.5 points
+    # in the Eastern Washington vs ...", so the prefix can run up to "in the ".
+    name = re.sub(r"^(?:the\s+)?teams\b.*?\bin\s+the\s+", "", name, flags=re.IGNORECASE)
     # Playoff-series rules read "... the Game 4: San Antonio at New York ..."
     name = re.sub(r"^game\s+\d+:\s*", "", name, flags=re.IGNORECASE)
     return name.strip()
@@ -1262,9 +1267,15 @@ def _clean_team(name: str) -> str:
 def extract_event_teams(market: dict) -> tuple[str, str] | None:
     """Extract both team names from the event ticker or rules."""
     rules = market.get("rules_primary", "")
-    # Pattern: "Team A vs Team B" or "Team A at Team B" (multiple context words)
+    # Pattern: "Team A vs Team B" or "Team A at Team B" (multiple context words).
+    # `pro\b`: by 2026-10 Kalshi words NFL/NBA rules "... Pro Football game" /
+    # "... Pro Basketball game". Without it every NFL/NBA moneyline returned None
+    # and spreads/totals fell through to the fallback, which glued "Pro Football"
+    # onto the home team, so only teams with an alias entry (SF) ever matched.
+    # `boxing`: "... Murney vs Buczynskyj boxing match" matched neither pattern,
+    # so no boxing market had ever been scored (found by integration_drift.py).
     match = re.search(
-        r"the (.+?) (?:vs\.?|at) (.+?) (?:professional|college|men's college|women's college|NCAA|MLB|NBA|NHL|NFL|MLS)",  # noqa: E501
+        r"the (.+?) (?:vs\.?|at) (.+?) (?:professional|pro\b|boxing|UFC|MMA|college|men's college|women's college|NCAA|MLB|NBA|NHL|NFL|MLS)",  # noqa: E501
         rules,
         re.IGNORECASE,
     )
