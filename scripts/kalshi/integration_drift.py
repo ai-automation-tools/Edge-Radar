@@ -221,7 +221,9 @@ def last_bet_by_sport() -> dict[str, str]:
     return last
 
 
-def run(save: bool, update_baseline: bool, analyze: str) -> int:
+def run(
+    save: bool, update_baseline: bool, analyze: str, autofix: bool = False, json_out: str = ""
+) -> int:
     client = KalshiClient()
     try:
         baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
@@ -268,25 +270,32 @@ def run(save: bool, update_baseline: bool, analyze: str) -> int:
     status = _worst(*(r["level"] for r in results))
     report = render(results, empty, odds_age, new_wording, last_bet_by_sport(), status, first_run)
     print(report)
+    payload = {"status": status, "series": results, "empty": empty}
+    if json_out:  # drift_autofix reads the probe on the fixed worktree this way
+        Path(json_out).write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
     if save:
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y-%m-%d")
         md_path, json_path = REPORT_DIR / f"drift_{stamp}.md", REPORT_DIR / f"drift_{stamp}.json"
         md_path.write_text(report, encoding="utf-8")
-        json_path.write_text(
-            json.dumps(
-                {"status": status, "series": results, "empty": empty}, indent=1, default=str
-            ),
-            encoding="utf-8",
-        )
+        json_path.write_text(json.dumps(payload, indent=1, default=str), encoding="utf-8")
         # auto: model only when the probe flags something, plus a Monday sweep
         # for venue changes no probe can see (API changelog, new series).
         if analyze == "always" or (
             analyze == "auto" and (status != OK or datetime.now().weekday() == 0)
         ):
             analysis = run_analysis(status, md_path, json_path)
-            md_path.write_text(report + "\n" + analysis, encoding="utf-8")
+            report += "\n" + analysis
+            md_path.write_text(report, encoding="utf-8")
             print(analysis)
+            # Code changes only ever arrive as a DRAFT PR, and only when the
+            # fix stage produced a diff that passed every check (drift_autofix).
+            if autofix and status != OK:
+                import drift_autofix
+
+                section = drift_autofix.attempt(md_path, json_path, analysis)
+                md_path.write_text(report + "\n" + section, encoding="utf-8")
+                print(section)
     print(f"DRIFT_STATUS={status}")
     return {OK: 0, WARN: 10, FAIL: 20}[status]
 
@@ -437,9 +446,16 @@ def main() -> int:
         default="never",
         help="headless Claude pass (needs --save); auto = on WARN/FAIL or Mondays",
     )
+    ap.add_argument(
+        "--autofix",
+        action="store_true",
+        help="on WARN/FAIL, let Claude try a fix in a worktree; opens a DRAFT PR only if "
+        "it changed code and passed tests + a better probe (drift_autofix.py)",
+    )
+    ap.add_argument("--json-out", default="", help=argparse.SUPPRESS)
     args = ap.parse_args()
     try:
-        return run(args.save, args.update_baseline, args.analyze)
+        return run(args.save, args.update_baseline, args.analyze, args.autofix, args.json_out)
     except Exception as e:  # noqa: BLE001 -- crash must surface as exit 1, not a WARN
         print(f"integration_drift crashed: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
