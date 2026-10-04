@@ -2146,3 +2146,21 @@ class TestProLeagueRulesWording:
             == "Tampa Bay"
         )
         assert extract_team_from_market({"yes_sub_title": "Los Angeles D"}) == "Los Angeles D"
+
+
+class TestRulesWordingDriftFixes:
+    """Found by integration_drift.py on its first run, 2026-10-03."""
+
+    def test_boxing_match_rules(self):
+        m = {
+            "rules_primary": "If Paige Murney wins the Paige Murney vs Linzi Buczynskyj "
+            "boxing match"
+        }
+        assert extract_event_teams(m) == ("Paige Murney", "Linzi Buczynskyj")
+
+    def test_college_totals_prefix_stripped(self):
+        m = {
+            "rules_primary": "If the teams collectively score more than 84.5 points in the Eastern "
+            "Washington vs UC Davis college football game originally scheduled for Oct 3, 2026"
+        }
+        assert extract_event_teams(m) == ("Eastern Washington", "UC Davis")

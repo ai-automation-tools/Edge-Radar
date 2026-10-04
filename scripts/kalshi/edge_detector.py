@@ -1256,7 +1256,9 @@ def _clean_team(name: str) -> str:
     matches cleanly against odds-feed team names.
     """
     name = name.strip()
-    name = re.sub(r"^(?:the\s+)?teams\s+in\s+the\s+", "", name, flags=re.IGNORECASE)
+    # College totals read "If the teams collectively score more than 84.5 points
+    # in the Eastern Washington vs ...", so the prefix can run up to "in the ".
+    name = re.sub(r"^(?:the\s+)?teams\b.*?\bin\s+the\s+", "", name, flags=re.IGNORECASE)
     # Playoff-series rules read "... the Game 4: San Antonio at New York ..."
     name = re.sub(r"^game\s+\d+:\s*", "", name, flags=re.IGNORECASE)
     return name.strip()
@@ -1270,8 +1272,10 @@ def extract_event_teams(market: dict) -> tuple[str, str] | None:
     # "... Pro Basketball game". Without it every NFL/NBA moneyline returned None
     # and spreads/totals fell through to the fallback, which glued "Pro Football"
     # onto the home team, so only teams with an alias entry (SF) ever matched.
+    # `boxing`: "... Murney vs Buczynskyj boxing match" matched neither pattern,
+    # so no boxing market had ever been scored (found by integration_drift.py).
     match = re.search(
-        r"the (.+?) (?:vs\.?|at) (.+?) (?:professional|pro\b|college|men's college|women's college|NCAA|MLB|NBA|NHL|NFL|MLS)",  # noqa: E501
+        r"the (.+?) (?:vs\.?|at) (.+?) (?:professional|pro\b|boxing|UFC|MMA|college|men's college|women's college|NCAA|MLB|NBA|NHL|NFL|MLS)",  # noqa: E501
         rules,
         re.IGNORECASE,
     )
