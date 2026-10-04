@@ -95,3 +95,31 @@ def test_rules_template_abstracts_names_and_numbers():
     t = rules_template(m, ("DET Lions", "CAR Panthers"), "DET Lions")
     assert "DET" not in t and "7.5" not in t and "<DATE>" in t
     assert t.endswith("originally scheduled for <DATE>")
+
+
+def test_autofix_changed_keeps_first_path_intact(monkeypatch):
+    import drift_autofix as da
+
+    # Porcelain lines start with a space; a strip() once ate "s" of "scripts".
+    monkeypatch.setattr(
+        da, "_git", lambda *a, **k: " M scripts/kalshi/edge_detector.py\n?? tests/test_new.py"
+    )
+    assert da._changed(None) == [
+        ("M", "scripts/kalshi/edge_detector.py"),
+        ("??", "tests/test_new.py"),
+    ]
+
+
+def test_autofix_allowlist():
+    from drift_autofix import ALLOWED
+
+    for ok in ("scripts/kalshi/edge_detector.py", "tests/test_edge_detection.py"):
+        assert ALLOWED.match(ok)
+    for bad in (
+        "scripts/kalshi/kalshi_executor.py",
+        "scripts/kalshi/integration_drift.py",
+        "app/config.py",
+        ".env",
+        "scripts/schedulers/maintenance/drift_check.bat",
+    ):
+        assert not ALLOWED.match(bad)

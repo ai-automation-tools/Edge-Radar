@@ -296,7 +296,9 @@ Standing rules — do not reverse them without new settled evidence.
   `TEAM_ALIASES` hit). Every scan reported "no opportunities", same as a quiet slate.
   Before reading a dry spell as an absence of edge, count how many markets got a detector
   result versus how many were fetched. `Integration-Drift-Check` (daily 4:15 AM) does this
-  per series against a stored rules-wording baseline. *CHANGELOG 2026-10-03 (M1).*
+  per series against a stored rules-wording baseline. On a flag it may open a **draft** PR
+  (`drift-fix/<date>`) with a verified fix. Review it like any PR; nothing merges itself.
+  *CHANGELOG 2026-10-03 (M1).*
 - **`won` is whether the PREDICTION was right, never whether the row profited.**
   `calculate_pnl` returned `revenue > cost`, which collapses to `0 > 0` on a zero-fill
   row, so every resting order that settled was logged as a loss whatever the outcome.

@@ -26,7 +26,7 @@ Task Scheduler is the only active scheduling mechanism. Every action launches th
 
 | # | Task | Schedule (PT) | What it does |
 |:-:|:-----|:--------------|:-------------|
-| 1 | `Integration-Drift-Check` | Daily 4:15 AM | Probes Kalshi/odds integration for silent breakage (schema, rules wording, match rates); Claude analysis on WARN/FAIL or Mondays; emails the report. **Read-only.** |
+| 1 | `Integration-Drift-Check` | Daily 4:15 AM | Probes Kalshi/odds integration for silent breakage (schema, rules wording, match rates); Claude analysis on WARN/FAIL or Mondays; on WARN/FAIL, may open a **draft PR** with a verified fix (never merges); emails the report |
 | 2 | `Daily-Summary` | Daily 4:50 AM | Morning P&L digest (yesterday, open exposure, today pending, 7-day context), then emails it |
 | 3 | `All-Sports-SameDay-Execution` ⚠️ | Daily 5:05 AM | Today's games, all sports — max 5 bets, 12% budget |
 | 4 | `Shadow-Book-NCAAF` | Daily 6:00 AM | S21b shadow book: scores NCAAF + MLB spread markets pre-gate. **No orders** |
@@ -94,14 +94,26 @@ All `.bat` wrappers live under `scripts/schedulers/` (gitignored). Execute wrapp
 
 | Property | Value |
 |:--|:--|
-| **Action 1** | `run-hidden.vbs` → `maintenance\drift_check.bat` → `scripts/kalshi/integration_drift.py --save` |
+| **Action 1** | `run-hidden.vbs` → `maintenance\drift_check.bat` → `scripts/kalshi/integration_drift.py --save --analyze auto --autofix` |
 | **Action 2** | `render_report_email.py drift-check` → subject `Edge-Radar \| Integration Drift Check` |
 | **Report** | `reports/Maintenance/drift/drift_<date>.md` |
 | **Cost** | Probe is deterministic, no model, **zero Odds API quota** (reads cached odds only) |
 
 **What the probe checks, per in-season sport series:** market schema fields present; team/strike parse rate from rules and subtitles; odds-event match rate against cached Odds API data; rules-wording templates not in the stored baseline; series prefixes returning zero markets; days since the last bet per sport.
 
-**Claude pass:** if the probe status is WARN/FAIL, **or** it is Monday, the `.bat` launches a headless `claude -p` session scoped by `--allowedTools` — Read/Grep/Glob, WebFetch/WebSearch, Write only for the report, Bash only for the probe script. No `--dangerously-skip-permissions`. It investigates root causes, checks Kalshi's API changelog/docs for breaking changes, and appends an **Analysis** section with suggested fixes. **It never edits code or `.env`, and never places orders.**
+**Claude analysis pass (read-only):** if the probe status is WARN/FAIL, **or** it is Monday, a headless `claude -p` session restricted to `Read,Grep,Glob,WebFetch,WebSearch` (no `--dangerously-skip-permissions`) diagnoses each flag, checks Kalshi's API changelog, and appends an **Analysis** section to the report.
+
+**Auto-fix pass (WARN/FAIL days only, `scripts/kalshi/drift_autofix.py`):** a second Claude session gets edit access to a **throwaway git worktree** of `origin/mike_desktop`, never your checkout. Then deterministic checks decide whether a PR exists at all:
+
+| Outcome of the fix session | Result |
+|:--|:--|
+| No files changed (false positive, or not confident) | **No PR.** Report says "No code change proposed" |
+| Touched anything outside parsing/matching code + tests (`edge_detector.py`, `futures_edge.py`, `kalshi_client.py`, `ticker_display.py`, `odds_api.py`, `market_client.py`, `tests/`), or deleted a file | **Rejected, no PR.** Diff saved as `drift_<date>.rejected.patch` |
+| Fewer tests collected, or the full suite fails (one retry with the failure output) | **Rejected, no PR** |
+| Probe re-run on the fixed tree not better than today's | **Rejected, no PR** |
+| All checks pass | Pushes `drift-fix/<date>`, opens a **draft** PR into `mike_desktop` with the before/after probe table and test output. Link is in the email |
+
+It **never merges**, never touches master, `mike_desktop`, `.env`, the executor or the risk gates, and can't edit the probe that grades it. While a `drift-fix/*` PR is open, later runs skip the fix pass so one unresolved break doesn't open a PR every day. Tests and the probe run through `drift_autofix.py --in-tree`, because the venv's `edge_radar.pth` would otherwise import the main checkout's code instead of the fix.
 
 **Why it exists:** M1 (CHANGELOG 2026-10-03). Kalshi reworded NFL rules to "... Pro Football game", team extraction failed silently, and the scanner was blind to 13 of 14 NFL games for ~2 weeks while every scan said "no opportunities". **Why 4:15 AM:** ahead of Daily-Summary (4:50) and the first execute (5:05), so a break is in the inbox before money moves.
 
