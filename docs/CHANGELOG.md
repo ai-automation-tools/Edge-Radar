@@ -2,6 +2,48 @@
 
 ---
 
+## 2026-10-05 -- Site redesign: public page and ops deck in the org design vocabulary
+
+Both static pages were rebuilt to match the 2026-10-05 redesign of `ai-automation-tools.dev`
+(its `docs/REDESIGN.md`): same `#060606` ground, dot grid, one hero glow, zinc surfaces,
+Inter + JetBrains Mono, spotlight cards with a cursor-tracked ring, a sticky topbar with a
+scroll-spy indicator, a terminal quick start with a bash/pwsh toggle, a `⌘K` palette, and
+`prefers-reduced-motion` fallbacks for every animation. The accent is emerald `#34d399`, the
+colour the org page assigns Edge-Radar. **No Tailwind CDN**: each page is one file with its
+stylesheet inline, and the only external resources are fonts and the shared `consent.js`.
+
+- **`site/index.html`** (public, `edge-radar.ai-automation-tools.dev`, Vercel). Keeps the org
+  source bar at the very top and the optional hero repo button. New: a canvas **radar sweep**
+  over twelve *illustrative* candidate markets (radius = ask price, colour = what the static
+  gates would say; hover reads the row, click loads it); a **gate lab** that computes claimed
+  edge, the per-contract fee `ceil(0.07·p·(1−p))`, net edge, the Gate 3 floor-plus-fee, a
+  ¼-Kelly stake and the verdict of every static gate (3, 3.05, 3.5, 3.55, 4.5, 4.6, 4.6b)
+  from CLAUDE.md's **code defaults**; a filterable, searchable grid of all **21 gates** with
+  the one-line reason each exists, plus the two checks outside the chain (venue eligibility,
+  fails closed; the 10% hard stop); the seven-stage stepper; coverage cards; a four-tab
+  terminal whose commands are the README's Quick Start and CLAUDE.md's Common Commands,
+  nothing guessed. The footer says plainly that the samples are illustrative and the lab is
+  not a live book.
+- **`.claude/html/index.html`** (personal, `edge-radar.mikesailab.com`, GitHub Pages). No
+  source bar (that convention is for `*.ai-automation-tools.dev`), `noindex`. New: a
+  **next-fire clock** in `America/Los_Angeles` that reads the schedule and names the next task,
+  its time and a countdown, with the rest of today listed under it; a **24-hour timeline** with
+  a `now` marker, weekly tasks drawn hollow and dimmed when they do not run today, hover for
+  the row and click to jump to it; the **full 16-task inventory** from
+  `docs/task-schedules/README.md` (the old page showed only the five wager tasks) with filter
+  chips, search, a per-row copy of the `schtasks /run` trigger, the manual-trigger block and
+  the halting instructions. No balance or P&L figures anywhere, per the 2026-09-07 decision.
+- **`tests/test_site.py`** pins what drifts by hand: no Tailwind, consent wiring, the source
+  bar on the public page only, `GATES` equal to CLAUDE.md's execution-gate rows in order, the
+  gate-lab constants equal to the Risk Limits defaults, every terminal command present in the
+  README or CLAUDE.md, and `SCHED` equal to the task-schedules README's 16 rows with matching
+  times. Both pages were rendered headlessly at 1280px and 390px with no script errors and no
+  horizontal overflow.
+- Deploy paths are unchanged: `site/` is the Vercel root; `.claude/html/**` on `master` fires
+  the Pages workflow. Edit `site/` for the public page, `.claude/html/` for the personal one.
+
+---
+
 ## 2026-10-04 -- Public site for edge-radar.ai-automation-tools.dev
 
 Every public org repo with a front end gets a `<repo>.ai-automation-tools.dev` page, and the

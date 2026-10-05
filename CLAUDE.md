@@ -93,8 +93,10 @@ Edge-Radar/
 ├── Makefile                   # make scan-mlb, make test, make settle, ...
 ├── .claude/
 │   ├── agents/                # Agent definitions (roster below)
+│   ├── html/                  # Personal ops deck → edge-radar.mikesailab.com (GitHub Pages)
 │   ├── memory/MEMORY.md       # Persistent memory index
 │   └── skills/                # Junctions → /skills (git-ignored)
+├── site/                      # Public page → edge-radar.ai-automation-tools.dev (Vercel root)
 ├── skills/                    # Canonical skill source — EDIT HERE
 │   ├── edge-radar/            # /edge-radar — scan/bet/status/settle/risk
 │   └── edge-radar-analysis/   # /edge-radar-analysis — performance report
@@ -110,7 +112,7 @@ Edge-Radar/
 │   ├── backtest/              # backtester.py, correlation_check.py
 │   ├── schedulers/            # Automation + Windows Task Scheduler installer
 │   └── setup/link_skills.ps1  # Recreate .claude/skills junctions after clone
-├── tests/                     # pytest suite (make test)
+├── tests/                     # pytest suite (make test); test_site.py pins both static pages
 └── docs/                      # Index: docs/README.md
     ├── CHANGELOG.md           # Project history — the "why" behind the rules here
     ├── ROADMAP.md             # Open work only (history lives in CHANGELOG)
