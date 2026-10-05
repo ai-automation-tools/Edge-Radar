@@ -2,6 +2,48 @@
 
 ---
 
+## 2026-10-05 -- U1 reviewed: the shard is read per market, so Basketball moving to shard 3 needed no code
+
+The 2026-10-05 upstream check (PR #315) queued three Kalshi changelog items against the money
+path as ROADMAP **U1**. All three were checked against code and against the live venue; two are
+closed here, the residue of the third is re-filed narrowly as **X2**.
+
+- **(a) Basketball on shard 3, Commodities on shard 2 (Kalshi 2026-09-10).** Not a defect.
+  `kalshi_executor._shard_for()` reads `exchange_index` off each market payload before the
+  shard-funding step, so no sport-to-shard table exists on the money path to go stale. Verified
+  live: `KXNBAGAME-26OCT11CHIDEN-DEN` reports `exchange_index: 3`, MLB 3, NFL and NHL 0, BTC 2,
+  and `GET /exchange/status` now describes shard 2 as "Crypto & Commodities" and shard 3 as
+  "Tennis, Baseball, Basketball". What *was* stale: `doctor.py` printed the 08-24 names from a
+  hardcoded map, and four docs quoted the 08-24 mapping as current. `shard_funding.shard_names()`
+  now reads the venue's list (new `KalshiClient.get_exchange_status()`), with
+  `FALLBACK_SHARD_NAMES` only for a client that cannot answer; doctor enumerates the balance
+  split from that list rather than from a fixed set of four. Display only -- the executor never
+  consults it. Tests in `tests/test_shard_funding.py` pin that the venue's description wins and
+  that an NBA ticker is funded on the shard its market reports.
+- **(b) Sub-cent and half-cent price levels (Kalshi 2026-07-23, 09-03).** Not a defect, latent
+  by construction. The money path already reads only the `*_dollars` fields (`edge_detector`,
+  `clv_capture`, `fees`) and sends limits as four-decimal dollar strings; the one integer-cent
+  step is `price_cents = ceil(price * 100)` in sizing (F2), which lands on a whole cent. A whole
+  cent lies on every published grid (`price_ranges.step` is 0.01 on every sports market probed,
+  and 0.005 or 0.001 elsewhere both divide 0.01), so an order is never off-tick; on a sub-cent
+  book it pays at most the fraction of a cent up to the next whole one. The fee model is
+  `rate * p * (1-p)` in dollars and is step-independent. Nothing to change.
+- **(c) `SETTLEMENT_BOUNDS_CANCEL` (Kalshi 2026-10-01).** No money impact, but it exposed a
+  pre-existing gap. A venue-cancelled resting order just drops out of `get_orders(status=
+  "resting")`, so Gate 2b's resting exposure, the R4 janitor and S23c all see it correctly as
+  gone. The trade-log row, however, stays `fill_status: "resting"` forever, because the settler
+  skips resting rows and nothing re-reads them -- and the same gap means a limit that fills
+  *after* the create-order response is an untracked position until settlement. Checked the
+  three live rows in that state (07-16 MLS total, 07-31 MLB total, 08-16 NFL spread): zero
+  fills at the venue on all three, so no P&L has been missed. Filed as **X2** with the fix
+  shape: a pre-settle pass that re-reads each open resting row's order and promotes or closes it.
+
+**Rule:** *when a venue publishes a category-to-shard mapping, read it; never carry it in
+code.* The executor got this right from X1; the display path and the docs did not, and the
+docs drifted within three weeks.
+
+---
+
 ## 2026-10-05 -- Site redesign: public page and ops deck in the org design vocabulary
 
 Both static pages were rebuilt to match the 2026-10-05 redesign of `ai-automation-tools.dev`

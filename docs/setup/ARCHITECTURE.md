@@ -323,7 +323,9 @@ The result is capped by (in order): max bet size ($100), bet ratio cap, and avai
 #### Exchange shards (X1, 2026-08-27)
 
 Kalshi **sharded the exchange on 2026-08-24**: Crypto moved to shard 2, Tennis & Baseball to
-shard 3, everything else stayed on shard 0. `bankroll` above is
+shard 3, everything else stayed on shard 0; on 2026-09-10 Basketball joined shard 3 and
+Commodities shard 2. The executor reads each market's `exchange_index` before placing, so a
+category moving shards needs no code change (verified 2026-10-05: NBA on 3). `bankroll` above is
 `get_balance()["balance"]` — the **sum across every shard** — but **cash does not follow the
 markets**, so an order can be correctly sized against the full balance and still be
 unspendable where it lands. The venue's error for that case is `404 user_not_found`: the

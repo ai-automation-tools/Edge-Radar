@@ -402,9 +402,12 @@ Standing rules — do not reverse them without new settled evidence.
   `equity = bankroll + portfolio_value` follows it — operator's call 2026-08-27, and
   verified rather than assumed (`8806` before and after a $15 inter-shard move). But
   Kalshi sharded the exchange on **2026-08-24** — Crypto to shard 2, **Tennis & Baseball
-  to shard 3** — and **cash does not follow the markets**: an order on a shard holding no
-  funds fails `404 user_not_found`, the market resolving before the per-shard user lookup
-  does not. So an order can be correctly sized against the full balance and still be
+  to shard 3**, and since **2026-09-10 Basketball on 3 and Commodities on 2** — and **cash
+  does not follow the markets**: an order on a shard holding no funds fails
+  `404 user_not_found`, the market resolving before the per-shard user lookup does not.
+  **The shard is read per market** (`exchange_index` on the payload, never a sport list),
+  so a category moving shards needs no code change; `doctor.py` names shards from
+  `GET /exchange/status` for the same reason. *CHANGELOG 2026-10-05 (U1).* So an order can be correctly sized against the full balance and still be
   unspendable where it lands. `shard_funding.ensure_shard_funded()` closes the gap
   immediately before placing: it moves **exactly the shortfall** (never a round-up — cash
   parked on a sports shard cannot back an NFL order), refuses above
@@ -598,7 +601,8 @@ MAX_DAYS_TO_EVENT_FOR_GAME_MARKETS=0  # S5: Gate 3.7, max days from now to a GAM
                                 #   untouched. Fails open on an unparseable date, like Gate 3.6.
 AUTO_SHARD_TRANSFER=false       # X1: move cash between Kalshi exchange shards on demand.
                                 #   Ships false; live `.env` sets true. Kalshi sharded on
-                                #   2026-08-24 (2=Crypto, 3=Tennis & Baseball) and cash does
+                                #   2026-08-24 (2=Crypto, 3=Tennis & Baseball; since 09-10
+                                #   also Commodities on 2, Basketball on 3) and cash does
                                 #   NOT follow the markets, so an order on an unfunded shard
                                 #   fails `404 user_not_found`. Off => order is SKIPPED and
                                 #   logged `shard_underfunded`, never placed to fail.

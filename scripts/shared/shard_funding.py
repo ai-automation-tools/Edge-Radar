@@ -1,10 +1,17 @@
 """Just-in-time cash movement between Kalshi exchange shards.
 
 Kalshi sharded the exchange on **2026-08-24**: Crypto moved to shard 2, Tennis &
-Baseball to shard 3, everything else stayed on shard 0. **Cash does not follow the
-markets.** An order against a market on a shard where the account holds no funds
-fails `404 user_not_found` -- the market resolves, then the per-shard user lookup
-does not (see CHANGELOG 2026-08-27).
+Baseball to shard 3, everything else stayed on shard 0; on **2026-09-10** Basketball
+joined shard 3 and Commodities shard 2. **Cash does not follow the markets.** An order
+against a market on a shard where the account holds no funds fails `404 user_not_found`
+-- the market resolves, then the per-shard user lookup does not (see CHANGELOG
+2026-08-27).
+
+**Which shard a market is on is never inferred from its sport.** The executor reads
+`exchange_index` off the market payload per ticker (`_shard_for` in
+`kalshi_executor.py`), so a category moving shards -- as Basketball did -- needs no
+code change. The sport-to-shard mapping exists in code only as `shard_names()`'s
+display fallback, and that reads the venue first (verified 2026-10-05: NBA on 3).
 
 Sizing is deliberately whole-account: `bankroll` is `get_balance()["balance"]`, the
 sum across every shard (operator's call, 2026-08-27). So an order can be correctly
@@ -33,7 +40,43 @@ import logging
 
 log = logging.getLogger("shard_funding")
 
-__all__ = ["shard_balances", "ensure_shard_funded"]
+__all__ = ["shard_balances", "shard_names", "ensure_shard_funded"]
+
+# Display names only. Last seen at ``GET /exchange/status`` on 2026-10-05; the
+# venue's list wins whenever it answers, this is for an offline or stubbed client.
+FALLBACK_SHARD_NAMES: dict[int, str] = {
+    0: "Default",
+    1: "Combos",
+    2: "Crypto & Commodities",
+    3: "Tennis, Baseball, Basketball",
+}
+
+
+def shard_names(client) -> dict[int, str]:
+    """Map shard index -> the venue's description, for display.
+
+    Reads ``exchange_index_statuses`` from ``GET /exchange/status``, which is
+    the only place Kalshi publishes which categories trade on which shard. The
+    list moved (Basketball to 3 and Commodities to 2 on 2026-09-10) while a
+    hardcoded copy in ``doctor.py`` kept printing the 08-24 names, so the
+    venue is authoritative and ``FALLBACK_SHARD_NAMES`` is only for a client
+    that cannot answer. Never a money decision: the executor reads a market's
+    own ``exchange_index`` before placing, whatever this says.
+    """
+    read = getattr(client, "get_exchange_status", None)
+    if read is None:
+        return dict(FALLBACK_SHARD_NAMES)
+    try:
+        statuses = (read() or {}).get("exchange_index_statuses") or []
+        names = {
+            int(s["exchange_index"]): str(s.get("description") or "?")
+            for s in statuses
+            if "exchange_index" in s
+        }
+    except Exception as e:  # noqa: BLE001
+        log.warning("Exchange status read failed; using fallback shard names: %s", e)
+        return dict(FALLBACK_SHARD_NAMES)
+    return names or dict(FALLBACK_SHARD_NAMES)
 
 
 def shard_balances(client, shards) -> dict[int, float]:
@@ -62,15 +105,22 @@ def shard_balances(client, shards) -> dict[int, float]:
     for shard in shards:
         try:
             out[int(shard)] = float(read(shard))
-        except Exception as e:                                  # noqa: BLE001
+        except Exception as e:  # noqa: BLE001
             log.warning("Per-shard balance read failed for shard %s: %s", shard, e)
             return {}
     return out
 
 
-def ensure_shard_funded(client, shard: int | None, cost: float, *,
-                        enabled: bool, source_shard: int, max_transfer: float,
-                        dry_run: bool) -> tuple[bool, str | None]:
+def ensure_shard_funded(
+    client,
+    shard: int | None,
+    cost: float,
+    *,
+    enabled: bool,
+    source_shard: int,
+    max_transfer: float,
+    dry_run: bool,
+) -> tuple[bool, str | None]:
     """Make `cost` spendable on `shard`, moving cash from `source_shard` if needed.
 
     Returns ``(ok, note)``. ``ok`` False means do not place this order. ``note`` is
@@ -98,13 +148,17 @@ def ensure_shard_funded(client, shard: int | None, cost: float, *,
     shortfall = round(cost - available, 4)
 
     if shortfall > max_transfer:
-        return False, (f"shard {shard} short ${shortfall:,.2f}, over the "
-                       f"${max_transfer:,.2f} single-transfer cap — not moved.")
+        return False, (
+            f"shard {shard} short ${shortfall:,.2f}, over the "
+            f"${max_transfer:,.2f} single-transfer cap — not moved."
+        )
 
     source_available = balances.get(source_shard, 0.0)
     if source_available < shortfall:
-        return False, (f"shard {shard} short ${shortfall:,.2f} but shard "
-                       f"{source_shard} only holds ${source_available:,.2f}.")
+        return False, (
+            f"shard {shard} short ${shortfall:,.2f} but shard "
+            f"{source_shard} only holds ${source_available:,.2f}."
+        )
 
     # `enabled` is checked AFTER the cap/source tests and skipped entirely in a
     # dry run (2026-09-08). A dry run moves no money, so the flag that governs
@@ -122,34 +176,52 @@ def ensure_shard_funded(client, shard: int | None, cost: float, *,
     # measuring the PLUMBING -- hence the note says so out loud.
     if dry_run:
         off = "" if enabled else " (AUTO_SHARD_TRANSFER off — ignored in dry run)"
-        return True, (f"[dry-run] would move ${shortfall:,.2f} "
-                      f"shard {source_shard} -> {shard}{off}")
+        return True, (
+            f"[dry-run] would move ${shortfall:,.2f} " f"shard {source_shard} -> {shard}{off}"
+        )
 
     if not enabled:
-        return False, (f"shard {shard} holds ${available:,.2f}, needs ${cost:,.2f} "
-                       f"— short ${shortfall:,.2f}. AUTO_SHARD_TRANSFER is off.")
+        return False, (
+            f"shard {shard} holds ${available:,.2f}, needs ${cost:,.2f} "
+            f"— short ${shortfall:,.2f}. AUTO_SHARD_TRANSFER is off."
+        )
 
-    log.info("Auto-funding shard %s: $%.4f from shard %s (need $%.2f, have $%.2f)",
-             shard, shortfall, source_shard, cost, available)
+    log.info(
+        "Auto-funding shard %s: $%.4f from shard %s (need $%.2f, have $%.2f)",
+        shard,
+        shortfall,
+        source_shard,
+        cost,
+        available,
+    )
     try:
-        client.intra_exchange_transfer(shortfall, source_shard=source_shard,
-                                       destination_shard=shard)
-    except Exception as e:                                  # noqa: BLE001
-        log.error("Auto shard transfer failed (%s -> %s, $%.4f): %s",
-                  source_shard, shard, shortfall, e)
+        client.intra_exchange_transfer(
+            shortfall, source_shard=source_shard, destination_shard=shard
+        )
+    except Exception as e:  # noqa: BLE001
+        log.error(
+            "Auto shard transfer failed (%s -> %s, $%.4f): %s", source_shard, shard, shortfall, e
+        )
         return False, f"shard transfer failed: {e}"
 
     # Non-atomic: confirm it actually landed rather than trusting the 200.
     settled = shard_balances(client, (shard,)).get(shard, 0.0)
     if settled < cost:
-        log.error("Transfer to shard %s reported success but balance is $%.4f, "
-                  "need $%.2f — order skipped, funds may be mid-flight.",
-                  shard, settled, cost)
-        return False, (f"transfer to shard {shard} did not settle "
-                       f"(${settled:,.2f} < ${cost:,.2f}) — order skipped")
+        log.error(
+            "Transfer to shard %s reported success but balance is $%.4f, "
+            "need $%.2f — order skipped, funds may be mid-flight.",
+            shard,
+            settled,
+            cost,
+        )
+        return False, (
+            f"transfer to shard {shard} did not settle "
+            f"(${settled:,.2f} < ${cost:,.2f}) — order skipped"
+        )
 
-    return True, (f"moved ${shortfall:,.2f} shard {source_shard} -> {shard} "
-                  f"(now ${settled:,.2f})")
+    return True, (
+        f"moved ${shortfall:,.2f} shard {source_shard} -> {shard} " f"(now ${settled:,.2f})"
+    )
 
 
 def _demo() -> None:
@@ -168,8 +240,11 @@ def _demo() -> None:
         def get_balance(self):
             # Deliberately account-wide and WRONG per-subaccount, mirroring the
             # real API. Nothing here may read it; the bug was that we did.
-            return {"balance_breakdown": [{"exchange_index": k, "balance": "999.0000"}
-                                          for k in (0, 1, 2, 3)]}
+            return {
+                "balance_breakdown": [
+                    {"exchange_index": k, "balance": "999.0000"} for k in (0, 1, 2, 3)
+                ]
+            }
 
         def intra_exchange_transfer(self, amount, source_shard, destination_shard):
             if self._raises:
@@ -238,15 +313,13 @@ def _demo() -> None:
     # dry run IGNORES the disabled flag (2026-09-08) -- otherwise every shard-3
     # candidate logs an un-settleable error row instead of simulated evidence.
     c = FakeClient({0: 70.0, 3: 0.0})
-    ok, note = ensure_shard_funded(
-        c, 3, 10.0, **{**kw, "dry_run": True, "enabled": False})
+    ok, note = ensure_shard_funded(c, 3, 10.0, **{**kw, "dry_run": True, "enabled": False})
     assert ok and "ignored in dry run" in note and c.transfers == [], note
 
     # ...but a dry run still honours the cap and the source-funds test, which
     # would block a live order for reasons the flag has nothing to do with.
     c = FakeClient({0: 70.0, 3: 0.0})
-    ok, note = ensure_shard_funded(
-        c, 3, 40.0, **{**kw, "dry_run": True, "max_transfer": 25.0})
+    ok, note = ensure_shard_funded(c, 3, 40.0, **{**kw, "dry_run": True, "max_transfer": 25.0})
     assert not ok and "cap" in note, note
 
     c = FakeClient({0: 3.0, 3: 0.0})
