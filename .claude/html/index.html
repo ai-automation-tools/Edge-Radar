@@ -2,479 +2,991 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Edge-Radar &middot; Ops Dashboard</title>
-  <meta name="description" content="Personal ops dashboard for the Kalshi edge-detection pipeline." />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Edge-Radar · Ops Deck</title>
+  <meta name="description" content="Personal ops deck for the Kalshi edge-detection pipeline: what is scheduled, what fires next, and where to click when something needs attention." />
+  <meta name="robots" content="noindex" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#060606" />
+
+  <!-- No build step. Same tokens and components as the public page in site/; this page adds the schedule, the
+       next-fire clock and the operator links. Fonts and the shared consent script are the only external resources. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; }
-    summary::-webkit-details-marker { display: none; }
-    summary { list-style: none; }
-    pre, code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+
+    /* Design tokens. Same ground, surfaces and type as ai-automation-tools.dev so the two read as siblings;
+       the page accent is Edge-Radar's emerald, the colour the org page gives this tool. Dark-only by design. */
+    :root {
+      color-scheme: dark;
+      --bg: #060606;
+      --bg-2: #0a0a0c;
+      --surface: rgba(24, 24, 27, 0.45);
+      --surface-2: rgba(24, 24, 27, 0.8);
+      --line: rgba(63, 63, 70, 0.45);
+      --line-2: rgba(63, 63, 70, 0.8);
+      --fg: #f4f4f5;
+      --fg-2: #d4d4d8;
+      --fg-3: #a1a1aa;
+      --fg-4: #71717a;
+      --fg-5: #52525b;
+      --accent: #34d399;        /* emerald-400: the Edge-Radar mark */
+      --accent-ink: #052e1f;
+      --sky: #38bdf8;           /* reference price */
+      --amber: #fbbf24;         /* execution */
+      --violet: #a78bfa;        /* sizing */
+      --rose: #fb7185;          /* reject */
+      --ok: #34d399;
+      --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      --r-lg: 12px; --r-md: 8px; --r-sm: 6px;
+      --ease: cubic-bezier(.2, .7, .2, 1);
+    }
+    * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
+    body {
+      margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      background-image: radial-gradient(rgba(255,255,255,0.035) 1.2px, transparent 0);
+      background-size: 24px 24px; background-attachment: fixed;
+    }
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: rgba(52,211,153,0.3); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .skip { position: absolute; left: -9999px; top: 48px; z-index: 50; padding: 6px 12px; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 600; }
+    .skip:focus { left: 16px; }
+    .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding-inline: 20px; }
+    .mono { font-family: var(--mono); }
+    .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-4); }
+    .eyebrow b { color: var(--accent); font-weight: 500; }
+
+
+    /* ── Topbar ─────────────────────────────── */
+    .topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 40; height: 56px; background: rgba(6,6,6,0.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(39,39,42,0.7); }
+    .topbar .wrap { height: 100%; display: flex; align-items: center; gap: 14px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; letter-spacing: -.01em; }
+    .brand svg { width: 24px; height: 24px; flex: none; }
+    .nav { position: relative; display: none; align-items: center; gap: 2px; margin-left: 14px; }
+    .nav a { position: relative; padding: 6px 11px; font-size: 13.5px; color: var(--fg-3); border-radius: var(--r-sm); transition: color .2s; }
+    .nav a:hover, .nav a.active { color: var(--fg); }
+    .nav .ind { position: absolute; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; transition: left .35s var(--ease), width .35s var(--ease), opacity .2s; opacity: 0; }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .kbd-btn { display: none; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: rgba(24,24,27,.4); color: var(--fg-4); font-size: 13px; cursor: pointer; font-family: inherit; transition: border-color .2s, color .2s; }
+    .kbd-btn:hover { border-color: #52525b; color: var(--fg-2); }
+    kbd { font-family: var(--mono); font-size: 10.5px; padding: 2px 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; color: var(--fg-3); background: #0e0e11; }
+    .gh-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--fg-2); font-size: 13px; font-weight: 500; transition: border-color .2s, background .2s; }
+    .gh-btn:hover { border-color: #52525b; background: rgba(24,24,27,.7); }
+    .gh-btn svg { width: 15px; height: 15px; }
+    .gh-btn span { display: none; }
+    .menu-btn { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--fg-2); cursor: pointer; }
+    .mobile-nav { display: none; border-bottom: 1px solid var(--line); background: rgba(10,10,12,.96); }
+    .mobile-nav.open { display: block; }
+    .mobile-nav a { display: block; padding: 12px 20px; font-size: 15px; color: var(--fg-2); border-top: 1px solid rgba(39,39,42,.5); }
+    @media (min-width: 860px) { .nav { display: flex; } .kbd-btn { display: inline-flex; } .gh-btn span { display: inline; } .menu-btn { display: none; } }
+
+    /* Atmosphere: one emerald glow behind the hero, a faint violet counterweight, nothing else lit at rest. */
+    .glow { position: absolute; inset: 0 0 auto 0; height: 760px; pointer-events: none; z-index: 0;
+      background: radial-gradient(640px 380px at 72% 10%, rgba(52,211,153,0.13), transparent 70%), radial-gradient(420px 260px at 14% 34%, rgba(167,139,250,0.06), transparent 70%);
+      mask-image: linear-gradient(#000 60%, transparent); }
+
+    /* ── Hero ───────────────────────────────── */
+    .hero > * { min-width: 0; }
+    .hero { position: relative; display: grid; grid-template-columns: 1fr; gap: 36px; padding-block: 56px 32px; align-items: center; }
+    @media (min-width: 900px) { .hero { grid-template-columns: 1.02fr .98fr; padding-block: 80px 40px; gap: 48px; } }
+    h1 { margin: 18px 0 0; font-size: clamp(34px, 4.6vw, 52px); line-height: 1.04; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
+    h1 em { font-style: normal; color: transparent; background: linear-gradient(90deg, #6ee7b7, #34d399 55%, #38bdf8); -webkit-background-clip: text; background-clip: text; }
+    .lede { margin: 20px 0 0; max-width: 54ch; font-size: 16.5px; color: var(--fg-3); }
+    .lede b { color: var(--fg-2); font-weight: 500; }
+    .fine { margin: 14px 0 0; max-width: 54ch; font-size: 13px; color: var(--fg-4); }
+    .cta { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: var(--r-md); font-size: 14px; font-weight: 600; border: 1px solid transparent; cursor: pointer; font-family: inherit; transition: transform .2s var(--ease), background .2s, border-color .2s, box-shadow .2s; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-primary:hover { background: #6ee7b7; box-shadow: 0 0 24px -6px rgba(52,211,153,.6); }
+    .btn-ghost { border-color: var(--line-2); color: var(--fg-2); background: rgba(24,24,27,.3); }
+    .btn-ghost:hover { border-color: #52525b; background: rgba(24,24,27,.7); color: var(--fg); }
+    .btn-gh { background: #000; color: #fff; border-color: rgba(255,255,255,.16); }
+    .btn-gh:hover { background: #111114; border-color: rgba(255,255,255,.34); }
+    .btn svg { width: 15px; height: 15px; }
+
+    /* The radar: a canvas sweep over illustrative candidate markets. Hover names a blip, click loads it into the gate lab. */
+    .radar { position: relative; aspect-ratio: 1 / .92; max-width: 520px; min-height: 300px; margin-inline: auto; width: 100%; }
+    .radar canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .radar .tip { position: absolute; transform: translate(-50%, calc(-100% - 16px)); pointer-events: none; opacity: 0; padding: 7px 10px; border-radius: var(--r-sm); background: #0e0e11; border: 1px solid var(--line-2); font-size: 12px; white-space: nowrap; transition: opacity .15s; box-shadow: 0 10px 30px -10px rgba(0,0,0,.8); z-index: 2; }
+    .radar .tip.on { opacity: 1; }
+    .radar .tip small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); }
+    .radar .tip i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 0; background: var(--c); }
+    .radar .hint { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); white-space: nowrap; }
+    .radar .legend { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); }
+    .radar .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .radar .legend i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+
+    /* ── Fact strip ─────────────────────────── */
+    .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(10,10,12,.6); margin-bottom: 8px; }
+    .strip .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-4); padding: 0 6px; }
+    .strip a, .strip span.pill { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 999px; font-family: var(--mono); font-size: 12px; color: var(--fg-3); border: 1px solid transparent; transition: background .2s, border-color .2s, color .2s; }
+    .strip a:hover { background: rgba(24,24,27,.8); border-color: var(--line); color: var(--fg); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--ok)); animation: pulse 2.4s infinite; }
+    .strip .meta { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--fg-5); padding-right: 4px; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c, var(--ok)) 45%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+    /* ── Sections ───────────────────────────── */
+    section { scroll-margin-top: 72px; padding-block: 60px; border-top: 1px solid rgba(39,39,42,.6); }
+    .sec-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+    h2 { margin: 10px 0 0; font-size: 26px; letter-spacing: -.025em; font-weight: 650; }
+    .sub { margin: 8px 0 0; max-width: 60ch; color: var(--fg-3); font-size: 15px; }
+    .sub code, .note code { font-family: var(--mono); font-size: 12.5px; color: var(--fg-2); background: rgba(24,24,27,.8); padding: 1px 5px; border-radius: 4px; }
+    .note { margin: 14px 0 0; font-size: 12.5px; color: var(--fg-4); max-width: 80ch; }
+
+    /* Equation line */
+    .eq { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin-top: 26px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); font-family: var(--mono); font-size: 14px; color: var(--fg-4); }
+    .eq b { font-weight: 500; }
+    .eq .fv { color: var(--sky); } .eq .ask { color: var(--amber); } .eq .edge { color: var(--accent); } .eq .fee { color: var(--rose); }
+    .eq small { font-family: var(--sans); font-size: 12.5px; color: var(--fg-4); }
+
+    /* Gate lab */
+    .lab { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+    @media (min-width: 900px) { .lab { grid-template-columns: 1.1fr .9fr; } }
+    .panel { position: relative; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: 18px 20px; }
+    .panel h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .panel .hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .panel .hd .eyebrow { margin: 0; }
+    .ctl { display: grid; gap: 14px; }
+    .ctl label { display: grid; gap: 6px; }
+    .ctl .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--fg-3); }
+    .ctl .row output { font-family: var(--mono); font-size: 13px; color: var(--fg); }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--c, var(--accent)) var(--p, 50%), #27272a var(--p, 50%)); outline: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--fg); border: 3px solid var(--c, var(--accent)); box-shadow: 0 0 0 4px rgba(0,0,0,.4); }
+    input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--fg); border: 3px solid var(--c, var(--accent)); }
+    .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r-sm); overflow: hidden; }
+    .seg button { height: 28px; padding: 0 11px; border: 0; background: transparent; color: var(--fg-4); font: 12px var(--mono); cursor: pointer; }
+    .seg button[aria-pressed="true"] { background: rgba(63,63,70,.5); color: var(--fg); }
+    .seg button.yes[aria-pressed="true"] { color: var(--accent); } .seg button.no[aria-pressed="true"] { color: var(--amber); }
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .presets button { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 11.5px var(--mono); cursor: pointer; transition: all .2s; }
+    .presets button:hover { color: var(--fg); border-color: #52525b; background: rgba(24,24,27,.6); }
+    .ctl .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    select { height: 30px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: #0e0e11; color: var(--fg); font: 12.5px var(--mono); padding: 0 8px; }
+    .readout { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    @media (min-width: 520px) { .readout { grid-template-columns: repeat(3, 1fr); } }
+    .ro { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: rgba(6,6,6,.5); min-width: 0; }
+    .ro small { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); }
+    .ro b { display: block; margin-top: 3px; font-family: var(--mono); font-size: 17px; font-weight: 500; color: var(--fg); letter-spacing: -.01em; white-space: nowrap; }
+    .ro b.pos { color: var(--accent); } .ro b.neg { color: var(--rose); } .ro b.dim { color: var(--fg-4); }
+    .ro i { display: block; font-size: 11px; color: var(--fg-5); font-style: normal; margin-top: 2px; }
+    .verdict { margin-top: 12px; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: var(--r-md); border: 1px solid; font-size: 13.5px; font-weight: 500; }
+    .verdict.ok { border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); color: #a7f3d0; }
+    .verdict.bad { border-color: rgba(251,113,133,.35); background: rgba(251,113,133,.08); color: #fecdd3; }
+    .verdict i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+    .verdict span { font-weight: 400; color: var(--fg-3); }
+    .gchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .gchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); font: 11.5px var(--mono); color: var(--fg-3); }
+    .gchip i { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-5); }
+    .gchip.pass { border-color: rgba(52,211,153,.3); color: #a7f3d0; } .gchip.pass i { background: var(--accent); }
+    .gchip.fail { border-color: rgba(251,113,133,.35); color: #fecdd3; } .gchip.fail i { background: var(--rose); }
+    .gchip.na { opacity: .55; }
+
+    /* Three-column flow */
+    .flow { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 26px; }
+    @media (min-width: 900px) { .flow { grid-template-columns: 1fr 44px 1.08fr 44px 1fr; align-items: stretch; } }
+    .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .col-h { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 85%, #fff); }
+    .col-h i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+    .col-s { font-size: 12px; color: var(--fg-4); margin: -4px 0 2px; }
+    .node { --mx: 50%; --my: 50%; position: relative; border: 1px solid color-mix(in srgb, var(--c) 18%, var(--line)); border-radius: var(--r-md); background: color-mix(in srgb, var(--c) 4%, var(--surface)); padding: 10px 12px; overflow: hidden; transition: border-color .3s, background .3s, transform .3s var(--ease); }
+    .node:hover { border-color: color-mix(in srgb, var(--c) 40%, var(--line)); background: color-mix(in srgb, var(--c) 7%, var(--surface-2)); transform: translateY(-1px); }
+    .node::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(260px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 10%, transparent), transparent 60%); }
+    .node:hover::after { opacity: 1; }
+    .node.key { border-color: color-mix(in srgb, var(--c) 40%, var(--line)); background: color-mix(in srgb, var(--c) 9%, var(--surface)); }
+    .node .t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; color: var(--fg); }
+    .node .t .m { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 80%, #fff); }
+    .node .d { font-size: 11.5px; color: var(--fg-4); margin-top: 2px; line-height: 1.5; }
+    .node .d.mono { font-size: 10.5px; color: var(--fg-5); }
+    .node .d em { font-style: normal; color: color-mix(in srgb, var(--c) 80%, #fff); font-family: var(--mono); font-size: 10.5px; }
+    .conn { display: none; align-items: center; justify-content: center; }
+    @media (min-width: 900px) { .conn { display: flex; } }
+    .conn svg { width: 44px; height: 100%; min-height: 120px; overflow: visible; }
+    .conn line { stroke: var(--line-2); stroke-width: 1.2; }
+    .conn .mv { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 6 60; animation: travel 2.6s linear infinite; }
+    @keyframes travel { to { stroke-dashoffset: -66; } }
+    .conn.b .mv { animation-delay: -1.3s; stroke: var(--amber); }
+    .conn-m { display: flex; justify-content: center; color: var(--fg-5); }
+    @media (min-width: 900px) { .conn-m { display: none; } }
+    .loop { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--fg-4); }
+    .loop span.l { display: inline-flex; align-items: center; gap: 8px; }
+    .loop svg { width: 14px; height: 14px; color: var(--accent); }
+    .loop code { font-family: var(--mono); font-size: 11.5px; color: #a7f3d0; }
+
+    /* Filter rail */
+    .rail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 26px; }
+    .chip { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 500 12.5px/1 var(--sans); cursor: pointer; transition: all .2s; }
+    .chip:hover { color: var(--fg); border-color: #52525b; }
+    .chip[aria-pressed="true"] { background: var(--fg); color: #09090b; border-color: var(--fg); }
+    .search { margin-left: auto; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: rgba(24,24,27,.4); min-width: 0; }
+    .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: 13.5px var(--sans); width: 150px; min-width: 0; }
+    .search svg { width: 14px; height: 14px; color: var(--fg-4); flex: none; }
+
+    /* Gate tiles with spotlight */
+    .gates { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
+    @media (min-width: 560px) { .gates { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 900px) { .gates { grid-template-columns: repeat(3, 1fr); } }
+    .gate { --mx: 50%; --my: 50%; position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; cursor: pointer; text-align: left; font-family: inherit; color: inherit; transition: transform .3s var(--ease), border-color .3s, background .3s; }
+    .gate:hover { transform: translateY(-2px); background: var(--surface-2); border-color: color-mix(in srgb, var(--c) 35%, var(--line)); }
+    .gate::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(240px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 70%, transparent), transparent 70%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+    .gate::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(360px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 9%, transparent), transparent 60%); }
+    .gate:hover::before, .gate:hover::after, .gate.open::before { opacity: 1; }
+    .gate.hidden-by-filter { display: none; }
+    .gate .gt { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; }
+    .gate .num { font-family: var(--mono); font-size: 11px; color: var(--c); min-width: 34px; }
+    .gate .nm { font-size: 14px; font-weight: 600; color: var(--fg); flex: 1; min-width: 0; }
+    .gate .ty { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) 85%, #fff); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
+    .gate .gd { position: relative; z-index: 1; font-size: 12.5px; color: var(--fg-3); line-height: 1.5; }
+    .gate .gd code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); }
+    .gate .more { position: relative; z-index: 1; display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s var(--ease); }
+    .gate.open .more { grid-template-rows: 1fr; }
+    .gate .more > div { overflow: hidden; min-height: 0; }
+    .gate .more p { margin: 6px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--fg-4); line-height: 1.55; }
+    .gate .more p b { color: var(--fg-2); font-weight: 500; }
+    .gate .fo { position: relative; z-index: 1; display: flex; gap: 6px; flex-wrap: wrap; }
+    .gate .fo span { font-family: var(--mono); font-size: 10.5px; color: var(--fg-5); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+    .gate .fo span.c { color: #fecdd3; border-color: rgba(251,113,133,.3); }
+    .empty { display: none; padding: 40px 0; text-align: center; color: var(--fg-4); font-size: 14px; }
+    .empty.on { display: block; }
+    .outside { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 18px; }
+    @media (min-width: 760px) { .outside { grid-template-columns: 1fr 1fr; } }
+    .outside .pr { display: flex; gap: 12px; align-items: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+    .pr svg { width: 18px; height: 18px; color: var(--accent); flex: none; margin-top: 2px; }
+    .pr b { display: block; font-weight: 600; font-size: 14px; color: var(--fg); }
+    .pr span { color: var(--fg-3); font-size: 13px; }
+
+    /* Pipeline stepper */
+    .steps { position: relative; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 26px; }
+    @media (min-width: 640px) { .steps { grid-template-columns: repeat(4, 1fr); } }
+    @media (min-width: 980px) { .steps { grid-template-columns: repeat(7, 1fr); } }
+    .steps::before { content: ""; position: absolute; left: 4%; right: 4%; top: 27px; height: 1px; background: var(--line-2); display: none; }
+    .steps::after { content: ""; position: absolute; left: 4%; top: 27px; height: 1px; width: 0; background: linear-gradient(90deg, var(--accent), var(--sky)); transition: width 1.6s var(--ease); display: none; }
+    .steps.in::after { width: 92%; }
+    @media (min-width: 980px) { .steps::before, .steps::after { display: block; } }
+    .step { --mx: 50%; --my: 50%; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 14px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; transition: transform .3s var(--ease), border-color .3s, background .3s; }
+    .step:hover { transform: translateY(-2px); background: var(--surface-2); border-color: rgba(52,211,153,.35); }
+    .step::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(220px circle at var(--mx) var(--my), rgba(52,211,153,.10), transparent 60%); }
+    .step:hover::after { opacity: 1; }
+    .step .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(52,211,153,.35); background: #0a0a0c; font-family: var(--mono); font-size: 11px; color: var(--accent); }
+    .step b { margin-top: 6px; font-size: 14px; font-weight: 600; color: var(--fg); }
+    .step span { font-size: 11.5px; color: var(--fg-4); line-height: 1.5; }
+    .step code { font-family: var(--mono); font-size: 10.5px; color: var(--fg-5); }
+
+    /* Coverage cards */
+    .cov { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 26px; }
+    @media (min-width: 860px) { .cov { grid-template-columns: repeat(3, 1fr); } }
+    .card { --mx: 50%; --my: 50%; position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; transition: transform .3s var(--ease), border-color .3s, background .3s; }
+    .card:hover { transform: translateY(-2px); background: var(--surface-2); border-color: color-mix(in srgb, var(--c) 35%, var(--line)); }
+    .card::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(260px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 70%, transparent), transparent 70%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+    .card::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(420px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 9%, transparent), transparent 60%); }
+    .card:hover::before, .card:hover::after { opacity: 1; }
+    .card > * { position: relative; z-index: 1; }
+    .card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .kind { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 80%, #fff); }
+    .kind i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+    .glyph { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c) 22%, transparent); }
+    .glyph svg { width: 20px; height: 20px; }
+    .card h3 { margin: 0; font-size: 18px; letter-spacing: -.015em; font-weight: 600; }
+    .card p { margin: 0; color: var(--fg-3); font-size: 14px; line-height: 1.55; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .tag { font-family: var(--mono); font-size: 11px; padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--fg-4); }
+    .tag.on { color: color-mix(in srgb, var(--c) 85%, #fff); border-color: color-mix(in srgb, var(--c) 30%, transparent); }
+    .tag.off { color: var(--fg-5); text-decoration: line-through; }
+    .card .foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--fg-4); }
+    .card .foot code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); }
+
+    /* ── Terminal ───────────────────────────── */
+    .term { margin-top: 26px; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: #09090b; overflow: hidden; box-shadow: 0 30px 80px -40px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.04); }
+    .term-bar { display: flex; align-items: center; gap: 6px; padding: 0 12px; height: 44px; border-bottom: 1px solid var(--line); background: #0c0c0f; overflow-x: auto; scrollbar-width: none; }
+    .term-bar::-webkit-scrollbar { display: none; }
+    .lights { display: flex; gap: 6px; margin-right: 8px; flex: none; }
+    .lights i { width: 10px; height: 10px; border-radius: 50%; background: #27272a; }
+    .ttab { flex: none; height: 30px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--fg-4); font: 500 12.5px var(--sans); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: all .2s; }
+    .ttab i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); opacity: .6; }
+    .ttab:hover { color: var(--fg-2); }
+    .ttab[aria-selected="true"] { color: var(--fg); background: rgba(39,39,42,.55); border-color: var(--line-2); }
+    .ttab[aria-selected="true"] i { opacity: 1; }
+    .term-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+    .term-body { display: grid; grid-template-columns: 1fr; }
+    @media (min-width: 860px) { .term-body { grid-template-columns: 1fr 300px; } }
+    .term pre { margin: 0; padding: 20px 22px 22px; font: 13px/1.75 var(--mono); color: var(--fg-2); overflow-x: auto; min-height: 240px; min-width: 0; }
+    .ln { display: block; opacity: 0; transform: translateY(3px); animation: lnin .35s var(--ease) forwards; animation-delay: var(--d, 0s); }
+    @keyframes lnin { to { opacity: 1; transform: none; } }
+    .ln.cmd::before { content: "$ "; color: var(--c, var(--accent)); }
+    .ln.cmt { color: var(--fg-5); }
+    .ln.out { color: var(--fg-4); }
+    .ln.blank { height: .9em; }
+    .cursor { display: inline-block; width: 7px; height: 14px; background: var(--fg-3); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    .term-aside { border-top: 1px solid var(--line); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; background: rgba(12,12,15,.6); }
+    @media (min-width: 860px) { .term-aside { border-top: 0; border-left: 1px solid var(--line); } }
+    .term-aside h4 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .term-aside p { margin: 0; color: var(--fg-3); font-size: 13.5px; }
+    .req { display: flex; flex-direction: column; gap: 6px; }
+    .req span { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--fg-4); padding: 6px 0; border-top: 1px dashed var(--line); }
+    .req span b { font-weight: 500; color: var(--fg-2); text-align: right; }
+    .act { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; height: 32px; padding: 0 11px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; border: 1px solid transparent; transition: all .2s; }
+    .act svg { width: 13px; height: 13px; }
+    .act-primary { background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--c, var(--accent)) 85%, #fff); border-color: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
+    .act-primary:hover { background: color-mix(in srgb, var(--c, var(--accent)) 24%, transparent); border-color: color-mix(in srgb, var(--c, var(--accent)) 50%, transparent); }
+    .term-aside .act { align-self: flex-start; margin-top: auto; }
+    .copy { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 11px var(--mono); cursor: pointer; letter-spacing: 0; text-transform: none; transition: all .2s; }
+    .copy:hover { color: var(--fg); border-color: #52525b; }
+    .copy svg { width: 12px; height: 12px; }
+
+    /* Docs links */
+    .docs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 26px; }
+    @media (min-width: 860px) { .docs { grid-template-columns: repeat(5, 1fr); } }
+    .doc { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: transform .3s var(--ease), border-color .3s, background .3s; min-width: 0; }
+    .doc:hover { transform: translateY(-2px); background: var(--surface-2); border-color: rgba(52,211,153,.35); }
+    .doc small { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); }
+    .doc b { font-size: 14px; font-weight: 600; color: var(--fg); }
+    .doc span { font-size: 12px; color: var(--fg-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Footer ─────────────────────────────── */
+    footer { border-top: 1px solid rgba(39,39,42,.6); padding-block: 28px 40px; color: var(--fg-4); font-size: 13.5px; }
+    footer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+    footer .row a:hover { color: var(--fg-2); }
+    footer .right { margin-left: auto; display: flex; flex-wrap: wrap; gap: 18px; }
+    footer .fine { margin-top: 14px; font-size: 12px; color: var(--fg-5); max-width: none; }
+
+    /* ── Command palette ────────────────────── */
+    .pal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: none; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+    .pal-bg.open { display: flex; }
+    .pal { width: 100%; max-width: 560px; border: 1px solid var(--line-2); border-radius: 14px; background: #0c0c0f; box-shadow: 0 40px 120px -30px rgba(0,0,0,1), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; animation: palin .2s var(--ease); }
+    @keyframes palin { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+    .pal-in { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 52px; border-bottom: 1px solid var(--line); }
+    .pal-in svg { width: 16px; height: 16px; color: var(--fg-4); }
+    .pal-in input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--fg); font: 15px var(--sans); min-width: 0; }
+    .pal-list { max-height: 360px; overflow-y: auto; padding: 6px; }
+    .pal-grp { padding: 10px 10px 4px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-5); }
+    .pal-item { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: var(--r-md); cursor: pointer; color: var(--fg-2); font-size: 14px; }
+    .pal-item i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--fg-5)); flex: none; }
+    .pal-item small { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--fg-5); white-space: nowrap; }
+    .pal-item.sel { background: rgba(52,211,153,.12); color: #fff; }
+    .pal-item.sel small { color: var(--fg-3); }
+    .pal-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg-5); }
+    .pal-foot span { display: inline-flex; align-items: center; gap: 5px; }
+    .pal-empty { padding: 28px; text-align: center; color: var(--fg-4); font-size: 14px; }
+
+    /* ── Toast ──────────────────────────────── */
+    .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); z-index: 70; padding: 9px 14px; border-radius: 999px; background: #18181b; border: 1px solid var(--line-2); color: var(--fg); font-size: 13px; opacity: 0; pointer-events: none; transition: all .25s var(--ease); display: inline-flex; gap: 8px; align-items: center; }
+    .toast.on { opacity: 1; transform: translate(-50%, 0); }
+    .toast i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+      .ln { opacity: 1; transform: none; }
+      .steps.in::after { width: 92%; }
+    }
+
+    /* ── Ops deck additions ─────────────────── */
+    .eyebrow b.sky { color: var(--sky); }
+    .glow.ops { background: radial-gradient(640px 380px at 72% 10%, rgba(56,189,248,0.11), transparent 70%), radial-gradient(420px 260px at 14% 34%, rgba(52,211,153,0.07), transparent 70%); }
+    h1 em.sky { background: linear-gradient(90deg, #7dd3fc, #38bdf8 55%, #34d399); -webkit-background-clip: text; background-clip: text; }
+
+    /* Next-fire card */
+    .next { position: relative; min-width: 0; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: #09090b; overflow: hidden; box-shadow: 0 30px 80px -40px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.04); }
+    .next .bar { display: flex; align-items: center; gap: 10px; padding: 0 14px; height: 44px; border-bottom: 1px solid var(--line); background: #0c0c0f; font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-4); }
+    .next .bar .live { display: inline-flex; align-items: center; gap: 7px; color: var(--fg-3); }
+    .next .bar .tz { margin-left: auto; letter-spacing: 0; text-transform: none; color: var(--fg-5); }
+    .next .body { padding: 18px 18px 16px; display: grid; gap: 14px; }
+    .clock { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .clock b { font-family: var(--mono); font-size: 40px; font-weight: 500; letter-spacing: -.02em; line-height: 1; color: var(--fg); }
+    .clock b small { font-size: 18px; color: var(--fg-4); margin-left: 4px; }
+    .clock span { font-size: 13px; color: var(--fg-4); }
+    .nf { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--c, var(--sky)) 30%, var(--line)); border-radius: var(--r-md); background: color-mix(in srgb, var(--c, var(--sky)) 7%, transparent); }
+    .nf small { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c, var(--sky)) 80%, #fff); display: flex; align-items: center; gap: 8px; }
+    .nf small i { width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--sky)); }
+    .nf > * { min-width: 0; }
+    .nf b { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--fg); overflow-wrap: anywhere; }
+    .nf span { font-size: 13px; color: var(--fg-3); }
+    .nf span em { font-style: normal; font-family: var(--mono); color: var(--fg); }
+    .later { display: grid; gap: 0; }
+    .later .h { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-5); padding-bottom: 6px; }
+    .later > * { min-width: 0; }
+    .later a { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px dashed var(--line); font-size: 13px; color: var(--fg-3); }
+    .later a:hover { color: var(--fg); }
+    .later a i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); flex: none; }
+    .later a .t { font-family: var(--mono); font-size: 12px; color: var(--fg-4); width: 64px; flex: none; }
+    .later a .n { font-family: var(--mono); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .later a .w { margin-left: auto; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); flex: none; }
+    .later .none { padding: 8px 0; font-size: 13px; color: var(--fg-5); border-top: 1px dashed var(--line); }
+    .cont { font-size: 12px; color: var(--fg-5); }
+    .cont code { font-family: var(--mono); color: var(--fg-4); }
+
+    /* Timeline */
+    .tl-wrap { margin-top: 8px; margin-bottom: 8px; padding: 14px 16px 10px; border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(10,10,12,.6); }
+    .tl-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 10px; font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-4); }
+    .tl-head .k { display: inline-flex; align-items: center; gap: 6px; letter-spacing: 0; text-transform: none; }
+    .tl-head .k i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+    .tl-head .k i.ring { background: transparent; border: 1.5px solid var(--c); }
+    .tl-head .meta { margin-left: auto; letter-spacing: 0; text-transform: none; color: var(--fg-5); }
+    .tl { position: relative; height: 64px; }
+    .tl .axis { position: absolute; left: 0; right: 0; top: 30px; height: 1px; background: var(--line-2); }
+    .tl .tick { position: absolute; top: 30px; width: 1px; height: 6px; background: var(--line-2); transform: translateX(-.5px); }
+    .tl .tick.m { height: 10px; }
+    .tl .lbl { position: absolute; top: 44px; transform: translateX(-50%); font-family: var(--mono); font-size: 10px; color: var(--fg-5); }
+    .tl .mk { position: absolute; top: 30px; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); background: var(--c); border: 2px solid #09090b; box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 50%, transparent); cursor: pointer; transition: transform .2s var(--ease); padding: 0; }
+    .tl .mk.weekly { background: #0a0a0c; border-color: var(--c); }
+    .tl .mk.off { opacity: .35; }
+    .tl .mk:hover, .tl .mk.hot { transform: translate(-50%, -50%) scale(1.35); z-index: 2; }
+    .tl .mk.money::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--c) 40%, transparent); }
+    .tl .now { position: absolute; top: 12px; bottom: 20px; width: 1px; background: var(--sky); box-shadow: 0 0 8px rgba(56,189,248,.8); z-index: 1; }
+    .tl .now::before { content: "now"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--sky); }
+    .tl .done { position: absolute; left: 0; top: 30px; height: 1px; background: linear-gradient(90deg, rgba(56,189,248,.15), rgba(56,189,248,.6)); }
+    .tl .tip { position: absolute; transform: translate(-50%, calc(-100% - 10px)); pointer-events: none; opacity: 0; padding: 7px 10px; border-radius: var(--r-sm); background: #0e0e11; border: 1px solid var(--line-2); font-size: 12px; white-space: nowrap; transition: opacity .15s; box-shadow: 0 10px 30px -10px rgba(0,0,0,.8); z-index: 3; }
+    .tl .tip.on { opacity: 1; }
+    .tl .tip small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); }
+    @media (max-width: 640px) { .tl .lbl:nth-child(odd) { display: none; } }
+
+    /* Quick links */
+    .links { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 26px; }
+    @media (min-width: 560px) { .links { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 900px) { .links { grid-template-columns: repeat(4, 1fr); } }
+    .links .doc { padding: 16px; }
+    .links .doc small { color: color-mix(in srgb, var(--c, var(--fg-5)) 80%, #fff); }
+    .links .doc:hover { border-color: color-mix(in srgb, var(--c, var(--accent)) 35%, var(--line)); }
+
+    /* Schedule table */
+    .sched { margin-top: 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow-x: auto; }
+    .sched table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .sched th { text-align: left; padding: 10px 14px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-4); font-weight: 500; border-bottom: 1px solid var(--line-2); background: rgba(12,12,15,.6); white-space: nowrap; }
+    .sched td { padding: 11px 14px; border-top: 1px solid var(--line); vertical-align: top; color: var(--fg-3); }
+    .sched tr.r { transition: background .2s; }
+    .sched tr.r:hover { background: rgba(24,24,27,.6); }
+    .sched tr.r.hidden-by-filter { display: none; }
+    .sched tr.r.next td { background: rgba(56,189,248,.05); }
+    .sched tr.r.flash td { animation: rowflash 1.6s var(--ease); }
+    @keyframes rowflash { 0% { background: rgba(56,189,248,.2); } 100% { background: transparent; } }
+    .sched .num { font-family: var(--mono); font-size: 12px; color: var(--fg-5); width: 32px; }
+    .sched .nm { font-family: var(--mono); font-size: 12.5px; color: var(--fg); white-space: nowrap; }
+    .sched .nm i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); margin-right: 8px; vertical-align: 0; }
+    .sched .nm .money { margin-left: 8px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); border: 1px solid rgba(251,191,36,.35); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
+    .sched .cad span { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) 85%, #fff); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
+    .sched .tm { font-family: var(--mono); font-size: 12.5px; color: var(--fg-2); white-space: nowrap; }
+    .sched .tm small { display: block; font-size: 10.5px; color: var(--fg-5); }
+    .sched .what { font-size: 13px; line-height: 1.5; }
+    .sched .what code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); background: rgba(6,6,6,.6); padding: 1px 5px; border-radius: 4px; }
+    .sched .what .em { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--fg-5); }
+    .sched .what .em svg { width: 11px; height: 11px; }
+    .sched .act-cell { white-space: nowrap; }
+    .sched .copy { height: 26px; }
+    @media (max-width: 760px) { .sched .cad, .sched th.cad, .sched .act-cell, .sched th.act-cell { display: none; } }
+
+    /* Manual triggers + halt */
+    .ops2 > * { min-width: 0; }
+    .ops2 { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+    @media (min-width: 900px) { .ops2 { grid-template-columns: 1.4fr 1fr; } }
+    .codebox { border: 1px solid var(--line-2); border-radius: var(--r-lg); background: #09090b; overflow: hidden; }
+    .codebox .bar { display: flex; align-items: center; gap: 8px; padding: 0 12px; height: 40px; border-bottom: 1px solid var(--line); background: #0c0c0f; font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-4); }
+    .codebox .bar .copy { margin-left: auto; }
+    .codebox pre { margin: 0; padding: 14px 16px 16px; font: 12.5px/1.75 var(--mono); color: var(--fg-2); overflow-x: auto; }
+    .codebox pre .c { color: var(--fg-5); }
+    .codebox pre .p { color: var(--sky); }
+    .halt { border: 1px solid rgba(251,113,133,.3); border-radius: var(--r-lg); background: rgba(251,113,133,.05); padding: 16px 18px; }
+    .halt h3 { margin: 0 0 6px; font-size: 15px; font-weight: 600; color: #fecdd3; display: flex; align-items: center; gap: 8px; }
+    .halt h3 svg { width: 16px; height: 16px; }
+    .halt p { margin: 0 0 10px; font-size: 13px; color: var(--fg-3); }
+    .halt code { font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
+    .halt pre { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--r-md); background: rgba(6,6,6,.7); border: 1px solid var(--line); font: 12px/1.7 var(--mono); color: var(--fg-2); overflow-x: auto; }
   </style>
 </head>
-<body class="bg-[#060606] text-zinc-100 min-h-screen antialiased">
+<body>
 
-  <!-- ============ TOPBAR ============ -->
-  <div class="fixed top-0 inset-x-0 z-40 h-12 bg-[#060606]/95 backdrop-blur border-b border-zinc-900">
-    <div class="flex items-center h-full max-w-5xl mx-auto px-4 sm:px-6 gap-3">
-      <a href="#top" class="flex items-center gap-2 text-zinc-200 hover:text-white transition">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-        <span class="text-sm font-semibold tracking-wide">Edge-Radar</span>
+<a href="#main" class="skip">Skip to content</a>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Edge-Radar ops deck">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#34d399"/><path d="M 8 24 L 8 8 L 18 8 C 22 8 22 16 18 16 L 8 16 M 16 16 L 24 24" stroke="#052e1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      Edge-Radar <span class="mono" style="font-weight:400;color:var(--fg-4);font-size:12px;margin-left:2px">ops</span>
+    </a>
+    <nav class="nav" aria-label="Sections" id="nav">
+      <a href="#schedulers" data-spy="schedulers">Schedulers</a>
+      <a href="#links" data-spy="links">Quick links</a>
+      <a href="#how" data-spy="how">How it works</a>
+      <a href="#pipeline" data-spy="pipeline">Pipeline</a>
+      <span class="ind" id="ind" aria-hidden="true"></span>
+    </nav>
+    <div class="topbar-right">
+      <button class="kbd-btn" id="palOpen" type="button" aria-label="Open command palette">Jump to… <kbd>⌘K</kbd></button>
+      <a class="gh-btn" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>Repo</span>
       </a>
-      <nav class="ml-4 hidden sm:flex items-center gap-1 text-sm">
-        <a href="#quicklinks" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Quick Links</a>
-        <a href="#schedulers" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Schedulers</a>
-        <a href="#how-it-works" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">How It Works</a>
-        <a href="#dataflow" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Data Flow</a>
-      </nav>
-      <div class="ml-auto flex items-center gap-2">
-        <a href="https://mikesailab.com" class="hidden sm:inline-flex text-xs text-zinc-500 hover:text-zinc-300 transition">mikesailab.com</a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener noreferrer"
-           class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-zinc-800 bg-zinc-900/60 text-zinc-300 hover:bg-zinc-900 hover:text-white hover:border-zinc-700 transition">
-          <svg class="h-3.5 w-3.5" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-          <span>Repo</span>
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#schedulers">Schedulers</a><a href="#links">Quick links</a><a href="#how">How it works</a><a href="#pipeline">Pipeline</a>
+    <a href="https://mikesailab.com">mikesailab.com</a>
+    <a href="#" id="palOpenMobile">Jump to…</a>
+  </div>
+</header>
+
+<div class="glow ops" aria-hidden="true"></div>
+
+<main class="wrap" id="main">
+
+  <!-- ── Hero ── -->
+  <div class="hero" id="top">
+    <div>
+      <p class="eyebrow"><b class="sky">Personal ops deck</b> · Kalshi edge-detection pipeline · times in PT</p>
+      <h1>Edge-Radar <em class="sky">command deck</em>.</h1>
+      <p class="lede">
+        One pane for the pipeline: <b>what is scheduled, what fires next</b>, and where to click when something needs attention.
+        The schedule below is the live Task Scheduler inventory; the clock on the right reads it.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#schedulers">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5V10l3 2"/></svg>
+          Open the schedule
         </a>
+        <a class="btn btn-gh" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          github.com / Edge-Radar
+        </a>
+        <a class="btn btn-ghost" href="https://edge-radar.ai-automation-tools.dev" target="_blank" rel="noopener">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M2.5 10h15M10 2.5c2 2.4 2 12.6 0 15M10 2.5c-2 2.4-2 12.6 0 15"/></svg>
+          Public page
+        </a>
+      </div>
+    </div>
+
+    <div class="next" id="next" aria-live="polite">
+      <div class="bar"><span class="live"><i class="dot" style="--c:#38bdf8"></i>Schedule</span><span class="tz" id="tz">America/Los_Angeles</span></div>
+      <div class="body">
+        <div class="clock"><b id="clock">--:--<small>--</small></b><span id="clockDate">—</span></div>
+        <div class="nf" id="nf"><small><i></i>Next fire</small><b>—</b><span>reading the schedule…</span></div>
+        <div class="later" id="later"><div class="h">Later today</div></div>
+        <p class="cont">Continuous: <code>Hourly-Settle</code> at :35 every hour · <code>CLV-Capture</code> every 5 minutes.</p>
       </div>
     </div>
   </div>
 
-  <main class="flex-1 max-w-5xl w-full mx-auto px-6 pt-24 pb-24 sm:pt-28">
+  <!-- ── 24h timeline ── -->
+  <div class="tl-wrap" aria-label="Today's fire sequence">
+    <div class="tl-head">
+      <span>Today</span>
+      <span class="k" style="--c:#fbbf24"><i></i>places orders</span>
+      <span class="k" style="--c:#38bdf8"><i></i>report</span>
+      <span class="k" style="--c:#a78bfa"><i></i>maintenance</span>
+      <span class="k" style="--c:#71717a"><i class="ring"></i>weekly, not today</span>
+      <span class="meta" id="tlMeta">hover a marker · click for the row</span>
+    </div>
+    <div class="tl" id="tl"><div class="tip" id="ttip"></div></div>
+  </div>
 
-    <!-- ============ HERO ============ -->
-    <section id="top" class="mb-16">
-      <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-sky-400 mb-3">
-        <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
-        <span>Live &middot; Personal Ops Dashboard</span>
-      </div>
-      <div class="relative overflow-hidden rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-8 sm:p-10">
-        <svg class="absolute -right-12 -bottom-12 h-56 w-56 text-emerald-500/20 pointer-events-none" viewBox="0 0 100 100" fill="none" stroke="currentColor" aria-hidden="true">
-          <circle cx="50" cy="50" r="48" stroke-width="0.6" />
-          <circle cx="50" cy="50" r="34" stroke-width="0.6" />
-          <circle cx="50" cy="50" r="20" stroke-width="0.6" />
-          <line x1="50" y1="0" x2="50" y2="100" stroke-width="0.4" stroke-dasharray="1 2.5" />
-          <line x1="0" y1="50" x2="100" y2="50" stroke-width="0.4" stroke-dasharray="1 2.5" />
-          <line x1="50" y1="50" x2="82" y2="18" stroke-width="1" stroke-linecap="round" />
-          <circle cx="78" cy="22" r="2" fill="currentColor" stroke="none" />
-        </svg>
-        <h1 class="relative text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-100">Edge-Radar command deck</h1>
-        <p class="relative mt-3 max-w-2xl text-zinc-400">
-          Single pane of glass for the Kalshi edge-detection pipeline &mdash; what's scheduled,
-          what's running, and where to click when something needs attention.
-        </p>
+  <!-- ── Fact strip ── -->
+  <div class="strip" role="list" aria-label="At a glance">
+    <span class="lbl">At a glance</span>
+    <a role="listitem" href="#schedulers" style="--c:#38bdf8"><i class="dot"></i>16 scheduled tasks</a>
+    <a role="listitem" href="#schedulers" style="--c:#fbbf24"><i class="dot"></i>5 place orders</a>
+    <a role="listitem" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener" style="--c:#fb7185"><i class="dot"></i>21 risk gates</a>
+    <a role="listitem" href="#pipeline" style="--c:#34d399"><i class="dot"></i>7 pipeline stages</a>
+    <a role="listitem" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/task-schedules/README.md" target="_blank" rel="noopener" style="--c:#a78bfa"><i class="dot"></i>task-schedules README</a>
+    <span class="meta">\AI-Projects\Edge-Radar-MikesAILab\</span>
+  </div>
 
-        <div class="relative mt-6 flex flex-col gap-3 max-w-sm">
-          <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener"
-             class="flex items-center gap-3 px-4 py-2.5 rounded-md border border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-900/40 hover:bg-blue-500 hover:border-blue-400 transition min-w-0">
-            <svg class="h-5 w-5 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-            <span class="flex flex-col leading-tight flex-1 min-w-0">
-              <span class="text-[10px] uppercase tracking-widest text-blue-100/90">Source</span>
-              <span class="text-sm font-semibold truncate">github.com / Edge-Radar</span>
-            </span>
-            <span class="text-base flex-shrink-0">&rarr;</span>
-          </a>
-        </div>
-      </div>
-
-      <div class="mt-5 grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">5</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Wager schedulers</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">21</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Risk gates</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">7</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Pipeline stages</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">30</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Sport filters</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 col-span-2 sm:col-span-1">
-          <div class="text-2xl font-semibold text-zinc-100">1,216</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Tests passing</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ QUICK LINKS ============ -->
-    <section id="quicklinks" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Quick Links</h2>
-      <p class="text-sm text-zinc-600 mb-4">The stuff actually clicked on a normal day.</p>
-
-      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Source</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">GitHub repo</div>
-          <div class="text-xs text-zinc-500">michaelschecht / Edge-Radar</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">History</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">CHANGELOG</div>
-          <div class="text-xs text-zinc-500">docs/CHANGELOG.md</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">System</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">CLAUDE.md</div>
-          <div class="text-xs text-zinc-500">risk gates &middot; limits &middot; agents</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/skills/edge-radar/SKILL.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Skill</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">/edge-radar</div>
-          <div class="text-xs text-zinc-500">skills/edge-radar</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener"
-           class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Reference</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Scripts Reference</div>
-          <div class="text-xs text-zinc-500">docs/scripts/SCRIPTS_REFERENCE.md</div>
-        </a>
-      </div>
-    </section>
-
-    <!-- ============ SCHEDULERS ============ -->
-    <section id="schedulers" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Wager Schedulers</h2>
-      <p class="text-sm text-zinc-600 mb-4">
-        The five <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">\AI-Projects\Edge-Radar-MikesAILab\</code>
-        tasks that actually place bets &mdash; four daily sports runs plus a weekly futures run. Times in PT (system local). Each task emails its report as a second action; a daily <span class="mono text-zinc-400">Integration-Drift-Check</span> (4:15 AM) watches for Kalshi API and rules-wording drift that would silently blind the scanner.
-      </p>
-
-      <div class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-900/40">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="text-left">
-              <th class="w-10 px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">#</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">Task</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">Cadence</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60 whitespace-nowrap">Trigger</th>
-              <th class="px-4 py-3 text-[10px] uppercase tracking-wider text-zinc-500 font-medium border-b border-zinc-800/60">What it does</th>
-            </tr>
-          </thead>
-          <tbody class="text-zinc-300">
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">1</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-SameDay-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">5:05 AM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Scans NBA/NHL/MLB/NFL for <span class="text-zinc-200">today's</span> games and places bets. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 5 --exclude-open</code></td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">2</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-NoDateFilter-Midday-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">11:00 AM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Midday wide-net scan across <span class="text-zinc-200">all sports + all dates</span>. Catches MLB starter confirmations and intraday line moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 12% --max-bets 5 --exclude-open</code> (no <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date</code>)</td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">3</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-SameDay-Late-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">daily</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">2:00 PM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Late catch-up on <span class="text-zinc-200">tonight's</span> games &mdash; scratches, goalie confirmations, sharp-money moves. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date today --budget 12% --max-bets 5 --exclude-open</code></td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-500">4</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 mono text-emerald-300 whitespace-nowrap text-[13px]">All-Sports-NextDay-Execution</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-amber-500/10 text-amber-300 border border-amber-500/30">Sun&ndash;Thu</span></td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 whitespace-nowrap text-zinc-400">8:30 PM</td>
-              <td class="px-4 py-3 border-b border-zinc-800/60 text-zinc-400">Locks in early lines for <span class="text-zinc-200">tomorrow's</span> games. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--date tomorrow --budget 12% --max-bets 5 --exclude-open</code></td>
-            </tr>
-            <tr class="hover:bg-zinc-900/60 transition">
-              <td class="px-4 py-3 text-zinc-500">5</td>
-              <td class="px-4 py-3 mono text-emerald-300 whitespace-nowrap text-[13px]">Weekly-Futures-Execution</td>
-              <td class="px-4 py-3 whitespace-nowrap"><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium uppercase tracking-wider bg-violet-500/10 text-violet-300 border border-violet-500/30">Sat</span></td>
-              <td class="px-4 py-3 whitespace-nowrap text-zinc-400">9:00 AM</td>
-              <td class="px-4 py-3 text-zinc-400">Scans championship/outright <span class="text-zinc-200">futures</span> (NFL Super Bowl, NBA/NHL/MLB titles, golf majors) and places bets. Most weeks 0 fills &mdash; gates reject thin, longshot-heavy outrights. <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">--budget 10% --max-bets 3 --unit-size 1 --exclude-open</code></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <h3 class="mt-8 text-[11px] uppercase tracking-widest text-zinc-500 mb-2">Daily fire sequence</h3>
-      <pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400"> 5:05 AM  Sun Mon Tue Wed Thu Fri Sat  &mdash; All-Sports-SameDay-Execution              (today's games)
- 9:00 AM                          Sat  &mdash; Weekly-Futures-Execution               (futures, weekly)
-11:00 AM  Sun Mon Tue Wed Thu Fri Sat  &mdash; All-Sports-NoDateFilter-Midday-Execution  (multi-day wide-net)
- 2:00 PM  Sun Mon Tue Wed Thu Fri Sat  &mdash; All-Sports-SameDay-Late-Execution         (late catch-up)
- 8:30 PM  Sun Mon Tue Wed Thu          &mdash; All-Sports-NextDay-Execution              (tomorrow's games)</pre>
-
-      <details class="mt-4 rounded-sm border border-zinc-800/60 bg-zinc-900/40 open:bg-zinc-900/60 transition">
-        <summary class="flex items-center gap-2 cursor-pointer px-4 py-3 text-sm text-zinc-300 hover:text-white">
-          <svg class="h-3 w-3 text-zinc-500 transition-transform" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
-          <span>Manual trigger commands (Git Bash)</span>
-        </summary>
-        <div class="px-4 pb-4">
-<pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400"># Prepend MSYS_NO_PATHCONV=1 to stop Git Bash from translating /tn
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NoDateFilter-Midday-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Late-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NextDay-Execution"
-MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\Weekly-Futures-Execution"
-
-# PowerShell equivalent (no MSYS prefix)
-Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'All-Sports-NextDay-Execution'</pre>
-        </div>
-      </details>
-      <style>details[open] summary svg { transform: rotate(90deg); }</style>
-    </section>
-
-    <!-- ============ HOW IT WORKS (DIAGRAM) ============ -->
-    <section id="how-it-works" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">How It Works</h2>
-      <p class="text-sm text-zinc-600 mb-4">
-        Pull Kalshi's market price. Pull an independent fair value from sportsbooks / data feeds.
-        If the gap, net of the exchange fee, clears 21 risk gates, a Kelly-sized bet fires through the Kalshi trade API.
-      </p>
-
-      <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-5 sm:p-7">
-
-        <!-- Core premise equation -->
-        <div class="mb-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
-          <span class="mono text-sm text-sky-300">fair_value</span>
-          <span class="text-zinc-600">&minus;</span>
-          <span class="mono text-sm text-amber-300">market_ask</span>
-          <span class="text-zinc-600">=</span>
-          <span class="mono text-sm text-emerald-300 font-semibold">edge</span>
-          <span class="text-zinc-700">&middot;</span>
-          <span class="text-xs text-zinc-500">when <span class="mono text-emerald-300/80">edge</span> &ge; threshold &amp; gates pass &rarr; bet</span>
-        </div>
-
-        <!-- Three column diagram -->
-        <div class="grid lg:grid-cols-[1fr_auto_1.1fr_auto_1fr] gap-3 lg:gap-2 items-stretch">
-
-          <!-- ========== COLUMN 1: REFERENCE PRICE ========== -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
-              <span class="text-[10px] uppercase tracking-widest text-sky-400">Reference Price</span>
-            </div>
-            <div class="text-[11px] text-zinc-500 mb-1">independent fair values, pulled from public APIs</div>
-
-            <div class="rounded-sm border border-sky-500/20 bg-sky-500/[0.04] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">The Odds API</div>
-                <span class="text-[9px] uppercase tracking-wider text-sky-400/80 mono">GET</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">api.the-odds-api.com /v4/sports/&hellip;/odds</div>
-              <div class="text-[10px] text-zinc-500 mt-1">8&ndash;20 sportsbook lines &rarr; no-vig consensus</div>
-            </div>
-
-            <div class="rounded-sm border border-sky-500/20 bg-sky-500/[0.04] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Sports stats</div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5">statsapi.mlb.com</div>
-              <div class="text-[10px] mono text-zinc-500">api-web.nhle.com</div>
-              <div class="text-[10px] mono text-zinc-500">site.api.espn.com</div>
-            </div>
-
-            <div class="rounded-sm border border-sky-500/20 bg-sky-500/[0.04] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Crypto / weather / equity</div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5">api.coingecko.com</div>
-              <div class="text-[10px] mono text-zinc-500">api.weather.gov</div>
-              <div class="text-[10px] mono text-zinc-500">query1.finance.yahoo.com</div>
-            </div>
-          </div>
-
-          <!-- ARROW 1 -->
-          <div class="hidden lg:flex items-center justify-center text-zinc-700">
-            <svg class="h-5 w-10" viewBox="0 0 40 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M2 10 L32 10" stroke-linecap="round"/>
-              <path d="M26 4 L32 10 L26 16" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="lg:hidden flex justify-center py-1 text-zinc-700" aria-hidden="true">
-            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg>
-          </div>
-
-          <!-- ========== COLUMN 2: EDGE ENGINE ========== -->
-          <div class="flex flex-col gap-2 lg:-mx-1">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-              <span class="text-[10px] uppercase tracking-widest text-emerald-400">Edge Engine</span>
-            </div>
-            <div class="text-[11px] text-zinc-500 mb-1">the seven-stage pipeline that finds &amp; sizes the bet</div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">Kalshi market data</div>
-                <span class="text-[9px] uppercase tracking-wider text-emerald-400/80 mono">GET</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">api.elections.kalshi.com /markets, /orderbook</div>
-              <div class="text-[10px] text-zinc-500 mt-1">live ask, bid, volume, expiry</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Fair-value model</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">ticker &rarr; ML &middot; SP &middot; TO &middot; FU &middot; PR</div>
-              <div class="text-[10px] text-zinc-500">de-vig, Poisson totals, Elo, hold-out</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/40 bg-emerald-500/[0.08] p-3">
-              <div class="text-xs font-semibold text-emerald-200">Edge calculation</div>
-              <div class="text-[10px] text-zinc-400 mt-0.5">fair &minus; ask, with confidence tier</div>
-              <div class="text-[10px] mono text-emerald-300/80 mt-1">edge &ge; 3% + fee (per-sport floors)</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">21 risk gates</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">daily loss &middot; per-event cap &middot; series dedup</div>
-              <div class="text-[10px] text-zinc-500">NO-favorite floor &middot; min price &middot; confidence</div>
-              <div class="text-[10px] text-zinc-500">edge ceiling 50% &middot; exposure caps &middot; 10% hard stop</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Kelly sizing</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">fractional Kelly &middot; capped at MAX_BET_SIZE</div>
-              <div class="text-[10px] text-zinc-500">half-Kelly on cheap NO bets</div>
-            </div>
-          </div>
-
-          <!-- ARROW 2 -->
-          <div class="hidden lg:flex items-center justify-center text-zinc-700">
-            <svg class="h-5 w-10" viewBox="0 0 40 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M2 10 L32 10" stroke-linecap="round"/>
-              <path d="M26 4 L32 10 L26 16" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="lg:hidden flex justify-center py-1 text-zinc-700" aria-hidden="true">
-            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg>
-          </div>
-
-          <!-- ========== COLUMN 3: EXECUTE & TRACK ========== -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
-              <span class="text-[10px] uppercase tracking-widest text-amber-400">Execute &amp; Track</span>
-            </div>
-            <div class="text-[11px] text-zinc-500 mb-1">wagers, settlement, calibration loop</div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">Kalshi trade API</div>
-                <span class="text-[9px] uppercase tracking-wider text-amber-400/80 mono">POST</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">api.elections.kalshi.com /portfolio/orders</div>
-              <div class="text-[10px] text-zinc-500 mt-1">RSA-PSS signed limit order</div>
-            </div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">Position &amp; fills</div>
-                <span class="text-[9px] uppercase tracking-wider text-amber-400/80 mono">GET</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">/portfolio/positions &middot; /fills</div>
-              <div class="text-[10px] text-zinc-500 mt-1">track exposure &middot; trim stale orders</div>
-            </div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Settle &amp; calibrate</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">27-field settlement record</div>
-              <div class="text-[10px] text-zinc-500">Brier score feeds back into thresholds</div>
-            </div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Notify</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">email reports &middot; daily digest 4:50 AM PT</div>
-              <div class="text-[10px] text-zinc-500">daily integration-drift check</div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Footer note: feedback loop -->
-        <div class="mt-6 pt-4 border-t border-zinc-800/60 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[11px] text-zinc-500">
-          <div class="flex items-center gap-2">
-            <svg class="h-3.5 w-3.5 text-emerald-400/70" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" stroke-linecap="round"/>
-              <path d="M11 1.5L12.5 4L10 4.5M5 14.5L3.5 12L6 11.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Outcomes loop back: settled results re-calibrate thresholds &amp; confidence tiers</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <span><span class="text-emerald-300/90 mono">DRY_RUN=true</span> default</span>
-            <span>&middot;</span>
-            <span>21 gates &middot; <a class="hover:text-emerald-300 transition" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">spec</a></span>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- ============ DATA FLOW ============ -->
-    <section id="dataflow" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Data Flow</h2>
-      <p class="text-sm text-zinc-600 mb-4">Seven sequential stages. Scan &rarr; Size &rarr; Execute &rarr; Settle.</p>
-
-      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">01</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Fetch</div>
-          <div class="text-[11px] text-zinc-500">Kalshi + Odds API</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">02</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Categorize</div>
-          <div class="text-[11px] text-zinc-500">ticker &rarr; model</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">03</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Compare</div>
-          <div class="text-[11px] text-zinc-500">fair vs ask</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">04</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Cap</div>
-          <div class="text-[11px] text-zinc-500">per-event dedup</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">05</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Risk</div>
-          <div class="text-[11px] text-zinc-500">21 gates</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">06</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Execute</div>
-          <div class="text-[11px] text-zinc-500">RSA-signed limit</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">07</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Monitor</div>
-          <div class="text-[11px] text-zinc-500">settle + calibrate</div>
-        </div>
-      </div>
-
-      <div class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-zinc-500">
-        <span>Risk gates &middot; <a class="text-zinc-400 hover:text-emerald-300 transition" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">CLAUDE.md &sect; Execution Gates</a></span>
-        <span>Edge models &middot; ML &middot; SP &middot; TO &middot; FU &middot; PR</span>
-        <span>Settler &middot; <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">make settle</code></span>
-      </div>
-    </section>
-
-  </main>
-
-  <footer class="border-t border-zinc-900 py-8">
-    <div class="max-w-5xl mx-auto px-6 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
-      <div>Edge-Radar &middot; Personal Ops Dashboard</div>
-      <div class="flex items-center gap-4">
-        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener" class="hover:text-zinc-300 transition">github.com/ai-automation-tools/Edge-Radar</a>
-        <a href="https://mikesailab.com" class="hover:text-zinc-300 transition">mikesailab.com</a>
+  <!-- ── Schedulers ── -->
+  <section id="schedulers">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Schedulers</p>
+        <h2>Sixteen tasks. Five of them move money.</h2>
+        <p class="sub">The Windows Task Scheduler inventory under <code>\AI-Projects\Edge-Radar-MikesAILab\</code>. Every execute task emails its report as a second action the moment the scan finishes. Times are PT, system local.</p>
       </div>
     </div>
-  </footer>
+    <div class="rail" role="toolbar" aria-label="Filter tasks">
+      <button class="chip" data-f="all" aria-pressed="true" type="button">All</button>
+      <button class="chip" data-f="orders" aria-pressed="false" type="button">Places orders</button>
+      <button class="chip" data-f="report" aria-pressed="false" type="button">Reports</button>
+      <button class="chip" data-f="maint" aria-pressed="false" type="button">Maintenance</button>
+      <button class="chip" data-f="weekly" aria-pressed="false" type="button">Weekly</button>
+      <button class="chip" data-f="cont" aria-pressed="false" type="button">Continuous</button>
+      <label class="search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="sq" type="search" placeholder="Search tasks" aria-label="Search tasks" autocomplete="off"></label>
+    </div>
+    <div class="sched">
+      <table>
+        <thead><tr><th>#</th><th>Task</th><th class="cad">Cadence</th><th>Time (PT)</th><th>What it does</th><th class="act-cell"><span class="sr-only">Run</span></th></tr></thead>
+        <tbody id="schedBody"></tbody>
+      </table>
+    </div>
+    <p class="empty" id="sEmpty">No task matches that. Clear the filter or try another word.</p>
 
-<!-- Consent gate. One shared copy served from the org apex, so the banner and the
-     notice it links to are maintained in a single place across every site. -->
+    <div class="ops2">
+      <div class="codebox">
+        <div class="bar">Manual trigger · Git Bash <button class="copy" type="button" id="copyTrig"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V4a1 1 0 011-1h7"/></svg>copy all</button></div>
+        <pre id="trigPre"><span class="c"># Prepend MSYS_NO_PATHCONV=1 so Git Bash leaves /tn alone. The ▸ button on a row copies that one line.</span>
+<span class="p">$</span> MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Execution"
+<span class="p">$</span> MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NoDateFilter-Midday-Execution"
+<span class="p">$</span> MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-SameDay-Late-Execution"
+<span class="p">$</span> MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\All-Sports-NextDay-Execution"
+<span class="p">$</span> MSYS_NO_PATHCONV=1 schtasks /run /tn "\AI-Projects\Edge-Radar-MikesAILab\Weekly-Futures-Execution"
+<span class="c"># PowerShell equivalent, no MSYS prefix</span>
+<span class="p">&gt;</span> Start-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' -TaskName 'All-Sports-NextDay-Execution'</pre>
+      </div>
+      <div class="halt">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.6 17.2A2 2 0 004.3 20h15.4a2 2 0 001.7-2.8L13.7 3.9a2 2 0 00-3.4 0z"/></svg>Halting live orders</h3>
+        <p>Disable one execute task, or set <code>DRY_RUN=true</code> in <code>.env</code> to stop every execute task at once. The CLI re-reads <code>.env</code> per run, so the next fire is already dry.</p>
+<pre>Disable-ScheduledTask -TaskPath '\AI-Projects\Edge-Radar-MikesAILab\' `
+  -TaskName '&lt;task&gt;'</pre>
+        <p style="margin-top:10px">Positions already open are held, not flattened: exiting a 5–20c-wide book pays exactly the illiquidity penalty Gate 3.6 exists to avoid.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Quick links ── -->
+  <section id="links">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Quick links</p>
+        <h2>The things actually clicked on a normal day.</h2>
+      </div>
+    </div>
+    <div class="links" id="linkGrid">
+      <a class="doc" style="--c:#34d399" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener"><small>Source</small><b>GitHub repo</b><span>ai-automation-tools / Edge-Radar</span></a>
+      <a class="doc" style="--c:#38bdf8" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener"><small>History</small><b>CHANGELOG</b><span>docs/CHANGELOG.md</span></a>
+      <a class="doc" style="--c:#fb7185" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md" target="_blank" rel="noopener"><small>System</small><b>CLAUDE.md</b><span>risk gates · limits · agents</span></a>
+      <a class="doc" style="--c:#a78bfa" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/skills/edge-radar/SKILL.md" target="_blank" rel="noopener"><small>Skill</small><b>/edge-radar</b><span>skills/edge-radar</span></a>
+      <a class="doc" style="--c:#fbbf24" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener"><small>Reference</small><b>Scripts reference</b><span>docs/scripts/SCRIPTS_REFERENCE.md</span></a>
+      <a class="doc" style="--c:#2dd4bf" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/task-schedules/README.md" target="_blank" rel="noopener"><small>Schedule</small><b>Task schedules</b><span>docs/task-schedules/README.md</span></a>
+      <a class="doc" style="--c:#22d3ee" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/ROADMAP.md" target="_blank" rel="noopener"><small>Open work</small><b>ROADMAP</b><span>docs/ROADMAP.md</span></a>
+      <a class="doc" style="--c:#34d399" href="https://edge-radar.ai-automation-tools.dev" target="_blank" rel="noopener"><small>Public</small><b>edge-radar.ai-automation-tools.dev</b><span>the public page</span></a>
+    </div>
+  </section>
+
+  <!-- ── How it works ── -->
+  <section id="how">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">How it works</p>
+        <h2>One equation, guarded by 21 gates.</h2>
+        <p class="sub">Pull Kalshi's ask. Pull an independent fair value from sportsbooks and data feeds. The difference is the claimed edge; the fee comes off before anything else is judged, then the order meets the gates.</p>
+      </div>
+    </div>
+    <div class="eq" aria-label="The core equation">
+      <b class="fv">fair_value</b> − <b class="ask">market_ask</b> = <b class="edge">edge</b>
+      <small>·</small>
+      <b class="edge">edge</b> − <b class="fee">fee(price)</b> ≥ <b>floor</b> <small>and every gate passes → bet</small>
+    </div>
+    <div class="flow">
+      <div class="col" style="--c:#38bdf8">
+        <div class="col-h"><i></i>Reference price</div>
+        <div class="col-s">independent fair values from public APIs</div>
+        <div class="node"><div class="t">The Odds API <span class="m">GET</span></div><div class="d mono">api.the-odds-api.com /v4/sports/…/odds</div><div class="d">8–20 sportsbook lines → no-vig consensus</div></div>
+        <div class="node"><div class="t">Sports stats</div><div class="d mono">statsapi.mlb.com · api-web.nhle.com · site.api.espn.com</div></div>
+        <div class="node"><div class="t">Crypto · weather · equity</div><div class="d mono">api.coingecko.com · api.weather.gov · query1.finance.yahoo.com</div></div>
+      </div>
+      <div class="conn a" aria-hidden="true"><svg viewBox="0 0 44 120" preserveAspectRatio="none"><line x1="2" y1="60" x2="42" y2="60"/><line class="mv" x1="2" y1="60" x2="42" y2="60"/></svg></div>
+      <div class="conn-m" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg></div>
+      <div class="col" style="--c:#34d399">
+        <div class="col-h"><i></i>Edge engine</div>
+        <div class="col-s">finds the gap, nets the fee, sizes the bet</div>
+        <div class="node"><div class="t">Kalshi market data <span class="m">GET</span></div><div class="d mono">api.elections.kalshi.com /markets · /orderbook</div><div class="d">live ask, bid, volume, expiry</div></div>
+        <div class="node"><div class="t">Fair-value model</div><div class="d">ticker → <em>ML · SP · TO · FU · PR</em> · de-vig, CDF spreads and totals, calibrated stdevs</div></div>
+        <div class="node key"><div class="t">Edge, net of fee</div><div class="d">fair − ask, with a confidence tier · <em>edge ≥ floor + fee</em></div></div>
+        <div class="node"><div class="t">21 risk gates</div><div class="d">daily loss · exposure caps · liquidity · lead time · cheap-NO rules · opposing side · dedup · 10% hard stop</div></div>
+        <div class="node"><div class="t">Kelly sizing</div><div class="d"><em>edge / (1 − price)</em>, fractional, divided by batch size · half-Kelly on NO at both price ends</div></div>
+      </div>
+      <div class="conn b" aria-hidden="true"><svg viewBox="0 0 44 120" preserveAspectRatio="none"><line x1="2" y1="60" x2="42" y2="60"/><line class="mv" x1="2" y1="60" x2="42" y2="60"/></svg></div>
+      <div class="conn-m" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg></div>
+      <div class="col" style="--c:#fbbf24">
+        <div class="col-h"><i></i>Execute &amp; track</div>
+        <div class="col-s">orders, settlement, the calibration loop</div>
+        <div class="node"><div class="t">Kalshi trade API <span class="m">POST</span></div><div class="d mono">api.elections.kalshi.com /portfolio/orders</div><div class="d">RSA-PSS signed limit order · venue eligibility checked first, fails closed</div></div>
+        <div class="node"><div class="t">Positions &amp; fills <span class="m">GET</span></div><div class="d mono">/portfolio/positions · /fills</div><div class="d">exposure, resting-order cleanup, measured fees</div></div>
+        <div class="node"><div class="t">Settle &amp; calibrate</div><div class="d">27-field settlement record · model-vs-market Brier pair · stdev refit · Hourly-Settle keeps Gate 1 current</div></div>
+        <div class="node"><div class="t">Watch</div><div class="d">Daily-Summary 4:50 AM · Integration-Drift-Check 4:15 AM · post-kickoff order alarm</div></div>
+      </div>
+    </div>
+    <div class="loop">
+      <span class="l"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" stroke-linecap="round"/><path d="M11 1.5L12.5 4L10 4.5M5 14.5L3.5 12L6 11.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Outcomes loop back: Sunday's Calibration task re-fits the stdevs; Backtest and Weekly-Analysis re-judge the thresholds.</span>
+      <span><code>DRY_RUN=false</code> on the main profile · <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">gate spec ↗</a></span>
+    </div>
+  </section>
+
+  <!-- ── Pipeline ── -->
+  <section id="pipeline">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Pipeline</p>
+        <h2>Seven stages. Scan, size, execute, settle.</h2>
+        <p class="sub">One entry point, <code>scripts/scan.py</code>, runs the chain. The scheduled execute tasks call it with <code>--execute</code>, a budget and a max-bets cap; the preview you run by hand stops after the gates.</p>
+      </div>
+    </div>
+    <div class="steps" id="steps">
+      <div class="step"><span class="n">01</span><b>Fetch</b><span>Kalshi markets and order books, plus the Odds API and data feeds, through a short-TTL cache.</span></div>
+      <div class="step"><span class="n">02</span><b>Categorize</b><span>Ticker → market type. <code>ML · SP · TO · FU · PR</code> each pick a model.</span></div>
+      <div class="step"><span class="n">03</span><b>Compare</b><span>Fair value against the ask, net of fee, with a confidence tier and a composite score.</span></div>
+      <div class="step"><span class="n">04</span><b>Cap</b><span>Bracket dedup keeps the sibling that can clear the gates; per-event caps apply.</span></div>
+      <div class="step"><span class="n">05</span><b>Risk</b><span>21 gates in order. Reject or trim. Preview prints the verdicts.</span></div>
+      <div class="step"><span class="n">06</span><b>Execute</b><span>Fractional Kelly size, shard funding, RSA-signed limit order. Dry run logs identically.</span></div>
+      <div class="step"><span class="n">07</span><b>Settle</b><span>Outcomes, measured fees, Brier pair, drift and post-kickoff alarms. <code>make settle</code></span></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <span class="mono">edge-radar.mikesailab.com · personal ops deck</span>
+      <div class="right">
+        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://edge-radar.ai-automation-tools.dev" target="_blank" rel="noopener">Public page</a>
+        <a href="https://mikesailab.com">mikesailab.com</a>
+        <a href="https://ai-automation-tools.dev/cookies.html">Cookies</a>
+        <a href="#" data-ail-consent="manage">Cookie settings</a>
+      </div>
+    </div>
+    <p class="fine">Scheduler times and task names mirror <code class="mono">docs/task-schedules/README.md</code>; the clock is your browser's time rendered in Pacific time. No live balance or P&amp;L is published here.</p>
+  </div>
+</footer>
+
+<!-- Command palette -->
+<div class="pal-bg" id="palBg" role="presentation">
+  <div class="pal" role="dialog" aria-modal="true" aria-label="Jump to">
+    <div class="pal-in">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input id="palIn" type="text" placeholder="Jump to a task, a link or a section…" autocomplete="off" spellcheck="false">
+      <kbd>esc</kbd>
+    </div>
+    <div class="pal-list" id="palList"></div>
+    <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"><i></i><span>Copied</span></div>
+
+<script>
+(function () {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const REPO = 'https://github.com/ai-automation-tools/Edge-Radar';
+  const TZ = 'America/Los_Angeles', FOLDER = '\\AI-Projects\\Edge-Radar-MikesAILab\\';
+  const KIND = { orders: ['places orders', '#fbbf24'], report: ['report', '#38bdf8'], maint: ['maintenance', '#a78bfa'], cont: ['continuous', '#71717a'] };
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  /* MAINT: the schedule. One entry per Task Scheduler task, in docs/task-schedules/README.md order. days is 'daily',
+     a list of weekday indexes (0 = Sunday), or null for a continuous task; time is 24h PT. The next-fire card, the
+     timeline, the table and the palette all read this list. Keep it in step with the README. */
+  const SCHED = [
+    { n: 1,  id: 'Integration-Drift-Check',  kind: 'maint',  days: 'daily',       time: '04:15', email: true,  what: 'Probes the Kalshi and odds integration for silent breakage (schema, rules wording, match rates). Claude analysis on WARN/FAIL or Mondays; may open a <b>draft</b> PR with a verified fix, never merges.' },
+    { n: 2,  id: 'Daily-Summary',            kind: 'report', days: 'daily',       time: '04:50', email: true,  what: 'Morning P&amp;L digest: yesterday, open exposure, today pending, 7-day context, post-kickoff orders.' },
+    { n: 3,  id: 'All-Sports-SameDay-Execution', kind: 'orders', days: 'daily',   time: '05:05', email: true,  what: 'Today\'s games, all sports. <code>--date today --max-bets 5 --min-bets 1 --budget 12% --exclude-open --execute</code>' },
+    { n: 4,  id: 'Shadow-Book-NCAAF',        kind: 'maint',  days: 'daily',       time: '06:00', email: false, what: 'S21b shadow book: scores NCAAF and MLB spread markets pre-gate for the Brier head-to-head. <b>No orders.</b>' },
+    { n: 5,  id: 'Weekly-Futures-Execution', kind: 'orders', days: [6],           time: '09:00', email: true,  what: 'Championship and outright futures. <code>--max-bets 3 --budget 10%</code>. Most weeks 0 fills; the gates reject thin, longshot-heavy outrights.' },
+    { n: 6,  id: 'WeeklyAccountGraph',       kind: 'maint',  days: [0],           time: '09:40', email: false, what: 'Refreshes the private account-growth graph. Local only; nothing is published.' },
+    { n: 7,  id: 'All-Sports-NoDateFilter-Midday-Execution', kind: 'orders', days: 'daily', time: '11:00', email: true, what: 'Wide net across all sports and all dates. Catches MLB starter confirmations and intraday line moves. <code>--max-bets 5 --budget 12%</code>' },
+    { n: 8,  id: 'All-Sports-SameDay-Late-Execution', kind: 'orders', days: 'daily', time: '14:00', email: true, what: 'Tonight\'s games, late news: scratches, goalie confirmations, sharp-money moves. <code>--max-bets 5 --budget 12%</code>' },
+    { n: 9,  id: 'WeeklyOddsKeyProbe',       kind: 'maint',  days: [0],           time: '18:00', email: false, what: 'Live-probes every Odds API key and refreshes the quota cache. A cached zero expires after 24h on its own.' },
+    { n: 10, id: 'Calibration',              kind: 'maint',  days: [0],           time: '19:00', email: false, what: 'Brier refresh and C8 stdev recalibration over the last 30 days.' },
+    { n: 11, id: 'Backtest',                 kind: 'report', days: [0],           time: '19:30', email: false, what: 'Equity curve, drawdown, Sharpe, strategy comparison.' },
+    { n: 12, id: 'All-Sports-NextDay-Execution', kind: 'orders', days: [0,1,2,3,4], time: '20:30', email: true, what: 'Locks in early lines for tomorrow\'s games. <code>--date tomorrow --max-bets 5 --budget 12%</code>' },
+    { n: 13, id: 'Reconcile',                kind: 'maint',  days: 'daily',       time: '23:30', email: false, what: 'Local trade log against Kalshi positions; flags drift.' },
+    { n: 14, id: 'Weekly-Analysis',          kind: 'report', days: [0],           time: '23:45', email: true,  what: '7-day performance report.' },
+    { n: 15, id: 'Hourly-Settle',            kind: 'cont',   days: null,          time: ':35 hourly', email: false, what: '<code>kalshi_settler.py settle</code>. Keeps Gate 1 (daily loss) current intraday.' },
+    { n: 16, id: 'CLV-Capture',              kind: 'cont',   days: null,          time: 'every 5 min', email: false, what: 'S8: samples the closing book before each open position\'s event. Read-only at the venue.' },
+  ];
+  const cadence = t => t.days === 'daily' ? 'daily' : t.days === null ? 'continuous' : t.days.length === 1 ? DAYS[t.days[0]] : DAYS[t.days[0]] + '–' + DAYS[t.days[t.days.length - 1]];
+  const fmt12 = hhmm => { const [h, m] = hhmm.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+  const mins = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+  const runsOn = (t, day) => t.days === 'daily' || (Array.isArray(t.days) && t.days.includes(day));
+  const trig = t => `MSYS_NO_PATHCONV=1 schtasks /run /tn "${FOLDER}${t.id}"`;
+
+  /* ── Toast + copy ── */
+  const toast = $('#toast'); let toastT;
+  function say(msg) { toast.querySelector('span').textContent = msg; toast.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('on'), 1600); }
+  function copyText(text) {
+    const done = () => say('Copied to clipboard');
+    const fail = () => { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { say('Select the text to copy'); } ta.remove(); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fail); else fail();
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (b) copyText(b.dataset.copy); });
+
+  /* ── Mobile menu ── */
+  const menuBtn = $('#menuBtn'), mobileNav = $('#mobileNav');
+  menuBtn.addEventListener('click', () => { const o = mobileNav.classList.toggle('open'); menuBtn.setAttribute('aria-expanded', String(o)); });
+  mobileNav.addEventListener('click', e => { if (e.target.tagName === 'A' && e.target.id !== 'palOpenMobile') { mobileNav.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); } });
+
+  /* ── Scroll-spy ── */
+  const nav = $('#nav'), ind = $('#ind'), links = $$('a[data-spy]', nav);
+  function setActive(id) {
+    links.forEach(a => a.classList.toggle('active', a.dataset.spy === id));
+    const a = links.find(l => l.dataset.spy === id);
+    if (!a) { ind.style.opacity = 0; return; }
+    const nr = nav.getBoundingClientRect(), r = a.getBoundingClientRect();
+    ind.style.left = (r.left - nr.left + 11) + 'px'; ind.style.width = (r.width - 22) + 'px'; ind.style.opacity = 1;
+  }
+  const spy = new IntersectionObserver(es => { es.forEach(en => { if (en.isIntersecting) setActive(en.target.id); }); }, { rootMargin: '-45% 0px -50% 0px' });
+  ['schedulers', 'links', 'how', 'pipeline'].forEach(id => spy.observe(document.getElementById(id)));
+  addEventListener('resize', () => { const a = links.find(l => l.classList.contains('active')); if (a) setActive(a.dataset.spy); });
+
+  /* ── Spotlight tracking ── */
+  document.addEventListener('pointermove', e => {
+    const el = e.target.closest('.card, .step, .node, .doc'); if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--mx', (e.clientX - r.left) + 'px'); el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+  const steps = $('#steps');
+  new IntersectionObserver((es, io) => { es.forEach(en => { if (en.isIntersecting) { steps.classList.add('in'); io.disconnect(); } }); }, { threshold: .3 }).observe(steps);
+
+  /* ── Pacific time ── */
+  function ptNow() {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false, timeZoneName: 'short' }).formatToParts(new Date());
+    const g = k => parts.find(p => p.type === k)?.value;
+    return { day: DAYS.indexOf(g('weekday')), h: Number(g('hour')) % 24, m: Number(g('minute')), s: Number(g('second')), date: `${g('weekday')} ${g('month')} ${g('day')}`, zone: g('timeZoneName') };
+  }
+
+  /* ── Next fire + later today ── */
+  const nf = $('#nf'), later = $('#later');
+  let nextId = null;
+  function renderNext() {
+    const now = ptNow(), nowMin = now.h * 60 + now.m;
+    $('#clock').innerHTML = `${((now.h + 11) % 12) + 1}:${String(now.m).padStart(2, '0')}<small>${now.h < 12 ? 'AM' : 'PM'} ${now.zone}</small>`;
+    $('#clockDate').textContent = now.date;
+    $('#tz').textContent = TZ;
+    let best = null;
+    SCHED.filter(t => t.days !== null).forEach(t => {
+      for (let d = 0; d < 8; d++) {
+        const day = (now.day + d) % 7; if (!runsOn(t, day)) continue;
+        const delta = d * 1440 + mins(t.time) - nowMin; if (delta <= 0) continue;
+        if (!best || delta < best.delta) best = { t, delta, day }; break;
+      }
+    });
+    if (best) {
+      const h = Math.floor(best.delta / 60), m = best.delta % 60;
+      const when = best.delta >= 1440 ? `${DAYS[best.day]} ${fmt12(best.t.time)}` : best.day !== now.day ? `tomorrow ${fmt12(best.t.time)}` : fmt12(best.t.time);
+      nf.style.setProperty('--c', KIND[best.t.kind][1]);
+      nf.innerHTML = `<small><i></i>Next fire · ${KIND[best.t.kind][0]}</small><b>${best.t.id}</b><span>${when} · in <em>${h ? h + 'h ' : ''}${m}m</em>${best.t.email ? ' · emails its report' : ''}</span>`;
+      nextId = best.t.id;
+    }
+    const todays = SCHED.filter(t => t.days !== null && runsOn(t, now.day) && mins(t.time) > nowMin).sort((a, b) => mins(a.time) - mins(b.time));
+    later.innerHTML = '<div class="h">Later today</div>' + (todays.length ? todays.slice(0, 6).map(t => `<a href="#row-${t.n}" style="--c:${KIND[t.kind][1]}"><i></i><span class="t">${fmt12(t.time)}</span><span class="n">${t.id}</span><span class="w">${t.kind === 'orders' ? 'orders' : t.email ? 'email' : ''}</span></a>`).join('') : '<div class="none">Nothing else scheduled today. The first fire tomorrow is the 4:15 AM drift check.</div>');
+    $$('#schedBody tr').forEach(tr => tr.classList.toggle('next', tr.dataset.id === nextId));
+    $$('#tl .mk').forEach(mk => mk.classList.toggle('hot', mk.dataset.id === nextId));
+    const nowEl = $('#tl .now'), doneEl = $('#tl .done'); const x = (nowMin / 1440 * 100) + '%';
+    if (nowEl) { nowEl.style.left = x; doneEl.style.width = x; }
+    $('#tlMeta').textContent = `${todays.length} fire${todays.length === 1 ? '' : 's'} still to come today · hover a marker · click for the row`;
+  }
+
+  /* ── Timeline ── */
+  const tl = $('#tl'), ttip = $('#ttip');
+  function buildTimeline() {
+    const now = ptNow();
+    let html = '<div class="axis"></div><div class="done"></div>';
+    for (let h = 0; h <= 24; h += 1) { const x = h / 24 * 100; html += `<div class="tick ${h % 6 === 0 ? 'm' : ''}" style="left:${x}%"></div>`; if (h % 3 === 0) html += `<div class="lbl" style="left:${x}%">${h === 0 || h === 24 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p'}</div>`; }
+    SCHED.filter(t => t.days !== null).forEach(t => {
+      const weekly = Array.isArray(t.days), today = runsOn(t, now.day);
+      html += `<button type="button" class="mk ${weekly ? 'weekly' : ''} ${today ? '' : 'off'} ${t.kind === 'orders' ? 'money' : ''}" style="left:${mins(t.time) / 1440 * 100}%;--c:${KIND[t.kind][1]}" data-id="${t.id}" data-n="${t.n}" aria-label="${t.id} at ${fmt12(t.time)}"></button>`;
+    });
+    html += '<div class="now"></div>';
+    tl.innerHTML = html; tl.appendChild(ttip);
+  }
+  tl.addEventListener('pointerover', e => {
+    const mk = e.target.closest('.mk'); if (!mk) return; const t = SCHED.find(x => x.id === mk.dataset.id);
+    ttip.innerHTML = `<b>${t.id}</b><small>${fmt12(t.time)} PT · ${cadence(t)} · ${KIND[t.kind][0]}${t.email ? ' · emails' : ''}</small>`;
+    ttip.style.left = mk.style.left; ttip.style.top = '30px'; ttip.classList.add('on');
+  });
+  tl.addEventListener('pointerout', e => { if (e.target.closest('.mk')) ttip.classList.remove('on'); });
+  tl.addEventListener('click', e => { const mk = e.target.closest('.mk'); if (mk) jumpRow(+mk.dataset.n); });
+
+  /* ── Schedule table ── */
+  const body = $('#schedBody');
+  body.innerHTML = SCHED.map(t => `<tr class="r" id="row-${t.n}" data-id="${t.id}" data-tags="${t.kind} ${Array.isArray(t.days) ? 'weekly' : t.days === 'daily' ? 'daily' : 'cont'}" style="--c:${KIND[t.kind][1]}">
+      <td class="num">${t.n}</td>
+      <td class="nm"><i></i>${t.id}${t.kind === 'orders' ? '<span class="money">live</span>' : ''}</td>
+      <td class="cad"><span>${cadence(t)}</span></td>
+      <td class="tm">${t.days === null ? t.time : fmt12(t.time)}${t.days !== null ? `<small>${cadence(t)}</small>` : ''}</td>
+      <td class="what">${t.what}${t.email ? '<span class="em"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="9" rx="1.5"/><path d="M2 5l6 4 6-4"/></svg>email</span>' : ''}</td>
+      <td class="act-cell">${t.days !== null ? `<button class="copy" type="button" data-copy="${trig(t).replace(/"/g, '&quot;')}" title="Copy the manual trigger"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 3l7 5-7 5z"/></svg>run</button>` : ''}</td>
+    </tr>`).join('');
+  const chips = $$('#schedulers .chip'), sq = $('#sq'), rows = $$('tr.r', body), sEmpty = $('#sEmpty');
+  let filter = 'all';
+  function applyFilter() {
+    const term = sq.value.trim().toLowerCase(); let n = 0;
+    rows.forEach(r => {
+      const okF = filter === 'all' || r.dataset.tags.split(' ').includes(filter);
+      const okQ = !term || r.textContent.toLowerCase().includes(term);
+      const show = okF && okQ; r.classList.toggle('hidden-by-filter', !show); if (show) n++;
+    });
+    sEmpty.classList.toggle('on', n === 0);
+  }
+  chips.forEach(ch => ch.addEventListener('click', () => { filter = ch.dataset.f; chips.forEach(x => x.setAttribute('aria-pressed', String(x === ch))); applyFilter(); }));
+  sq.addEventListener('input', applyFilter);
+  function jumpRow(n) {
+    filter = 'all'; chips.forEach(x => x.setAttribute('aria-pressed', String(x.dataset.f === 'all'))); sq.value = ''; applyFilter();
+    const el = document.getElementById('row-' + n); if (!el) return;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+    el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+  }
+  later.addEventListener('click', e => { const a = e.target.closest('a[href^="#row-"]'); if (a) { e.preventDefault(); jumpRow(+a.getAttribute('href').slice(5)); } });
+  $('#copyTrig').addEventListener('click', () => copyText(SCHED.filter(t => t.kind === 'orders').map(trig).join('\n')));
+
+  buildTimeline(); renderNext(); setInterval(renderNext, 15000);
+  // Rebuild the markers at midnight PT so "weekly, not today" stays right on a deck left open.
+  setInterval(() => { const n = ptNow(); if (n.h === 0 && n.m === 0) buildTimeline(); }, 60000);
+
+  /* ── Command palette ── */
+  const palBg = $('#palBg'), palIn = $('#palIn'), palList = $('#palList');
+  function open(u) { const a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+  function go(h) { document.querySelector(h).scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' }); }
+  const ITEMS = [
+    ...SCHED.map(t => ({ g: 'Tasks', label: t.id, hint: t.days === null ? t.time : `${fmt12(t.time)} · ${cadence(t)}`, c: KIND[t.kind][1], go: () => jumpRow(t.n) })),
+    ...SCHED.filter(t => t.kind === 'orders').map(t => ({ g: 'Copy trigger', label: 'Copy: run ' + t.id, hint: 'schtasks /run', c: '#fbbf24', go: () => copyText(trig(t)) })),
+    { g: 'Sections', label: 'Schedulers', hint: '#schedulers', c: '#38bdf8', go: () => go('#schedulers') },
+    { g: 'Sections', label: 'Quick links', hint: '#links', c: '#38bdf8', go: () => go('#links') },
+    { g: 'Sections', label: 'How it works', hint: '#how', c: '#34d399', go: () => go('#how') },
+    { g: 'Sections', label: 'Pipeline', hint: '#pipeline', c: '#34d399', go: () => go('#pipeline') },
+    ...$$('#linkGrid a').map(a => ({ g: 'Links', label: a.querySelector('b').textContent, hint: a.querySelector('span').textContent, c: a.style.getPropertyValue('--c'), go: () => open(a.href) })),
+    { g: 'Links', label: 'mikesailab.com', hint: 'the lab', go: () => open('https://mikesailab.com') },
+  ];
+  let sel = 0, shown = [];
+  function renderPal() {
+    const term = palIn.value.trim().toLowerCase();
+    shown = ITEMS.filter(i => !term || (i.label + ' ' + i.hint + ' ' + i.g).toLowerCase().includes(term));
+    sel = Math.min(sel, Math.max(0, shown.length - 1));
+    if (!shown.length) { palList.innerHTML = '<div class="pal-empty">Nothing matches. Try a task name, a section or a link.</div>'; return; }
+    let html = '', lastG = '';
+    shown.forEach((i, k) => { if (i.g !== lastG) { html += `<div class="pal-grp">${i.g}</div>`; lastG = i.g; } html += `<div class="pal-item ${k === sel ? 'sel' : ''}" data-k="${k}" style="--c:${i.c || '#52525b'}"><i></i><span>${i.label}</span><small>${i.hint}</small></div>`; });
+    palList.innerHTML = html; const s = palList.querySelector('.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
+  }
+  function openPal() { palBg.classList.add('open'); palIn.value = ''; sel = 0; renderPal(); setTimeout(() => palIn.focus(), 10); }
+  function closePal() { palBg.classList.remove('open'); }
+  $('#palOpen').addEventListener('click', openPal);
+  $('#palOpenMobile').addEventListener('click', e => { e.preventDefault(); mobileNav.classList.remove('open'); openPal(); });
+  palBg.addEventListener('click', e => { if (e.target === palBg) closePal(); });
+  palIn.addEventListener('input', () => { sel = 0; renderPal(); });
+  palList.addEventListener('click', e => { const it = e.target.closest('.pal-item'); if (it) { closePal(); shown[+it.dataset.k].go(); } });
+  palList.addEventListener('pointermove', e => { const it = e.target.closest('.pal-item'); if (it && +it.dataset.k !== sel) { sel = +it.dataset.k; renderPal(); } });
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); palBg.classList.contains('open') ? closePal() : openPal(); return; }
+    if (!palBg.classList.contains('open')) return;
+    if (e.key === 'Escape') closePal();
+    else if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % shown.length; renderPal(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + shown.length) % shown.length; renderPal(); }
+    else if (e.key === 'Enter' && shown[sel]) { closePal(); shown[sel].go(); }
+  });
+})();
+</script>
+
+<!-- Consent gate. One shared copy served from the org apex, so the banner and the notice it links to are
+     maintained in a single place across every site. -->
 <script src="https://ai-automation-tools.dev/consent.js" defer></script>
 </body>
 </html>
