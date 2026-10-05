@@ -1,7 +1,7 @@
 # Edge-Radar — Python Dependencies
 
 # === Core ===
-python-dotenv>=1.2.3
+python-dotenv>=1.2.4
 requests>=2.34.2
 cryptography>=44.0.3              # RSA-PSS signing for Kalshi API auth
 # aiohttp==3.9.1                  # planned — async HTTP
@@ -56,17 +56,17 @@ pandas>=2.1.4                     # Dataframes for backtesting & report generati
 # === Utilities ===
 rich>=13.7.0                      # Terminal tables & formatted output
 markdown-it-py>=3.0               # render_report_email.py: report markdown -> email HTML
-filelock>=3.12.0                  # Cross-process lock for trade/settlement log writes (M2)
+filelock>=3.32.7                  # Cross-process lock for trade/settlement log writes (M2)
 # loguru==0.7.2                   # planned — structured logging
 # tqdm==4.66.1                    # planned — progress bars for backtests
 
 # === Testing ===
 pytest>=7.4.3
-pytest-asyncio>=0.23.8
+pytest-asyncio>=0.26.0
 pytest-mock>=3.12.0
 
 # === Dev Tools ===
-black>=23.12.0
+black>=23.12.1
 flake8>=6.1.0
 mypy>=1.20.2
 pre-commit>=3.6.0
