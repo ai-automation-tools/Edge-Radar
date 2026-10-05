@@ -2,7 +2,7 @@
 
 # === Core ===
 python-dotenv>=1.2.4
-requests>=2.31.0
+requests>=2.34.2
 cryptography>=44.0.3              # RSA-PSS signing for Kalshi API auth
 # aiohttp==3.9.1                  # planned — async HTTP
 # pydantic==2.5.0                 # planned — data validation
