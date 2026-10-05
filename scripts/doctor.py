@@ -360,11 +360,15 @@ def main():
             # `user_not_found`, so the split has to be visible here.
             import shard_funding
 
-            _names = {0: "Default", 1: "Combos", 2: "Crypto", 3: "Tennis & Baseball"}
-            # Ask for all four known shards explicitly: the per-shard read is
+            # Names come from `GET /exchange/status`, the only place the
+            # shard-to-category mapping is published; it moved on 2026-09-10
+            # (Basketball to 3, Commodities to 2) while a hardcoded map here
+            # kept printing the 08-24 names. The per-shard balance read is
             # scoped to this subaccount, unlike `balance_breakdown` (see
-            # `shard_balances`), so there is no listing to enumerate from.
-            _shards = shard_funding.shard_balances(client, tuple(_names))
+            # `shard_balances`), so enumerate the venue's shard list and ask
+            # for each explicitly.
+            _names = shard_funding.shard_names(client)
+            _shards = shard_funding.shard_balances(client, tuple(sorted(_names)))
             if _shards:
                 _cfg_sys = get_config().system
                 _parts = ", ".join(

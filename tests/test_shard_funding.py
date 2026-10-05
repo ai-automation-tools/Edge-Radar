@@ -19,12 +19,26 @@ from opportunity import Opportunity
 def _sized(i, cost=5.0, ticker=None):
     opp = Opportunity(
         ticker=ticker or f"KXMLBGAME-26AUG27T{i}-A",
-        title=f"Game {i}", category="game", side="yes",
-        market_price=0.50, fair_value=0.60, edge=0.10, edge_source="test",
-        confidence="high", liquidity_score=8.0, composite_score=8.5, details={},
+        title=f"Game {i}",
+        category="game",
+        side="yes",
+        market_price=0.50,
+        fair_value=0.60,
+        edge=0.10,
+        edge_source="test",
+        confidence="high",
+        liquidity_score=8.0,
+        composite_score=8.5,
+        details={},
     )
-    return SizedOrder(opportunity=opp, contracts=10, price_cents=50,
-                      cost_dollars=cost, bankroll_pct=0.05, risk_approval="APPROVED")
+    return SizedOrder(
+        opportunity=opp,
+        contracts=10,
+        price_cents=50,
+        cost_dollars=cost,
+        bankroll_pct=0.05,
+        risk_approval="APPROVED",
+    )
 
 
 class _Client:
@@ -38,16 +52,18 @@ class _Client:
         self.transfers: list[tuple[float, int, int]] = []
 
     def get_market(self, ticker):
-        return {"market": {"ticker": ticker,
-                           "exchange_index": self._shards.get(ticker)}}
+        return {"market": {"ticker": ticker, "exchange_index": self._shards.get(ticker)}}
 
     def get_shard_balance(self, exchange_index):
         return self._b.get(int(exchange_index), 0.0)
 
     def get_balance(self):
         # Account-wide and wrong per-subaccount, like the real API (2026-09-08).
-        return {"balance_breakdown": [{"exchange_index": k, "balance": "999.0000"}
-                                      for k in (0, 1, 2, 3)]}
+        return {
+            "balance_breakdown": [
+                {"exchange_index": k, "balance": "999.0000"} for k in (0, 1, 2, 3)
+            ]
+        }
 
     def intra_exchange_transfer(self, amount, source_shard, destination_shard):
         self.transfers.append((amount, source_shard, destination_shard))
@@ -71,8 +87,7 @@ def _enable(monkeypatch):
     # nothing about transfers on any clone whose `.env` has DRY_RUN=true (this
     # fork's does). Pin it so the transfer path is actually exercised.
     live = ke.get_config()
-    pinned = dataclasses.replace(
-        live, system=dataclasses.replace(live.system, dry_run=False))
+    pinned = dataclasses.replace(live, system=dataclasses.replace(live.system, dry_run=False))
     monkeypatch.setattr(ke, "get_config", lambda: pinned)
 
 
@@ -98,7 +113,7 @@ def test_no_transfer_when_shard_already_covers_it(monkeypatch):
 def test_underfunded_order_is_skipped_not_placed(monkeypatch):
     """The whole point: placing anyway just buys a 404 user_not_found."""
     monkeypatch.setattr(ke, "vel", _AlwaysEligible())
-    monkeypatch.setattr(ke, "MAX_AUTO_SHARD_TRANSFER", 1.0)   # cap below shortfall
+    monkeypatch.setattr(ke, "MAX_AUTO_SHARD_TRANSFER", 1.0)  # cap below shortfall
     c = _Client({0: 70.0, 3: 0.0}, {"KXMLBGAME-26AUG27T0-A": 3})
     tl = []
     results = _place_order_batch(c, [_sized(0, cost=5.0)], tl)
@@ -115,11 +130,12 @@ def test_one_underfunded_order_does_not_stop_the_batch(monkeypatch):
     monkeypatch.setattr(ke, "MAX_AUTO_SHARD_TRANSFER", 1.0)
     c = _Client(
         {0: 70.0, 3: 0.0},
-        {"KXMLBGAME-26AUG27T0-A": 3,    # shard 3, broke -> skipped
-         "KXNFLGAME-26SEP13T1-A": 0},   # shard 0, funded -> placed
+        {
+            "KXMLBGAME-26AUG27T0-A": 3,  # shard 3, broke -> skipped
+            "KXNFLGAME-26SEP13T1-A": 0,
+        },  # shard 0, funded -> placed
     )
-    orders = [_sized(0, cost=5.0),
-              _sized(1, cost=5.0, ticker="KXNFLGAME-26SEP13T1-A")]
+    orders = [_sized(0, cost=5.0), _sized(1, cost=5.0, ticker="KXNFLGAME-26SEP13T1-A")]
     results = _place_order_batch(c, orders, [])
 
     assert c.orders == ["KXNFLGAME-26SEP13T1-A"]
@@ -155,8 +171,7 @@ def test_market_is_looked_up_once_per_ticker(monkeypatch):
 def test_transfer_that_does_not_settle_blocks_the_order(monkeypatch):
     """Kalshi's transfer is non-atomic; a 200 is not proof the money arrived."""
     monkeypatch.setattr(ke, "vel", _AlwaysEligible())
-    c = _Client({0: 70.0, 3: 0.0}, {"KXMLBGAME-26AUG27T0-A": 3},
-                transfer_lands=False)
+    c = _Client({0: 70.0, 3: 0.0}, {"KXMLBGAME-26AUG27T0-A": 3}, transfer_lands=False)
     tl = []
     _place_order_batch(c, [_sized(0, cost=5.0)], tl)
 
@@ -178,8 +193,13 @@ def test_disabled_flag_skips_rather_than_moving_money(monkeypatch):
 def test_dry_run_never_moves_money(monkeypatch):
     monkeypatch.setattr(ke, "vel", _AlwaysEligible())
     ok, note = shard_funding.ensure_shard_funded(
-        _Client({0: 70.0, 3: 0.0}, {}), 3, 5.0,
-        enabled=True, source_shard=0, max_transfer=25.0, dry_run=True,
+        _Client({0: 70.0, 3: 0.0}, {}),
+        3,
+        5.0,
+        enabled=True,
+        source_shard=0,
+        max_transfer=25.0,
+        dry_run=True,
     )
     assert ok and "[dry-run]" in note
 
@@ -202,3 +222,83 @@ class _AlwaysEligible:
     @staticmethod
     def actionable_reason(raw, limit=160):
         return str(raw)
+
+
+# ── shard_names(): the venue's shard list, not a sport table (U1, 2026-10-05) ──
+
+_STATUS = {
+    "exchange_active": True,
+    "exchange_index_statuses": [
+        {"exchange_index": 0, "description": "Default"},
+        {"exchange_index": 1, "description": "Combos"},
+        {"exchange_index": 2, "description": "Crypto & Commodities"},
+        {"exchange_index": 3, "description": "Tennis, Baseball, Basketball"},
+    ],
+}
+
+
+class TestShardNames:
+    def test_reads_the_venue_list_when_the_client_can_answer(self):
+        class C:
+            def get_exchange_status(self):
+                return _STATUS
+
+        names = shard_funding.shard_names(C())
+        assert names == {
+            0: "Default",
+            1: "Combos",
+            2: "Crypto & Commodities",
+            3: "Tennis, Baseball, Basketball",
+        }
+
+    def test_venue_wins_over_the_fallback_when_a_category_moves(self):
+        """2026-09-10: Basketball joined shard 3. A hardcoded map kept the
+        08-24 names; the venue's description is what gets printed."""
+
+        class C:
+            def get_exchange_status(self):
+                return {
+                    "exchange_index_statuses": [
+                        {"exchange_index": 3, "description": "Everything Else"},
+                    ]
+                }
+
+        assert shard_funding.shard_names(C()) == {3: "Everything Else"}
+
+    def test_falls_back_when_the_client_cannot_answer(self):
+        class NoStatus:
+            pass
+
+        assert shard_funding.shard_names(NoStatus()) == shard_funding.FALLBACK_SHARD_NAMES
+
+    def test_falls_back_when_the_venue_errors_or_returns_nothing(self):
+        class Boom:
+            def get_exchange_status(self):
+                raise RuntimeError("502")
+
+        class Empty:
+            def get_exchange_status(self):
+                return {"exchange_index_statuses": []}
+
+        assert shard_funding.shard_names(Boom()) == shard_funding.FALLBACK_SHARD_NAMES
+        assert shard_funding.shard_names(Empty()) == shard_funding.FALLBACK_SHARD_NAMES
+
+    def test_fallback_is_a_copy(self):
+        names = shard_funding.shard_names(object())
+        names[9] = "scratch"
+        assert 9 not in shard_funding.FALLBACK_SHARD_NAMES
+
+    def test_executor_shard_comes_from_the_market_not_from_the_sport(self):
+        """The money decision never consults a sport table: an NBA ticker on
+        shard 3 is funded on shard 3 because the market payload says so."""
+        client = _Client({0: 70.0, 3: 0.0}, {"KXNBAGAME-26OCT11CHIDEN-DEN": 3})
+        ok, note = shard_funding.ensure_shard_funded(
+            client,
+            client.get_market("KXNBAGAME-26OCT11CHIDEN-DEN")["market"]["exchange_index"],
+            5.0,
+            enabled=True,
+            source_shard=0,
+            max_transfer=25.0,
+            dry_run=False,
+        )
+        assert ok and client.transfers == [(5.0, 0, 3)], (ok, note, client.transfers)

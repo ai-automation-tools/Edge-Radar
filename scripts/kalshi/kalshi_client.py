@@ -15,13 +15,11 @@ Usage:
                                   yes_price_cents=55, count=10)
 """
 
-import sys
-import json
 import datetime
 import base64
 import logging
 from pathlib import Path
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
@@ -139,8 +137,14 @@ class KalshiClient:
 
     # ── HTTP helpers ──────────────────────────────────────────────────────────
 
-    def _request(self, method: str, path: str, params: dict | None = None,
-                 body: dict | None = None, timeout: int = 15) -> dict:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        params: dict | None = None,
+        body: dict | None = None,
+        timeout: int = 15,
+    ) -> dict:
         """Make an authenticated request to the Kalshi API."""
         url = f"{self.base_url}{path}"
         if params:
@@ -209,14 +213,29 @@ class KalshiClient:
             event_ticker: filter by event
             tickers: comma-separated market tickers
         """
-        return self._get("/markets", params={
-            "limit": limit,
-            "cursor": cursor,
-            "status": status,
-            "series_ticker": series_ticker,
-            "event_ticker": event_ticker,
-            "tickers": tickers,
-        })
+        return self._get(
+            "/markets",
+            params={
+                "limit": limit,
+                "cursor": cursor,
+                "status": status,
+                "series_ticker": series_ticker,
+                "event_ticker": event_ticker,
+                "tickers": tickers,
+            },
+        )
+
+    def get_exchange_status(self) -> dict:
+        """``GET /exchange/status``: trading flags plus one entry per shard.
+
+        ``exchange_index_statuses`` is the venue's own list of shards with a
+        human ``description`` each -- the only place the shard-to-category
+        mapping is published, and it has moved since sharding began
+        (Basketball joined shard 3 and Commodities shard 2 on 2026-09-10).
+        Read it rather than hardcoding the names; see
+        ``shard_funding.shard_names()``.
+        """
+        return self._get("/exchange/status")
 
     def get_market(self, ticker: str) -> dict:
         """Fetch a single market by ticker."""
@@ -263,9 +282,10 @@ class KalshiClient:
         (2026-09-08) — sub 0 `{0: 69.79, 3: 13.76}`, sub 1 `{0: 40.00, 3: 0.00}`,
         matching row for row, where `balance_breakdown` matched neither.
         """
-        raw = self._get("/portfolio/balance",
-                        params={"subaccount": self.subaccount,
-                                "exchange_index": exchange_index})
+        raw = self._get(
+            "/portfolio/balance",
+            params={"subaccount": self.subaccount, "exchange_index": exchange_index},
+        )
         return float(raw.get("balance_dollars") or 0.0)
 
     def get_positions(
@@ -282,14 +302,17 @@ class KalshiClient:
         Args:
             count_filter: "position" (non-zero position) or "total_traded"
         """
-        return self._get("/portfolio/positions", params={
-            "limit": limit,
-            "cursor": cursor,
-            "ticker": ticker,
-            "event_ticker": event_ticker,
-            "count_filter": count_filter,
-            "subaccount": self.subaccount,
-        })
+        return self._get(
+            "/portfolio/positions",
+            params={
+                "limit": limit,
+                "cursor": cursor,
+                "ticker": ticker,
+                "event_ticker": event_ticker,
+                "count_filter": count_filter,
+                "subaccount": self.subaccount,
+            },
+        )
 
     def get_fills(
         self,
@@ -298,12 +321,15 @@ class KalshiClient:
         ticker: str | None = None,
     ) -> dict:
         """Get trade fills / execution history."""
-        return self._get("/portfolio/fills", params={
-            "limit": limit,
-            "cursor": cursor,
-            "ticker": ticker,
-            "subaccount": self.subaccount,
-        })
+        return self._get(
+            "/portfolio/fills",
+            params={
+                "limit": limit,
+                "cursor": cursor,
+                "ticker": ticker,
+                "subaccount": self.subaccount,
+            },
+        )
 
     def get_settlements(
         self,
@@ -320,15 +346,18 @@ class KalshiClient:
         Returns settled positions with market_result (yes/no/void),
         revenue (payout in cents), and cost basis.
         """
-        return self._get("/portfolio/settlements", params={
-            "limit": limit,
-            "cursor": cursor,
-            "ticker": ticker,
-            "event_ticker": event_ticker,
-            "min_ts": min_ts,
-            "max_ts": max_ts,
-            "subaccount": self.subaccount,
-        })
+        return self._get(
+            "/portfolio/settlements",
+            params={
+                "limit": limit,
+                "cursor": cursor,
+                "ticker": ticker,
+                "event_ticker": event_ticker,
+                "min_ts": min_ts,
+                "max_ts": max_ts,
+                "subaccount": self.subaccount,
+            },
+        )
 
     # ── Order Management ──────────────────────────────────────────────────────
 
@@ -377,7 +406,12 @@ class KalshiClient:
         )
         log.info(
             "Placing order: %s %s %s -> v2 side=%s @ $%s — count %s",
-            action, side, ticker, body["side"], body["price"], body["count"],
+            action,
+            side,
+            ticker,
+            body["side"],
+            body["price"],
+            body["count"],
         )
         return self._post(V2_ORDERS_PATH, body=body)
 
@@ -447,8 +481,12 @@ class KalshiClient:
         each moved to a dedicated shard, and **cash does not follow**. An order
         against a market on a shard where the account holds no funds fails
         ``404 user_not_found`` -- the market resolves, then the per-shard user
-        lookup does not. Current mapping (``GET /exchange/status``):
-        0 Default, 1 Combos, 2 Crypto, 3 Tennis & Baseball.
+        lookup does not. The mapping is published only by ``GET
+        /exchange/status`` and has moved since (2026-09-10: Basketball joined
+        shard 3, Commodities shard 2), so read it from the venue
+        (``get_exchange_status()`` / ``shard_funding.shard_names()``) rather
+        than from a list in code. The executor never needs the list at all: it
+        reads ``exchange_index`` off each market before placing.
 
         Two independent axes, easy to conflate:
 
@@ -486,19 +524,28 @@ class KalshiClient:
 
         if self.dry_run and not self.is_demo:
             log.warning("[DRY RUN] Transfer blocked — DRY_RUN=true on non-demo env")
-            return {"status": "dry_run_blocked", "amount_dollars": amount_dollars,
-                    "source_exchange_shard": source_shard,
-                    "destination_exchange_shard": destination_shard}
+            return {
+                "status": "dry_run_blocked",
+                "amount_dollars": amount_dollars,
+                "source_exchange_shard": source_shard,
+                "destination_exchange_shard": destination_shard,
+            }
 
         body = {
             "source": source,
             "destination": destination,
-            "amount": round(amount_dollars * 10_000),   # dollars -> centicents
+            "amount": round(amount_dollars * 10_000),  # dollars -> centicents
             "source_exchange_shard": source_shard,
             "destination_exchange_shard": destination_shard,
         }
-        log.info("Intra-exchange transfer: $%.4f  %s/shard %s -> %s/shard %s",
-                 amount_dollars, source, source_shard, destination, destination_shard)
+        log.info(
+            "Intra-exchange transfer: $%.4f  %s/shard %s -> %s/shard %s",
+            amount_dollars,
+            source,
+            source_shard,
+            destination,
+            destination_shard,
+        )
         return self._post(V2_XFER_PATH, body=body)
 
     def get_intra_exchange_transfers(self) -> dict:
@@ -543,13 +590,16 @@ class KalshiClient:
         Args:
             status: resting | canceled | executed
         """
-        return self._get("/portfolio/orders", params={
-            "limit": limit,
-            "cursor": cursor,
-            "ticker": ticker,
-            "status": status,
-            "subaccount": self.subaccount,
-        })
+        return self._get(
+            "/portfolio/orders",
+            params={
+                "limit": limit,
+                "cursor": cursor,
+                "ticker": ticker,
+                "status": status,
+                "subaccount": self.subaccount,
+            },
+        )
 
     # ── Account / Subaccounts ────────────────────────────────────────────────
 
@@ -612,6 +662,7 @@ class KalshiClient:
 
 # ── Factory Helpers ───────────────────────────────────────────────────────────
 
+
 def make_prod_client() -> KalshiClient | None:
     """
     Create a production Kalshi client for read-only market data.
@@ -633,6 +684,7 @@ def make_prod_client() -> KalshiClient | None:
 
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
+
 
 class KalshiAPIError(Exception):
     def __init__(self, status_code: int, message: str):
@@ -669,12 +721,16 @@ if __name__ == "__main__":
     from rich import print as rprint
 
     from logging_setup import setup_logging
+
     setup_logging("kalshi_client")
     console = Console()
 
     parser = argparse.ArgumentParser(description="Kalshi API client — quick test")
-    parser.add_argument("command", choices=["balance", "markets", "positions", "orders", "market"],
-                        help="What to query")
+    parser.add_argument(
+        "command",
+        choices=["balance", "markets", "positions", "orders", "market"],
+        help="What to query",
+    )
     parser.add_argument("--ticker", help="Market ticker (for 'market' command)")
     parser.add_argument("--limit", type=int, default=20, help="Number of results")
     parser.add_argument("--status", default="open", help="Market status filter")
@@ -685,8 +741,9 @@ if __name__ == "__main__":
 
         if args.command == "balance":
             bal = client.get_balance_dollars()
-            rprint(f"\n[bold cyan]-- Kalshi Account Balance --[/bold cyan]")
-            rprint(f"  Environment:     {'[yellow]DEMO[/yellow]' if client.is_demo else '[red]LIVE[/red]'}")
+            rprint("\n[bold cyan]-- Kalshi Account Balance --[/bold cyan]")
+            env = "[yellow]DEMO[/yellow]" if client.is_demo else "[red]LIVE[/red]"
+            rprint(f"  Environment:     {env}")
             rprint(f"  Available:       [green]${bal['balance']:,.2f}[/green]")
             rprint(f"  Portfolio Value: [green]${bal['portfolio_value']:,.2f}[/green]")
 
@@ -739,7 +796,9 @@ if __name__ == "__main__":
                 console.print(table)
 
         elif args.command == "orders":
-            resp = client.get_orders(limit=args.limit, status=args.status if args.status != "open" else "resting")
+            resp = client.get_orders(
+                limit=args.limit, status=args.status if args.status != "open" else "resting"
+            )
             orders = resp.get("orders", [])
 
             if not orders:
