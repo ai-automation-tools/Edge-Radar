@@ -2,415 +2,1096 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Edge-Radar</title>
-  <meta name="description" content="Open-source edge detection and risk-gated execution for Kalshi sports and prediction markets." />
+  <meta name="description" content="Open-source edge detection and risk-gated execution for Kalshi sports and prediction markets. Compares the exchange price against an independent fair value, nets out the fee, runs 21 risk gates and sizes by fractional Kelly. Dry run by default." />
+  <link rel="canonical" href="https://edge-radar.ai-automation-tools.dev/" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <script src="https://cdn.tailwindcss.com"></script>
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://edge-radar.ai-automation-tools.dev/" />
+  <meta property="og:title" content="Edge-Radar" />
+  <meta property="og:description" content="Research first, execute second. Edge detection and risk-gated execution for Kalshi markets." />
+  <meta property="og:site_name" content="Edge-Radar" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="theme-color" content="#060606" />
+
+  <!-- No build step: the whole stylesheet is inline. Fonts are the only external resource besides the shared consent script. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Inter', system-ui, sans-serif; }
-    pre, code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    /* Design tokens. Same ground, surfaces and type as ai-automation-tools.dev so the two read as siblings;
+       the page accent is Edge-Radar's emerald, the colour the org page gives this tool. Dark-only by design. */
+    :root {
+      color-scheme: dark;
+      --bg: #060606;
+      --bg-2: #0a0a0c;
+      --surface: rgba(24, 24, 27, 0.45);
+      --surface-2: rgba(24, 24, 27, 0.8);
+      --line: rgba(63, 63, 70, 0.45);
+      --line-2: rgba(63, 63, 70, 0.8);
+      --fg: #f4f4f5;
+      --fg-2: #d4d4d8;
+      --fg-3: #a1a1aa;
+      --fg-4: #71717a;
+      --fg-5: #52525b;
+      --accent: #34d399;        /* emerald-400: the Edge-Radar mark */
+      --accent-ink: #052e1f;
+      --sky: #38bdf8;           /* reference price */
+      --amber: #fbbf24;         /* execution */
+      --violet: #a78bfa;        /* sizing */
+      --rose: #fb7185;          /* reject */
+      --ok: #34d399;
+      --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+      --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+      --r-lg: 12px; --r-md: 8px; --r-sm: 6px;
+      --ease: cubic-bezier(.2, .7, .2, 1);
+    }
+    * { box-sizing: border-box; }
     html { scroll-behavior: smooth; }
-    /* Org source bar: ai-automation-tools.github.io README, "Source bar - required on every site" */
-    .src-bar        { display: flex; align-items: center; gap: 16px; height: 34px; padding: 0 16px;
+    body {
+      margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); font-size: 15px; line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      background-image: radial-gradient(rgba(255,255,255,0.035) 1.2px, transparent 0);
+      background-size: 24px 24px; background-attachment: fixed;
+    }
+    a { color: inherit; text-decoration: none; }
+    ::selection { background: rgba(52,211,153,0.3); }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 3px; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .skip { position: absolute; left: -9999px; top: 48px; z-index: 50; padding: 6px 12px; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 600; }
+    .skip:focus { left: 16px; }
+    .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding-inline: 20px; }
+    .mono { font-family: var(--mono); }
+    .eyebrow { font-family: var(--mono); font-size: 11.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--fg-4); }
+    .eyebrow b { color: var(--accent); font-weight: 500; }
+
+    /* Org source bar: ai-automation-tools.github.io README, "Source bar - required on every site". Full-bleed, top of page, in flow. */
+    .src-bar        { position: relative; z-index: 2; display: flex; align-items: center; gap: 16px; height: 34px; padding: 0 16px;
                       background: #0b0b0c; border-bottom: 1px solid #18181b; font-size: 12px; }
-    .src-note       { margin: 0; min-width: 0; overflow: hidden; white-space: nowrap;
-                      text-overflow: ellipsis; color: #71717a; }
+    .src-note       { margin: 0; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #71717a; }
     .src-note strong{ font-weight: 600; color: #34d399; }
-    .src-link       { margin-left: auto; flex: none; display: inline-flex; align-items: center;
-                      gap: 6px; color: #a1a1aa; text-decoration: none; }
+    .src-link       { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; color: #a1a1aa; text-decoration: none; }
     .src-link:hover { color: #fafafa; }
+
+    /* ── Topbar ─────────────────────────────── */
+    .topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 40; height: 56px; background: rgba(6,6,6,0.72); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid rgba(39,39,42,0.7); }
+    .topbar .wrap { height: 100%; display: flex; align-items: center; gap: 14px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 14px; letter-spacing: -.01em; }
+    .brand svg { width: 24px; height: 24px; flex: none; }
+    .nav { position: relative; display: none; align-items: center; gap: 2px; margin-left: 14px; }
+    .nav a { position: relative; padding: 6px 11px; font-size: 13.5px; color: var(--fg-3); border-radius: var(--r-sm); transition: color .2s; }
+    .nav a:hover, .nav a.active { color: var(--fg); }
+    .nav .ind { position: absolute; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px; transition: left .35s var(--ease), width .35s var(--ease), opacity .2s; opacity: 0; }
+    .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+    .kbd-btn { display: none; align-items: center; gap: 8px; height: 32px; padding: 0 10px 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: rgba(24,24,27,.4); color: var(--fg-4); font-size: 13px; cursor: pointer; font-family: inherit; transition: border-color .2s, color .2s; }
+    .kbd-btn:hover { border-color: #52525b; color: var(--fg-2); }
+    kbd { font-family: var(--mono); font-size: 10.5px; padding: 2px 5px; border: 1px solid var(--line-2); border-bottom-width: 2px; border-radius: 4px; color: var(--fg-3); background: #0e0e11; }
+    .gh-btn { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px; border: 1px solid var(--line-2); border-radius: var(--r-md); color: var(--fg-2); font-size: 13px; font-weight: 500; transition: border-color .2s, background .2s; }
+    .gh-btn:hover { border-color: #52525b; background: rgba(24,24,27,.7); }
+    .gh-btn svg { width: 15px; height: 15px; }
+    .gh-btn span { display: none; }
+    .menu-btn { display: inline-flex; width: 32px; height: 32px; align-items: center; justify-content: center; border: 1px solid var(--line-2); border-radius: var(--r-md); background: transparent; color: var(--fg-2); cursor: pointer; }
+    .mobile-nav { display: none; border-bottom: 1px solid var(--line); background: rgba(10,10,12,.96); }
+    .mobile-nav.open { display: block; }
+    .mobile-nav a { display: block; padding: 12px 20px; font-size: 15px; color: var(--fg-2); border-top: 1px solid rgba(39,39,42,.5); }
+    @media (min-width: 860px) { .nav { display: flex; } .kbd-btn { display: inline-flex; } .gh-btn span { display: inline; } .menu-btn { display: none; } }
+
+    /* Atmosphere: one emerald glow behind the hero, a faint violet counterweight, nothing else lit at rest. */
+    .glow { position: absolute; inset: 0 0 auto 0; height: 760px; pointer-events: none; z-index: 0;
+      background: radial-gradient(640px 380px at 72% 10%, rgba(52,211,153,0.13), transparent 70%), radial-gradient(420px 260px at 14% 34%, rgba(167,139,250,0.06), transparent 70%);
+      mask-image: linear-gradient(#000 60%, transparent); }
+
+    /* ── Hero ───────────────────────────────── */
+    .hero > * { min-width: 0; }
+    .hero { position: relative; display: grid; grid-template-columns: 1fr; gap: 36px; padding-block: 56px 32px; align-items: center; }
+    @media (min-width: 900px) { .hero { grid-template-columns: 1.02fr .98fr; padding-block: 80px 40px; gap: 48px; } }
+    h1 { margin: 18px 0 0; font-size: clamp(34px, 4.6vw, 52px); line-height: 1.04; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
+    h1 em { font-style: normal; color: transparent; background: linear-gradient(90deg, #6ee7b7, #34d399 55%, #38bdf8); -webkit-background-clip: text; background-clip: text; }
+    .lede { margin: 20px 0 0; max-width: 54ch; font-size: 16.5px; color: var(--fg-3); }
+    .lede b { color: var(--fg-2); font-weight: 500; }
+    .fine { margin: 14px 0 0; max-width: 54ch; font-size: 13px; color: var(--fg-4); }
+    .cta { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 16px; border-radius: var(--r-md); font-size: 14px; font-weight: 600; border: 1px solid transparent; cursor: pointer; font-family: inherit; transition: transform .2s var(--ease), background .2s, border-color .2s, box-shadow .2s; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-primary:hover { background: #6ee7b7; box-shadow: 0 0 24px -6px rgba(52,211,153,.6); }
+    .btn-ghost { border-color: var(--line-2); color: var(--fg-2); background: rgba(24,24,27,.3); }
+    .btn-ghost:hover { border-color: #52525b; background: rgba(24,24,27,.7); color: var(--fg); }
+    .btn-gh { background: #000; color: #fff; border-color: rgba(255,255,255,.16); }
+    .btn-gh:hover { background: #111114; border-color: rgba(255,255,255,.34); }
+    .btn svg { width: 15px; height: 15px; }
+
+    /* The radar: a canvas sweep over illustrative candidate markets. Hover names a blip, click loads it into the gate lab. */
+    .radar { position: relative; aspect-ratio: 1 / .92; max-width: 520px; min-height: 300px; margin-inline: auto; width: 100%; }
+    .radar canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .radar .tip { position: absolute; transform: translate(-50%, calc(-100% - 16px)); pointer-events: none; opacity: 0; padding: 7px 10px; border-radius: var(--r-sm); background: #0e0e11; border: 1px solid var(--line-2); font-size: 12px; white-space: nowrap; transition: opacity .15s; box-shadow: 0 10px 30px -10px rgba(0,0,0,.8); z-index: 2; }
+    .radar .tip.on { opacity: 1; }
+    .radar .tip small { display: block; font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); }
+    .radar .tip i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 0; background: var(--c); }
+    .radar .hint { position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%); font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); white-space: nowrap; }
+    .radar .legend { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; gap: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--fg-4); }
+    .radar .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .radar .legend i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+
+    /* ── Fact strip ─────────────────────────── */
+    .strip { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-lg); background: rgba(10,10,12,.6); margin-bottom: 8px; }
+    .strip .lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-4); padding: 0 6px; }
+    .strip a, .strip span.pill { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px; border-radius: 999px; font-family: var(--mono); font-size: 12px; color: var(--fg-3); border: 1px solid transparent; transition: background .2s, border-color .2s, color .2s; }
+    .strip a:hover { background: rgba(24,24,27,.8); border-color: var(--line); color: var(--fg); }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c, var(--ok)); animation: pulse 2.4s infinite; }
+    .strip .meta { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--fg-5); padding-right: 4px; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c, var(--ok)) 45%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+    /* ── Sections ───────────────────────────── */
+    section { scroll-margin-top: 72px; padding-block: 60px; border-top: 1px solid rgba(39,39,42,.6); }
+    .sec-head { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+    h2 { margin: 10px 0 0; font-size: 26px; letter-spacing: -.025em; font-weight: 650; }
+    .sub { margin: 8px 0 0; max-width: 60ch; color: var(--fg-3); font-size: 15px; }
+    .sub code, .note code { font-family: var(--mono); font-size: 12.5px; color: var(--fg-2); background: rgba(24,24,27,.8); padding: 1px 5px; border-radius: 4px; }
+    .note { margin: 14px 0 0; font-size: 12.5px; color: var(--fg-4); max-width: 80ch; }
+
+    /* Equation line */
+    .eq { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px; margin-top: 26px; padding: 14px 16px; border: 1px dashed var(--line-2); border-radius: var(--r-lg); font-family: var(--mono); font-size: 14px; color: var(--fg-4); }
+    .eq b { font-weight: 500; }
+    .eq .fv { color: var(--sky); } .eq .ask { color: var(--amber); } .eq .edge { color: var(--accent); } .eq .fee { color: var(--rose); }
+    .eq small { font-family: var(--sans); font-size: 12.5px; color: var(--fg-4); }
+
+    /* Gate lab */
+    .lab { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 18px; }
+    @media (min-width: 900px) { .lab { grid-template-columns: 1.1fr .9fr; } }
+    .panel { position: relative; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); padding: 18px 20px; }
+    .panel h3 { margin: 0 0 4px; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .panel .hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .panel .hd .eyebrow { margin: 0; }
+    .ctl { display: grid; gap: 14px; }
+    .ctl label { display: grid; gap: 6px; }
+    .ctl .row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--fg-3); }
+    .ctl .row output { font-family: var(--mono); font-size: 13px; color: var(--fg); }
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 2px; background: linear-gradient(90deg, var(--c, var(--accent)) var(--p, 50%), #27272a var(--p, 50%)); outline: none; cursor: pointer; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--fg); border: 3px solid var(--c, var(--accent)); box-shadow: 0 0 0 4px rgba(0,0,0,.4); }
+    input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--fg); border: 3px solid var(--c, var(--accent)); }
+    .seg { display: inline-flex; border: 1px solid var(--line-2); border-radius: var(--r-sm); overflow: hidden; }
+    .seg button { height: 28px; padding: 0 11px; border: 0; background: transparent; color: var(--fg-4); font: 12px var(--mono); cursor: pointer; }
+    .seg button[aria-pressed="true"] { background: rgba(63,63,70,.5); color: var(--fg); }
+    .seg button.yes[aria-pressed="true"] { color: var(--accent); } .seg button.no[aria-pressed="true"] { color: var(--amber); }
+    .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .presets button { height: 26px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 11.5px var(--mono); cursor: pointer; transition: all .2s; }
+    .presets button:hover { color: var(--fg); border-color: #52525b; background: rgba(24,24,27,.6); }
+    .ctl .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    select { height: 30px; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: #0e0e11; color: var(--fg); font: 12.5px var(--mono); padding: 0 8px; }
+    .readout { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    @media (min-width: 520px) { .readout { grid-template-columns: repeat(3, 1fr); } }
+    .ro { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: rgba(6,6,6,.5); min-width: 0; }
+    .ro small { display: block; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); }
+    .ro b { display: block; margin-top: 3px; font-family: var(--mono); font-size: 17px; font-weight: 500; color: var(--fg); letter-spacing: -.01em; white-space: nowrap; }
+    .ro b.pos { color: var(--accent); } .ro b.neg { color: var(--rose); } .ro b.dim { color: var(--fg-4); }
+    .ro i { display: block; font-size: 11px; color: var(--fg-5); font-style: normal; margin-top: 2px; }
+    .verdict { margin-top: 12px; display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-radius: var(--r-md); border: 1px solid; font-size: 13.5px; font-weight: 500; }
+    .verdict.ok { border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.08); color: #a7f3d0; }
+    .verdict.bad { border-color: rgba(251,113,133,.35); background: rgba(251,113,133,.08); color: #fecdd3; }
+    .verdict i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex: none; }
+    .verdict span { font-weight: 400; color: var(--fg-3); }
+    .gchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .gchip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); font: 11.5px var(--mono); color: var(--fg-3); }
+    .gchip i { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-5); }
+    .gchip.pass { border-color: rgba(52,211,153,.3); color: #a7f3d0; } .gchip.pass i { background: var(--accent); }
+    .gchip.fail { border-color: rgba(251,113,133,.35); color: #fecdd3; } .gchip.fail i { background: var(--rose); }
+    .gchip.na { opacity: .55; }
+
+    /* Three-column flow */
+    .flow { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 26px; }
+    @media (min-width: 900px) { .flow { grid-template-columns: 1fr 44px 1.08fr 44px 1fr; align-items: stretch; } }
+    .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .col-h { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 85%, #fff); }
+    .col-h i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+    .col-s { font-size: 12px; color: var(--fg-4); margin: -4px 0 2px; }
+    .node { --mx: 50%; --my: 50%; position: relative; border: 1px solid color-mix(in srgb, var(--c) 18%, var(--line)); border-radius: var(--r-md); background: color-mix(in srgb, var(--c) 4%, var(--surface)); padding: 10px 12px; overflow: hidden; transition: border-color .3s, background .3s, transform .3s var(--ease); }
+    .node:hover { border-color: color-mix(in srgb, var(--c) 40%, var(--line)); background: color-mix(in srgb, var(--c) 7%, var(--surface-2)); transform: translateY(-1px); }
+    .node::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(260px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 10%, transparent), transparent 60%); }
+    .node:hover::after { opacity: 1; }
+    .node.key { border-color: color-mix(in srgb, var(--c) 40%, var(--line)); background: color-mix(in srgb, var(--c) 9%, var(--surface)); }
+    .node .t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; color: var(--fg); }
+    .node .t .m { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 80%, #fff); }
+    .node .d { font-size: 11.5px; color: var(--fg-4); margin-top: 2px; line-height: 1.5; }
+    .node .d.mono { font-size: 10.5px; color: var(--fg-5); }
+    .node .d em { font-style: normal; color: color-mix(in srgb, var(--c) 80%, #fff); font-family: var(--mono); font-size: 10.5px; }
+    .conn { display: none; align-items: center; justify-content: center; }
+    @media (min-width: 900px) { .conn { display: flex; } }
+    .conn svg { width: 44px; height: 100%; min-height: 120px; overflow: visible; }
+    .conn line { stroke: var(--line-2); stroke-width: 1.2; }
+    .conn .mv { stroke: var(--accent); stroke-width: 1.4; stroke-dasharray: 6 60; animation: travel 2.6s linear infinite; }
+    @keyframes travel { to { stroke-dashoffset: -66; } }
+    .conn.b .mv { animation-delay: -1.3s; stroke: var(--amber); }
+    .conn-m { display: flex; justify-content: center; color: var(--fg-5); }
+    @media (min-width: 900px) { .conn-m { display: none; } }
+    .loop { margin-top: 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--fg-4); }
+    .loop span.l { display: inline-flex; align-items: center; gap: 8px; }
+    .loop svg { width: 14px; height: 14px; color: var(--accent); }
+    .loop code { font-family: var(--mono); font-size: 11.5px; color: #a7f3d0; }
+
+    /* Filter rail */
+    .rail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 26px; }
+    .chip { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 500 12.5px/1 var(--sans); cursor: pointer; transition: all .2s; }
+    .chip:hover { color: var(--fg); border-color: #52525b; }
+    .chip[aria-pressed="true"] { background: var(--fg); color: #09090b; border-color: var(--fg); }
+    .search { margin-left: auto; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: var(--r-md); background: rgba(24,24,27,.4); min-width: 0; }
+    .search input { background: transparent; border: 0; outline: 0; color: var(--fg); font: 13.5px var(--sans); width: 150px; min-width: 0; }
+    .search svg { width: 14px; height: 14px; color: var(--fg-4); flex: none; }
+
+    /* Gate tiles with spotlight */
+    .gates { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 20px; }
+    @media (min-width: 560px) { .gates { grid-template-columns: repeat(2, 1fr); } }
+    @media (min-width: 900px) { .gates { grid-template-columns: repeat(3, 1fr); } }
+    .gate { --mx: 50%; --my: 50%; position: relative; display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; cursor: pointer; text-align: left; font-family: inherit; color: inherit; transition: transform .3s var(--ease), border-color .3s, background .3s; }
+    .gate:hover { transform: translateY(-2px); background: var(--surface-2); border-color: color-mix(in srgb, var(--c) 35%, var(--line)); }
+    .gate::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(240px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 70%, transparent), transparent 70%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+    .gate::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(360px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 9%, transparent), transparent 60%); }
+    .gate:hover::before, .gate:hover::after, .gate.open::before { opacity: 1; }
+    .gate.hidden-by-filter { display: none; }
+    .gate .gt { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; }
+    .gate .num { font-family: var(--mono); font-size: 11px; color: var(--c); min-width: 34px; }
+    .gate .nm { font-size: 14px; font-weight: 600; color: var(--fg); flex: 1; min-width: 0; }
+    .gate .ty { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) 85%, #fff); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
+    .gate .gd { position: relative; z-index: 1; font-size: 12.5px; color: var(--fg-3); line-height: 1.5; }
+    .gate .gd code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); }
+    .gate .more { position: relative; z-index: 1; display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s var(--ease); }
+    .gate.open .more { grid-template-rows: 1fr; }
+    .gate .more > div { overflow: hidden; min-height: 0; }
+    .gate .more p { margin: 6px 0 0; padding-top: 8px; border-top: 1px dashed var(--line); font-size: 12px; color: var(--fg-4); line-height: 1.55; }
+    .gate .more p b { color: var(--fg-2); font-weight: 500; }
+    .gate .fo { position: relative; z-index: 1; display: flex; gap: 6px; flex-wrap: wrap; }
+    .gate .fo span { font-family: var(--mono); font-size: 10.5px; color: var(--fg-5); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; }
+    .gate .fo span.c { color: #fecdd3; border-color: rgba(251,113,133,.3); }
+    .empty { display: none; padding: 40px 0; text-align: center; color: var(--fg-4); font-size: 14px; }
+    .empty.on { display: block; }
+    .outside { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 18px; }
+    @media (min-width: 760px) { .outside { grid-template-columns: 1fr 1fr; } }
+    .outside .pr { display: flex; gap: 12px; align-items: start; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+    .pr svg { width: 18px; height: 18px; color: var(--accent); flex: none; margin-top: 2px; }
+    .pr b { display: block; font-weight: 600; font-size: 14px; color: var(--fg); }
+    .pr span { color: var(--fg-3); font-size: 13px; }
+
+    /* Pipeline stepper */
+    .steps { position: relative; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 26px; }
+    @media (min-width: 640px) { .steps { grid-template-columns: repeat(4, 1fr); } }
+    @media (min-width: 980px) { .steps { grid-template-columns: repeat(7, 1fr); } }
+    .steps::before { content: ""; position: absolute; left: 4%; right: 4%; top: 27px; height: 1px; background: var(--line-2); display: none; }
+    .steps::after { content: ""; position: absolute; left: 4%; top: 27px; height: 1px; width: 0; background: linear-gradient(90deg, var(--accent), var(--sky)); transition: width 1.6s var(--ease); display: none; }
+    .steps.in::after { width: 92%; }
+    @media (min-width: 980px) { .steps::before, .steps::after { display: block; } }
+    .step { --mx: 50%; --my: 50%; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 14px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; transition: transform .3s var(--ease), border-color .3s, background .3s; }
+    .step:hover { transform: translateY(-2px); background: var(--surface-2); border-color: rgba(52,211,153,.35); }
+    .step::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(220px circle at var(--mx) var(--my), rgba(52,211,153,.10), transparent 60%); }
+    .step:hover::after { opacity: 1; }
+    .step .n { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(52,211,153,.35); background: #0a0a0c; font-family: var(--mono); font-size: 11px; color: var(--accent); }
+    .step b { margin-top: 6px; font-size: 14px; font-weight: 600; color: var(--fg); }
+    .step span { font-size: 11.5px; color: var(--fg-4); line-height: 1.5; }
+    .step code { font-family: var(--mono); font-size: 10.5px; color: var(--fg-5); }
+
+    /* Coverage cards */
+    .cov { display: grid; grid-template-columns: 1fr; gap: 14px; margin-top: 26px; }
+    @media (min-width: 860px) { .cov { grid-template-columns: repeat(3, 1fr); } }
+    .card { --mx: 50%; --my: 50%; position: relative; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; transition: transform .3s var(--ease), border-color .3s, background .3s; }
+    .card:hover { transform: translateY(-2px); background: var(--surface-2); border-color: color-mix(in srgb, var(--c) 35%, var(--line)); }
+    .card::before { content: ""; position: absolute; inset: -1px; border-radius: inherit; padding: 1px; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(260px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 70%, transparent), transparent 70%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; }
+    .card::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .3s; background: radial-gradient(420px circle at var(--mx) var(--my), color-mix(in srgb, var(--c) 9%, transparent), transparent 60%); }
+    .card:hover::before, .card:hover::after { opacity: 1; }
+    .card > * { position: relative; z-index: 1; }
+    .card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .kind { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 80%, #fff); }
+    .kind i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+    .glyph { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c) 22%, transparent); }
+    .glyph svg { width: 20px; height: 20px; }
+    .card h3 { margin: 0; font-size: 18px; letter-spacing: -.015em; font-weight: 600; }
+    .card p { margin: 0; color: var(--fg-3); font-size: 14px; line-height: 1.55; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+    .tag { font-family: var(--mono); font-size: 11px; padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--fg-4); }
+    .tag.on { color: color-mix(in srgb, var(--c) 85%, #fff); border-color: color-mix(in srgb, var(--c) 30%, transparent); }
+    .tag.off { color: var(--fg-5); text-decoration: line-through; }
+    .card .foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--fg-4); }
+    .card .foot code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); }
+
+    /* ── Terminal ───────────────────────────── */
+    .term { margin-top: 26px; border: 1px solid var(--line-2); border-radius: var(--r-lg); background: #09090b; overflow: hidden; box-shadow: 0 30px 80px -40px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.04); }
+    .term-bar { display: flex; align-items: center; gap: 6px; padding: 0 12px; height: 44px; border-bottom: 1px solid var(--line); background: #0c0c0f; overflow-x: auto; scrollbar-width: none; }
+    .term-bar::-webkit-scrollbar { display: none; }
+    .lights { display: flex; gap: 6px; margin-right: 8px; flex: none; }
+    .lights i { width: 10px; height: 10px; border-radius: 50%; background: #27272a; }
+    .ttab { flex: none; height: 30px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid transparent; background: transparent; color: var(--fg-4); font: 500 12.5px var(--sans); cursor: pointer; display: inline-flex; align-items: center; gap: 7px; transition: all .2s; }
+    .ttab i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); opacity: .6; }
+    .ttab:hover { color: var(--fg-2); }
+    .ttab[aria-selected="true"] { color: var(--fg); background: rgba(39,39,42,.55); border-color: var(--line-2); }
+    .ttab[aria-selected="true"] i { opacity: 1; }
+    .term-right { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+    .term-body { display: grid; grid-template-columns: 1fr; }
+    @media (min-width: 860px) { .term-body { grid-template-columns: 1fr 300px; } }
+    .term pre { margin: 0; padding: 20px 22px 22px; font: 13px/1.75 var(--mono); color: var(--fg-2); overflow-x: auto; min-height: 240px; min-width: 0; }
+    .ln { display: block; opacity: 0; transform: translateY(3px); animation: lnin .35s var(--ease) forwards; animation-delay: var(--d, 0s); }
+    @keyframes lnin { to { opacity: 1; transform: none; } }
+    .ln.cmd::before { content: "$ "; color: var(--c, var(--accent)); }
+    .ln.cmt { color: var(--fg-5); }
+    .ln.out { color: var(--fg-4); }
+    .ln.blank { height: .9em; }
+    .cursor { display: inline-block; width: 7px; height: 14px; background: var(--fg-3); vertical-align: -2px; animation: blink 1s steps(2) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    .term-aside { border-top: 1px solid var(--line); padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; background: rgba(12,12,15,.6); }
+    @media (min-width: 860px) { .term-aside { border-top: 0; border-left: 1px solid var(--line); } }
+    .term-aside h4 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .term-aside p { margin: 0; color: var(--fg-3); font-size: 13.5px; }
+    .req { display: flex; flex-direction: column; gap: 6px; }
+    .req span { display: flex; justify-content: space-between; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--fg-4); padding: 6px 0; border-top: 1px dashed var(--line); }
+    .req span b { font-weight: 500; color: var(--fg-2); text-align: right; }
+    .act { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; height: 32px; padding: 0 11px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; border: 1px solid transparent; transition: all .2s; }
+    .act svg { width: 13px; height: 13px; }
+    .act-primary { background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--c, var(--accent)) 85%, #fff); border-color: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
+    .act-primary:hover { background: color-mix(in srgb, var(--c, var(--accent)) 24%, transparent); border-color: color-mix(in srgb, var(--c, var(--accent)) 50%, transparent); }
+    .term-aside .act { align-self: flex-start; margin-top: auto; }
+    .copy { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 11px var(--mono); cursor: pointer; letter-spacing: 0; text-transform: none; transition: all .2s; }
+    .copy:hover { color: var(--fg); border-color: #52525b; }
+    .copy svg { width: 12px; height: 12px; }
+
+    /* Docs links */
+    .docs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 26px; }
+    @media (min-width: 860px) { .docs { grid-template-columns: repeat(5, 1fr); } }
+    .doc { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); transition: transform .3s var(--ease), border-color .3s, background .3s; min-width: 0; }
+    .doc:hover { transform: translateY(-2px); background: var(--surface-2); border-color: rgba(52,211,153,.35); }
+    .doc small { font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-5); }
+    .doc b { font-size: 14px; font-weight: 600; color: var(--fg); }
+    .doc span { font-size: 12px; color: var(--fg-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ── Footer ─────────────────────────────── */
+    footer { border-top: 1px solid rgba(39,39,42,.6); padding-block: 28px 40px; color: var(--fg-4); font-size: 13.5px; }
+    footer .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; }
+    footer .row a:hover { color: var(--fg-2); }
+    footer .right { margin-left: auto; display: flex; flex-wrap: wrap; gap: 18px; }
+    footer .fine { margin-top: 14px; font-size: 12px; color: var(--fg-5); max-width: none; }
+
+    /* ── Command palette ────────────────────── */
+    .pal-bg { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display: none; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+    .pal-bg.open { display: flex; }
+    .pal { width: 100%; max-width: 560px; border: 1px solid var(--line-2); border-radius: 14px; background: #0c0c0f; box-shadow: 0 40px 120px -30px rgba(0,0,0,1), 0 0 0 1px rgba(255,255,255,.03) inset; overflow: hidden; animation: palin .2s var(--ease); }
+    @keyframes palin { from { opacity: 0; transform: translateY(-8px) scale(.98); } }
+    .pal-in { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 52px; border-bottom: 1px solid var(--line); }
+    .pal-in svg { width: 16px; height: 16px; color: var(--fg-4); }
+    .pal-in input { flex: 1; background: transparent; border: 0; outline: 0; color: var(--fg); font: 15px var(--sans); min-width: 0; }
+    .pal-list { max-height: 360px; overflow-y: auto; padding: 6px; }
+    .pal-grp { padding: 10px 10px 4px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-5); }
+    .pal-item { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: var(--r-md); cursor: pointer; color: var(--fg-2); font-size: 14px; }
+    .pal-item i { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--fg-5)); flex: none; }
+    .pal-item small { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--fg-5); white-space: nowrap; }
+    .pal-item.sel { background: rgba(52,211,153,.12); color: #fff; }
+    .pal-item.sel small { color: var(--fg-3); }
+    .pal-foot { display: flex; gap: 14px; padding: 8px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg-5); }
+    .pal-foot span { display: inline-flex; align-items: center; gap: 5px; }
+    .pal-empty { padding: 28px; text-align: center; color: var(--fg-4); font-size: 14px; }
+
+    /* ── Toast ──────────────────────────────── */
+    .toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); z-index: 70; padding: 9px 14px; border-radius: 999px; background: #18181b; border: 1px solid var(--line-2); color: var(--fg); font-size: 13px; opacity: 0; pointer-events: none; transition: all .25s var(--ease); display: inline-flex; gap: 8px; align-items: center; }
+    .toast.on { opacity: 1; transform: translate(-50%, 0); }
+    .toast i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+      .ln { opacity: 1; transform: none; }
+      .steps.in::after { width: 92%; }
+    }
   </style>
 </head>
-<body class="bg-[#060606] text-zinc-100 min-h-screen antialiased">
+<body>
 
-  <div class="src-bar">
-    <p class="src-note"><strong>Open source</strong> &middot; edge detection and risk-gated execution for Kalshi markets.</p>
-    <a class="src-link" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">
-      <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-      View source
+<a href="#main" class="skip">Skip to content</a>
+
+<div class="src-bar">
+  <p class="src-note"><strong>Open source</strong> &middot; edge detection and risk-gated execution for Kalshi markets.</p>
+  <a class="src-link" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    View source
+  </a>
+</div>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Edge-Radar home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#34d399"/><path d="M 8 24 L 8 8 L 18 8 C 22 8 22 16 18 16 L 8 16 M 16 16 L 24 24" stroke="#052e1f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      Edge-Radar
     </a>
-  </div>
-
-  <!-- ============ TOPBAR ============ -->
-  <div class="sticky top-0 z-40 h-12 bg-[#060606]/95 backdrop-blur border-b border-zinc-900">
-    <div class="flex items-center h-full max-w-5xl mx-auto px-4 sm:px-6 gap-3">
-      <a href="#top" class="flex items-center gap-2 text-zinc-200 hover:text-white transition">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-        <span class="text-sm font-semibold tracking-wide">Edge-Radar</span>
+    <nav class="nav" aria-label="Sections" id="nav">
+      <a href="#how" data-spy="how">How it works</a>
+      <a href="#gates" data-spy="gates">Gates</a>
+      <a href="#pipeline" data-spy="pipeline">Pipeline</a>
+      <a href="#coverage" data-spy="coverage">Coverage</a>
+      <a href="#start" data-spy="start">Quick start</a>
+      <span class="ind" id="ind" aria-hidden="true"></span>
+    </nav>
+    <div class="topbar-right">
+      <button class="kbd-btn" id="palOpen" type="button" aria-label="Open command palette">Jump to… <kbd>⌘K</kbd></button>
+      <a class="gh-btn" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        <span>GitHub</span>
       </a>
-      <nav class="ml-4 hidden sm:flex items-center gap-1 text-sm">
-        <a href="#how-it-works" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">How It Works</a>
-        <a href="#dataflow" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Pipeline</a>
-        <a href="#coverage" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Coverage</a>
-        <a href="#quickstart" class="px-2 py-1 rounded text-zinc-400 hover:text-white hover:bg-zinc-900 transition">Quick Start</a>
-      </nav>
-      <a href="https://ai-automation-tools.dev" class="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition">ai-automation-tools.dev</a>
+      <button class="menu-btn" id="menuBtn" type="button" aria-label="Open menu" aria-expanded="false">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h12"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="mobile-nav" id="mobileNav">
+    <a href="#how">How it works</a><a href="#gates">Gates</a><a href="#pipeline">Pipeline</a><a href="#coverage">Coverage</a><a href="#start">Quick start</a>
+    <a href="#" id="palOpenMobile">Jump to…</a>
+  </div>
+</header>
+
+<div class="glow" aria-hidden="true"></div>
+
+<main class="wrap" id="main">
+
+  <!-- ── Hero ── -->
+  <div class="hero" id="top">
+    <div>
+      <p class="eyebrow"><b>Open source</b> · Kalshi · sports and prediction markets · dry run by default</p>
+      <h1>Research first. <em>Execute</em> second.</h1>
+      <p class="lede">
+        Edge-Radar compares Kalshi's price against an independent fair value built from sportsbook consensus and public data feeds.
+        A bet fires only when the gap <b>clears the exchange fee and every risk gate</b>, and it is sized by fractional Kelly.
+      </p>
+      <p class="fine">Not financial advice. The repository documents its losing segments as carefully as its winning ones, and the model's own calibration study says the market is usually right.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#how">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><circle cx="10" cy="10" r="3.5"/><path d="M10 10l5-5"/></svg>
+          Try the gate lab
+        </a>
+        <a class="btn btn-gh" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">
+          <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          Source on GitHub
+        </a>
+        <a class="btn btn-ghost" href="#start">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4l4 4-4 4M8 12h5"/></svg>
+          Clone and run
+        </a>
+      </div>
+    </div>
+    <div class="radar" aria-label="A radar sweep over illustrative candidate markets. Hover a blip to read it; click to load it into the gate lab.">
+      <canvas id="radar"></canvas>
+      <div class="legend" aria-hidden="true">
+        <span style="--c:#34d399"><i></i>clears the floor + fee</span>
+        <span style="--c:#fbbf24"><i></i>edge, but under the floor</span>
+        <span style="--c:#fb7185"><i></i>no edge</span>
+      </div>
+      <div class="tip" id="rtip"></div>
+      <span class="hint">illustrative sample · hover · click to inspect</span>
     </div>
   </div>
 
-  <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-12 pb-24 sm:pt-16">
+  <!-- ── Fact strip ── -->
+  <div class="strip" role="list" aria-label="Defaults">
+    <span class="lbl">Defaults</span>
+    <a role="listitem" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#dry-run" target="_blank" rel="noopener" style="--c:#34d399"><i class="dot"></i>DRY_RUN=true</a>
+    <a role="listitem" href="#gates" style="--c:#fb7185"><i class="dot"></i>21 risk gates</a>
+    <a role="listitem" href="#pipeline" style="--c:#38bdf8"><i class="dot"></i>7 pipeline stages</a>
+    <a role="listitem" href="#coverage" style="--c:#fbbf24"><i class="dot"></i>30 sport filters</a>
+    <a role="listitem" href="#how" style="--c:#a78bfa"><i class="dot"></i>fee-aware Kelly</a>
+    <span class="meta">python ≥ 3.11 · no telemetry</span>
+  </div>
 
-    <!-- ============ HERO ============ -->
-    <section id="top" class="mb-16">
-      <div class="flex items-center gap-1.5 text-xs uppercase tracking-wider text-emerald-400 mb-3">
-        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-        <span>Kalshi &middot; Sports &middot; Prediction markets</span>
+  <!-- ── How it works ── -->
+  <section id="how">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">How it works</p>
+        <h2>One equation, guarded by 21 gates.</h2>
+        <p class="sub">Pull Kalshi's ask. Pull an independent fair value from sportsbooks and data feeds. The difference is the claimed edge. The exchange fee comes off before anything else is judged, and only then does the order meet the gates.</p>
       </div>
-      <div class="relative overflow-hidden rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-8 sm:p-10">
-        <svg class="absolute -right-12 -bottom-12 h-56 w-56 text-emerald-500/20 pointer-events-none" viewBox="0 0 100 100" fill="none" stroke="currentColor" aria-hidden="true">
-          <circle cx="50" cy="50" r="48" stroke-width="0.6" />
-          <circle cx="50" cy="50" r="34" stroke-width="0.6" />
-          <circle cx="50" cy="50" r="20" stroke-width="0.6" />
-          <line x1="50" y1="0" x2="50" y2="100" stroke-width="0.4" stroke-dasharray="1 2.5" />
-          <line x1="0" y1="50" x2="100" y2="50" stroke-width="0.4" stroke-dasharray="1 2.5" />
-          <line x1="50" y1="50" x2="82" y2="18" stroke-width="1" stroke-linecap="round" />
-          <circle cx="78" cy="22" r="2" fill="currentColor" stroke="none" />
-        </svg>
-        <h1 class="relative text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-100">Research first. Execute second.</h1>
-        <p class="relative mt-3 max-w-2xl text-zinc-400">
-          Edge-Radar compares Kalshi's price against an independent fair value built from sportsbook
-          consensus and public data feeds. A bet fires only when the gap clears the exchange fee and
-          every risk gate, and it is sized by fractional Kelly.
-        </p>
-        <p class="relative mt-3 max-w-2xl text-sm text-zinc-500">
-          Dry run by default. Not financial advice: the repo documents its losing segments as
-          carefully as its winning ones.
-        </p>
-
-        <div class="relative mt-6 flex flex-col gap-3 max-w-sm">
-          <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener"
-             class="flex items-center gap-3 px-4 py-2.5 rounded-md border border-blue-500 bg-blue-600 text-white shadow-sm shadow-blue-900/40 hover:bg-blue-500 hover:border-blue-400 transition min-w-0">
-            <svg class="h-5 w-5 flex-shrink-0" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-            <span class="flex flex-col leading-tight flex-1 min-w-0">
-              <span class="text-[10px] uppercase tracking-widest text-blue-100/90">Source</span>
-              <span class="text-sm font-semibold truncate">github.com / Edge-Radar</span>
-            </span>
-            <span class="text-base flex-shrink-0">&rarr;</span>
-          </a>
-        </div>
-      </div>
-
-      <div class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">21</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Risk gates</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">7</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Pipeline stages</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">30</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Sport filters</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-2xl font-semibold text-zinc-100">5</div>
-          <div class="mt-1 text-[10px] uppercase tracking-wider text-zinc-500">Agent roles</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ HOW IT WORKS (DIAGRAM) ============ -->
-    <section id="how-it-works" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">How It Works</h2>
-      <p class="text-sm text-zinc-600 mb-4">
-        Pull Kalshi's market price. Pull an independent fair value from sportsbooks / data feeds.
-        If the gap, net of the exchange fee, clears 21 risk gates, a Kelly-sized bet fires through the Kalshi trade API.
-      </p>
-
-      <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-5 sm:p-7">
-
-        <!-- Core premise equation -->
-        <div class="mb-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
-          <span class="mono text-sm text-sky-300">fair_value</span>
-          <span class="text-zinc-600">&minus;</span>
-          <span class="mono text-sm text-amber-300">market_ask</span>
-          <span class="text-zinc-600">=</span>
-          <span class="mono text-sm text-emerald-300 font-semibold">edge</span>
-          <span class="text-zinc-700">&middot;</span>
-          <span class="text-xs text-zinc-500">when <span class="mono text-emerald-300/80">edge</span> &ge; threshold &amp; gates pass &rarr; bet</span>
-        </div>
-
-        <!-- Three column diagram -->
-        <div class="grid lg:grid-cols-[1fr_auto_1.1fr_auto_1fr] gap-3 lg:gap-2 items-stretch">
-
-          <!-- ========== COLUMN 1: REFERENCE PRICE ========== -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="h-1.5 w-1.5 rounded-full bg-sky-400"></span>
-              <span class="text-[10px] uppercase tracking-widest text-sky-400">Reference Price</span>
-            </div>
-            <div class="text-[11px] text-zinc-500 mb-1">independent fair values, pulled from public APIs</div>
-
-            <div class="rounded-sm border border-sky-500/20 bg-sky-500/[0.04] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">The Odds API</div>
-                <span class="text-[9px] uppercase tracking-wider text-sky-400/80 mono">GET</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">api.the-odds-api.com /v4/sports/&hellip;/odds</div>
-              <div class="text-[10px] text-zinc-500 mt-1">8&ndash;20 sportsbook lines &rarr; no-vig consensus</div>
-            </div>
-
-            <div class="rounded-sm border border-sky-500/20 bg-sky-500/[0.04] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Sports stats</div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5">statsapi.mlb.com</div>
-              <div class="text-[10px] mono text-zinc-500">api-web.nhle.com</div>
-              <div class="text-[10px] mono text-zinc-500">site.api.espn.com</div>
-            </div>
-
-            <div class="rounded-sm border border-sky-500/20 bg-sky-500/[0.04] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Crypto / weather / equity</div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5">api.coingecko.com</div>
-              <div class="text-[10px] mono text-zinc-500">api.weather.gov</div>
-              <div class="text-[10px] mono text-zinc-500">query1.finance.yahoo.com</div>
-            </div>
-          </div>
-
-          <!-- ARROW 1 -->
-          <div class="hidden lg:flex items-center justify-center text-zinc-700">
-            <svg class="h-5 w-10" viewBox="0 0 40 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M2 10 L32 10" stroke-linecap="round"/>
-              <path d="M26 4 L32 10 L26 16" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="lg:hidden flex justify-center py-1 text-zinc-700" aria-hidden="true">
-            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg>
-          </div>
-
-          <!-- ========== COLUMN 2: EDGE ENGINE ========== -->
-          <div class="flex flex-col gap-2 lg:-mx-1">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-              <span class="text-[10px] uppercase tracking-widest text-emerald-400">Edge Engine</span>
-            </div>
-            <div class="text-[11px] text-zinc-500 mb-1">the seven-stage pipeline that finds &amp; sizes the bet</div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">Kalshi market data</div>
-                <span class="text-[9px] uppercase tracking-wider text-emerald-400/80 mono">GET</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">api.elections.kalshi.com /markets, /orderbook</div>
-              <div class="text-[10px] text-zinc-500 mt-1">live ask, bid, volume, expiry</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Fair-value model</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">ticker &rarr; ML &middot; SP &middot; TO &middot; FU &middot; PR</div>
-              <div class="text-[10px] text-zinc-500">de-vig, Poisson totals, Elo, hold-out</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/40 bg-emerald-500/[0.08] p-3">
-              <div class="text-xs font-semibold text-emerald-200">Edge calculation</div>
-              <div class="text-[10px] text-zinc-400 mt-0.5">fair &minus; ask, with confidence tier</div>
-              <div class="text-[10px] mono text-emerald-300/80 mt-1">edge &ge; 3% + fee (per-sport floors)</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">21 risk gates</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">daily loss &middot; per-event cap &middot; series dedup</div>
-              <div class="text-[10px] text-zinc-500">NO-favorite floor &middot; min price &middot; confidence</div>
-              <div class="text-[10px] text-zinc-500">edge ceiling 50% &middot; exposure caps &middot; 10% hard stop</div>
-            </div>
-
-            <div class="rounded-sm border border-emerald-500/30 bg-emerald-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Kelly sizing</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">fractional Kelly &middot; capped at MAX_BET_SIZE</div>
-              <div class="text-[10px] text-zinc-500">half-Kelly on cheap NO bets</div>
-            </div>
-          </div>
-
-          <!-- ARROW 2 -->
-          <div class="hidden lg:flex items-center justify-center text-zinc-700">
-            <svg class="h-5 w-10" viewBox="0 0 40 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M2 10 L32 10" stroke-linecap="round"/>
-              <path d="M26 4 L32 10 L26 16" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <div class="lg:hidden flex justify-center py-1 text-zinc-700" aria-hidden="true">
-            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg>
-          </div>
-
-          <!-- ========== COLUMN 3: EXECUTE & TRACK ========== -->
-          <div class="flex flex-col gap-2">
-            <div class="flex items-center gap-2 mb-1">
-              <span class="h-1.5 w-1.5 rounded-full bg-amber-400"></span>
-              <span class="text-[10px] uppercase tracking-widest text-amber-400">Execute &amp; Track</span>
-            </div>
-            <div class="text-[11px] text-zinc-500 mb-1">wagers, settlement, calibration loop</div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">Kalshi trade API</div>
-                <span class="text-[9px] uppercase tracking-wider text-amber-400/80 mono">POST</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">api.elections.kalshi.com /portfolio/orders</div>
-              <div class="text-[10px] text-zinc-500 mt-1">RSA-PSS signed limit order</div>
-            </div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="flex items-center justify-between gap-2">
-                <div class="text-xs font-semibold text-zinc-100">Position &amp; fills</div>
-                <span class="text-[9px] uppercase tracking-wider text-amber-400/80 mono">GET</span>
-              </div>
-              <div class="text-[10px] mono text-zinc-500 mt-0.5 truncate">/portfolio/positions &middot; /fills</div>
-              <div class="text-[10px] text-zinc-500 mt-1">track exposure &middot; trim stale orders</div>
-            </div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Settle &amp; calibrate</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">27-field settlement record</div>
-              <div class="text-[10px] text-zinc-500">Brier score feeds back into thresholds</div>
-            </div>
-
-            <div class="rounded-sm border border-amber-500/25 bg-amber-500/[0.05] p-3">
-              <div class="text-xs font-semibold text-zinc-100">Notify</div>
-              <div class="text-[10px] text-zinc-500 mt-0.5">email reports &middot; daily digest</div>
-              <div class="text-[10px] text-zinc-500">daily integration-drift check</div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Footer note: feedback loop -->
-        <div class="mt-6 pt-4 border-t border-zinc-800/60 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[11px] text-zinc-500">
-          <div class="flex items-center gap-2">
-            <svg class="h-3.5 w-3.5 text-emerald-400/70" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
-              <path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" stroke-linecap="round"/>
-              <path d="M11 1.5L12.5 4L10 4.5M5 14.5L3.5 12L6 11.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <span>Outcomes loop back: settled results re-calibrate thresholds &amp; confidence tiers</span>
-          </div>
-          <div class="flex items-center gap-3">
-            <span><span class="text-emerald-300/90 mono">DRY_RUN=true</span> default</span>
-            <span>&middot;</span>
-            <span>21 gates &middot; <a class="hover:text-emerald-300 transition" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">spec</a></span>
-          </div>
-        </div>
-
-      </div>
-    </section>
-
-    <!-- ============ DATA FLOW ============ -->
-    <section id="dataflow" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Pipeline</h2>
-      <p class="text-sm text-zinc-600 mb-4">Seven sequential stages. Scan &rarr; Size &rarr; Execute &rarr; Settle.</p>
-
-      <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">01</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Fetch</div>
-          <div class="text-[11px] text-zinc-500">Kalshi + Odds API</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">02</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Categorize</div>
-          <div class="text-[11px] text-zinc-500">ticker &rarr; model</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">03</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Compare</div>
-          <div class="text-[11px] text-zinc-500">fair vs ask</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">04</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Cap</div>
-          <div class="text-[11px] text-zinc-500">per-event dedup</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">05</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Risk</div>
-          <div class="text-[11px] text-zinc-500">21 gates</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">06</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Execute</div>
-          <div class="text-[11px] text-zinc-500">RSA-signed limit</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-3 hover:border-zinc-600 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] mono text-emerald-400/80">07</div>
-          <div class="mt-1 text-sm font-semibold text-zinc-100">Monitor</div>
-          <div class="text-[11px] text-zinc-500">settle + calibrate</div>
-        </div>
-      </div>
-
-      <div class="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-zinc-500">
-        <span>Risk gates &middot; <a class="text-zinc-400 hover:text-emerald-300 transition" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">CLAUDE.md &sect; Execution Gates</a></span>
-        <span>Edge models &middot; ML &middot; SP &middot; TO &middot; FU &middot; PR</span>
-        <span>Settler &middot; <code class="mono px-1 py-0.5 rounded bg-zinc-900 text-zinc-300 text-[11px]">make settle</code></span>
-      </div>
-    </section>
-
-    <!-- ============ COVERAGE ============ -->
-    <section id="coverage" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Coverage</h2>
-      <p class="text-sm text-zinc-600 mb-4">What the scanner prices. Each segment carries its own edge floor.</p>
-      <div class="grid sm:grid-cols-3 gap-3">
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-[10px] uppercase tracking-widest text-emerald-400">Sports</div>
-          <div class="mt-1 text-sm text-zinc-300">NBA &middot; NHL &middot; MLB &middot; NFL &middot; NCAA &middot; MLS &middot; soccer &middot; UFC &middot; boxing &middot; F1 &middot; NASCAR &middot; PGA &middot; IPL &middot; tennis &middot; esports</div>
-          <div class="mt-2 text-xs text-zinc-500">Moneylines, spreads and totals</div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-[10px] uppercase tracking-widest text-sky-400">Prediction</div>
-          <div class="mt-1 text-sm text-zinc-300">Crypto (BTC, ETH, XRP, DOGE, SOL) &middot; weather in 13 cities &middot; S&amp;P 500</div>
-          <div class="mt-2 text-xs text-zinc-500">Off by default behind <span class="mono">ALLOW_PREDICTION_BETS</span></div>
-        </div>
-        <div class="rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4">
-          <div class="text-[10px] uppercase tracking-widest text-amber-400">Futures</div>
-          <div class="mt-1 text-sm text-zinc-300">NFL &middot; NBA &middot; NHL &middot; MLB championships &middot; PGA majors</div>
-          <div class="mt-2 text-xs text-zinc-500">Priced from sportsbook outright odds</div>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============ QUICK START ============ -->
-    <section id="quickstart" class="mb-14 scroll-mt-20">
-      <h2 class="text-xs uppercase tracking-wider text-zinc-500 mb-1">Quick Start</h2>
-      <p class="text-sm text-zinc-600 mb-4">Python 3.11+. A preview risks nothing, and <span class="mono text-zinc-400">DRY_RUN=true</span> is the default even with <span class="mono text-zinc-400">--execute</span>.</p>
-<pre class="overflow-x-auto rounded-sm border border-zinc-800/60 bg-zinc-950/60 p-4 text-[12px] leading-relaxed text-zinc-400">git clone https://github.com/ai-automation-tools/Edge-Radar.git
-cd Edge-Radar
-python -m venv .venv &amp;&amp; source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env            # add Kalshi + Odds API keys
-
-python scripts/doctor.py        # validate the environment
-python scripts/scan.py sports --filter nba --date today   # preview only</pre>
-
-      <div class="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <a href="https://github.com/ai-automation-tools/Edge-Radar#readme" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Start</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">README</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Rules</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Risk gates</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Reference</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Scripts</div>
-        </a>
-        <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener" class="group flex flex-col gap-1 rounded-sm border border-zinc-800/60 bg-zinc-900/40 p-4 hover:border-emerald-500/30 hover:bg-zinc-900/70 transition">
-          <div class="text-[10px] uppercase tracking-widest text-zinc-500">Evidence</div>
-          <div class="text-sm font-semibold text-zinc-100 group-hover:text-white">Changelog</div>
-        </a>
-      </div>
-    </section>
-
-  </main>
-
-  <footer class="border-t border-zinc-900 py-8">
-    <div class="max-w-5xl mx-auto px-4 sm:px-6 flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-500">
-      <div>Edge-Radar &middot; part of <a href="https://ai-automation-tools.dev" class="hover:text-zinc-300 transition">ai-automation-tools</a></div>
-      <a href="https://ai-automation-tools.dev/cookies.html" class="hover:text-zinc-300 transition">Cookies</a>
     </div>
-  </footer>
 
-<!-- Shared consent banner, served from the org apex. -->
+    <div class="eq" aria-label="The core equation">
+      <b class="fv">fair_value</b> − <b class="ask">market_ask</b> = <b class="edge">edge</b>
+      <small>·</small>
+      <b class="edge">edge</b> − <b class="fee">fee(price)</b> ≥ <b>floor</b> <small>and every gate passes → bet</small>
+    </div>
+
+    <!-- Gate lab: the static gates, computed live from CLAUDE.md's code defaults. -->
+    <div class="lab">
+      <div class="panel" id="labPanel">
+        <div class="hd"><div><p class="eyebrow">Gate lab</p><h3>Move the price. Watch the gates.</h3></div><span class="eyebrow" id="labSrc">illustrative</span></div>
+        <div class="ctl">
+          <label>
+            <span class="row"><span>Fair value (the model's probability)</span><output id="fvOut">0.58</output></span>
+            <input type="range" id="fv" min="5" max="95" value="58" step="1" style="--c:#38bdf8" aria-label="Fair value">
+          </label>
+          <label>
+            <span class="row"><span>Market ask (what Kalshi charges for the side)</span><output id="askOut">0.52</output></span>
+            <input type="range" id="ask" min="5" max="95" value="52" step="1" style="--c:#fbbf24" aria-label="Market ask">
+          </label>
+          <div class="two">
+            <label>
+              <span class="row"><span>Side</span></span>
+              <div class="seg" role="group" aria-label="Side">
+                <button type="button" class="yes" data-side="yes" aria-pressed="true">YES</button>
+                <button type="button" class="no" data-side="no" aria-pressed="false">NO</button>
+              </div>
+            </label>
+            <label>
+              <span class="row"><span>Confidence</span></span>
+              <div class="seg" role="group" aria-label="Confidence">
+                <button type="button" data-conf="low" aria-pressed="false">low</button>
+                <button type="button" data-conf="medium" aria-pressed="true">medium</button>
+                <button type="button" data-conf="high" aria-pressed="false">high</button>
+              </div>
+            </label>
+          </div>
+          <label>
+            <span class="row"><span>Edge floor (per-sport, code defaults)</span></span>
+            <select id="floor" aria-label="Edge floor">
+              <option value="0.03">Global · MIN_EDGE_THRESHOLD 0.03</option>
+              <option value="0.04">NBA / NCAAB / MLB · 0.04</option>
+              <option value="0.06">NFL / NCAAF pilot (live .env) · 0.06</option>
+              <option value="1.0">World Cup · 1.0 (switched off)</option>
+            </select>
+          </label>
+          <div>
+            <span class="row"><span>Presets</span></span>
+            <div class="presets" id="presets">
+              <button type="button" data-p="0.58,0.52,yes,medium,0.03">clean YES</button>
+              <button type="button" data-p="0.84,0.80,yes,medium,0.03">favourite</button>
+              <button type="button" data-p="0.22,0.16,yes,medium,0.06">longshot cover</button>
+              <button type="button" data-p="0.55,0.47,no,medium,0.04">NO under 8%</button>
+              <button type="button" data-p="0.48,0.20,no,high,0.03">cheap NO</button>
+              <button type="button" data-p="0.63,0.66,yes,low,0.04">no edge</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="hd"><div><p class="eyebrow">Result</p><h3 id="labTitle">A 52c YES against a 58c fair value</h3></div></div>
+        <div class="readout">
+          <div class="ro"><small>Claimed edge</small><b id="roEdge">+6.0%</b><i>fair − ask</i></div>
+          <div class="ro"><small>Fee / contract</small><b id="roFee">1.8c</b><i>0.07 · p · (1 − p), rounded up</i></div>
+          <div class="ro"><small>Net edge</small><b id="roNet">+4.2%</b><i>edge − fee</i></div>
+          <div class="ro"><small>Required</small><b id="roReq">4.8%</b><i>floor + fee (Gate 3)</i></div>
+          <div class="ro"><small>Kelly stake</small><b id="roKelly">2.2%</b><i>¼ · net / (1 − p), batch of 1</i></div>
+          <div class="ro"><small>Edge score</small><b id="roScore">6.0</b><i>min(edge / 0.01, 10)</i></div>
+        </div>
+        <div class="verdict ok" id="verdict"><i></i><div><b id="vTitle">Clears the static gates</b> <span id="vSub">· portfolio gates still apply at execution</span></div></div>
+        <div class="gchips" id="gchips" aria-label="Gate results"></div>
+        <p class="note">Code defaults from <code>CLAUDE.md</code>: floor + fee (3), edge ≤ 0.50 (3.05), price ≥ 0.12 (3.5), confidence ≥ medium (4.5), NO below 25c needs 25% edge and high confidence (4.6), every NO needs ≥ 8% (4.6b). Gates that need a live book (daily loss, exposure, dedup, opposing side) are not modelled here.</p>
+      </div>
+    </div>
+
+    <!-- Three-column flow -->
+    <div class="flow">
+      <div class="col" style="--c:#38bdf8">
+        <div class="col-h"><i></i>Reference price</div>
+        <div class="col-s">independent fair values from public APIs</div>
+        <div class="node"><div class="t">The Odds API <span class="m">GET</span></div><div class="d mono">api.the-odds-api.com /v4/sports/…/odds</div><div class="d">8–20 sportsbook lines → no-vig consensus</div></div>
+        <div class="node"><div class="t">Sports stats</div><div class="d mono">statsapi.mlb.com · api-web.nhle.com · site.api.espn.com</div></div>
+        <div class="node"><div class="t">Crypto · weather · equity</div><div class="d mono">api.coingecko.com · api.weather.gov · query1.finance.yahoo.com</div></div>
+      </div>
+      <div class="conn a" aria-hidden="true"><svg viewBox="0 0 44 120" preserveAspectRatio="none"><line x1="2" y1="60" x2="42" y2="60"/><line class="mv" x1="2" y1="60" x2="42" y2="60"/></svg></div>
+      <div class="conn-m" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg></div>
+
+      <div class="col" style="--c:#34d399">
+        <div class="col-h"><i></i>Edge engine</div>
+        <div class="col-s">finds the gap, nets the fee, sizes the bet</div>
+        <div class="node"><div class="t">Kalshi market data <span class="m">GET</span></div><div class="d mono">api.elections.kalshi.com /markets · /orderbook</div><div class="d">live ask, bid, volume, expiry</div></div>
+        <div class="node"><div class="t">Fair-value model</div><div class="d">ticker → <em>ML · SP · TO · FU · PR</em> · de-vig, CDF spreads and totals, calibrated stdevs</div></div>
+        <div class="node key"><div class="t">Edge, net of fee</div><div class="d">fair − ask, with a confidence tier · <em>edge ≥ floor + fee</em></div></div>
+        <div class="node"><div class="t">21 risk gates</div><div class="d">daily loss · exposure caps · liquidity · lead time · cheap-NO rules · opposing side · dedup · 10% hard stop</div></div>
+        <div class="node"><div class="t">Kelly sizing</div><div class="d"><em>edge / (1 − price)</em>, fractional, divided by batch size · half-Kelly on NO at both price ends</div></div>
+      </div>
+      <div class="conn b" aria-hidden="true"><svg viewBox="0 0 44 120" preserveAspectRatio="none"><line x1="2" y1="60" x2="42" y2="60"/><line class="mv" x1="2" y1="60" x2="42" y2="60"/></svg></div>
+      <div class="conn-m" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 14l-4-4h8l-4 4z"/></svg></div>
+
+      <div class="col" style="--c:#fbbf24">
+        <div class="col-h"><i></i>Execute &amp; track</div>
+        <div class="col-s">orders, settlement, the calibration loop</div>
+        <div class="node"><div class="t">Kalshi trade API <span class="m">POST</span></div><div class="d mono">api.elections.kalshi.com /portfolio/orders</div><div class="d">RSA-PSS signed limit order · venue eligibility checked first, fails closed</div></div>
+        <div class="node"><div class="t">Positions &amp; fills <span class="m">GET</span></div><div class="d mono">/portfolio/positions · /fills</div><div class="d">exposure, resting-order cleanup, measured fees</div></div>
+        <div class="node"><div class="t">Settle &amp; calibrate</div><div class="d">27-field settlement record · model-vs-market Brier pair · stdev refit</div></div>
+        <div class="node"><div class="t">Watch</div><div class="d">daily digest · drift check against Kalshi's wording · post-kickoff order alarm</div></div>
+      </div>
+    </div>
+    <div class="loop">
+      <span class="l"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" stroke-linecap="round"/><path d="M11 1.5L12.5 4L10 4.5M5 14.5L3.5 12L6 11.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Outcomes loop back: settled results re-fit the stdevs and re-judge the thresholds.</span>
+      <span><code>DRY_RUN=true</code> is the default · <a href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">gate spec ↗</a></span>
+    </div>
+  </section>
+
+  <!-- ── Gates ── -->
+  <section id="gates">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Risk gates</p>
+        <h2>Every order meets 21 gates. Most candidates fail here, cheaply.</h2>
+        <p class="sub">The chain runs in order before any order is placed. <code>Reject</code> drops the bet, <code>Cap</code> trims it. Gates that read a market fact fail open when the fact is missing; the venue-eligibility check fails closed.</p>
+      </div>
+    </div>
+    <div class="rail" role="toolbar" aria-label="Filter gates">
+      <button class="chip" data-f="all" aria-pressed="true" type="button">All</button>
+      <button class="chip" data-f="reject" aria-pressed="false" type="button">Reject</button>
+      <button class="chip" data-f="cap" aria-pressed="false" type="button">Cap</button>
+      <button class="chip" data-f="portfolio" aria-pressed="false" type="button">Portfolio</button>
+      <button class="chip" data-f="market" aria-pressed="false" type="button">Market</button>
+      <button class="chip" data-f="no-side" aria-pressed="false" type="button">NO side</button>
+      <button class="chip" data-f="fails-open" aria-pressed="false" type="button">Fails open</button>
+      <label class="search"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg><input id="gq" type="search" placeholder="Search gates" aria-label="Search gates" autocomplete="off"></label>
+    </div>
+    <div class="gates" id="gateGrid"></div>
+    <p class="empty" id="gEmpty">No gate matches that. Clear the filter or try another word.</p>
+
+    <div class="outside">
+      <div class="pr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg><div><b>Before the chain: venue eligibility, fails closed</b><span>A live order needs a recorded <code class="mono">ok</code> for the venue and product. <code class="mono">unknown</code> blocks exactly like <code class="mono">blocked</code>; a structural rejection aborts the batch and nothing clears it automatically.</span></div></div>
+      <div class="pr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16M6 16V9M10 16V5M14 16v-6M18 16V7"/></svg><div><b>After the chain: the 10% hard stop</b><span>The last step of sizing caps any single position at 10% of bankroll and rejects it if even one contract would breach. Enforced in code, not only in the rules.</span></div></div>
+    </div>
+  </section>
+
+  <!-- ── Pipeline ── -->
+  <section id="pipeline">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Pipeline</p>
+        <h2>Seven stages. Scan, size, execute, settle.</h2>
+        <p class="sub">One entry point, <code>scripts/scan.py</code>, runs the chain for sports, futures or prediction markets. A preview stops after stage 5 and prints what the gates said about every row it saw.</p>
+      </div>
+    </div>
+    <div class="steps" id="steps">
+      <div class="step"><span class="n">01</span><b>Fetch</b><span>Kalshi markets and order books, plus the Odds API and data feeds, through a short-TTL cache.</span></div>
+      <div class="step"><span class="n">02</span><b>Categorize</b><span>Ticker → market type. <code>ML · SP · TO · FU · PR</code> each pick a model.</span></div>
+      <div class="step"><span class="n">03</span><b>Compare</b><span>Fair value against the ask, net of fee, with a confidence tier and a composite score.</span></div>
+      <div class="step"><span class="n">04</span><b>Cap</b><span>Bracket dedup keeps the sibling that can clear the gates; per-event caps apply.</span></div>
+      <div class="step"><span class="n">05</span><b>Risk</b><span>21 gates in order. Reject or trim. Preview prints the verdicts.</span></div>
+      <div class="step"><span class="n">06</span><b>Execute</b><span>Fractional Kelly size, shard funding, RSA-signed limit order. Dry run logs identically.</span></div>
+      <div class="step"><span class="n">07</span><b>Settle</b><span>Outcomes, measured fees, Brier pair, drift and post-kickoff alarms. <code>make settle</code></span></div>
+    </div>
+  </section>
+
+  <!-- ── Coverage ── -->
+  <section id="coverage">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Coverage</p>
+        <h2>What the scanner prices.</h2>
+        <p class="sub">Each segment carries its own edge floor, and a floor of 1.0 is the idiom for switching a segment off. A segment with no settled history runs in dry run or on a pilot floor until it has evidence.</p>
+      </div>
+    </div>
+    <div class="cov" id="cov">
+      <article class="card" style="--c:#34d399">
+        <div class="card-top"><span class="kind"><i></i>Sports</span><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.5 9.5h17M3.5 14.5h17M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></svg></span></div>
+        <h3>Moneylines, spreads, totals</h3>
+        <p>Sportsbook consensus, de-vigged and weighted by book tier, against Kalshi's game markets. Thirty filters across the major leagues, college, soccer, combat sports, motorsport, golf, tennis and esports.</p>
+        <div class="tags"><span class="tag on">NBA</span><span class="tag on">NHL</span><span class="tag on">MLB</span><span class="tag on">NFL · pilot</span><span class="tag on">NCAAF · pilot</span><span class="tag on">NCAAB</span><span class="tag on">MLS · soccer</span><span class="tag on">UFC · boxing</span><span class="tag on">F1 · NASCAR</span><span class="tag on">PGA</span><span class="tag on">tennis</span><span class="tag on">esports</span><span class="tag off">World Cup</span></div>
+        <div class="foot">Per-sport floors: <code>MIN_EDGE_THRESHOLD_&lt;SPORT&gt;</code>, narrowed by market type when needed.</div>
+      </article>
+      <article class="card" style="--c:#38bdf8">
+        <div class="card-top"><span class="kind"><i></i>Prediction</span><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 18L10 11l4 4 6-8"/><path d="M15 7h5v5"/></svg></span></div>
+        <h3>Crypto, weather, S&amp;P 500</h3>
+        <p>Spot and volatility from CoinGecko, National Weather Service forecasts for thirteen cities, and index levels from Yahoo Finance, each turned into a probability for the bracket Kalshi lists.</p>
+        <div class="tags"><span class="tag on">BTC · ETH · XRP · DOGE · SOL</span><span class="tag on">13 cities</span><span class="tag on">SPX</span></div>
+        <div class="foot">Off by default behind <code>ALLOW_PREDICTION_BETS</code> (Gate 4.7).</div>
+      </article>
+      <article class="card" style="--c:#fbbf24">
+        <div class="card-top"><span class="kind"><i></i>Futures</span><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M8 21h8M12 17v4M6 4h12v4a6 6 0 01-12 0V4z"/><path d="M6 6H3v2a3 3 0 003 3M18 6h3v2a3 3 0 01-3 3"/></svg></span></div>
+        <h3>Championship outrights</h3>
+        <p>Outright odds across books, de-vigged into a field that sums to one, against each team's title market. Outcomes partition one event, so the per-event cap is its own knob.</p>
+        <div class="tags"><span class="tag on">NFL</span><span class="tag on">NBA</span><span class="tag on">NHL</span><span class="tag on">MLB</span><span class="tag on">PGA majors</span></div>
+        <div class="foot">Exempt from the lead-time gate by category: a season is the event.</div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ── Quick start ── -->
+  <section id="start">
+    <div class="sec-head">
+      <div>
+        <p class="eyebrow">Quick start</p>
+        <h2>Clone, validate, preview. Nothing is risked.</h2>
+        <p class="sub">Python 3.11 or later. A preview places nothing, and <code>DRY_RUN=true</code> is the default even with <code>--execute</code>, so the first live order is a decision you make in <code>.env</code>, not a side effect.</p>
+      </div>
+    </div>
+    <div class="term" id="term">
+      <div class="term-bar" role="tablist" aria-label="Choose a step">
+        <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+        <button class="ttab" role="tab" data-t="install" aria-selected="true" style="--c:#34d399"><i></i>Install</button>
+        <button class="ttab" role="tab" data-t="preview" aria-selected="false" style="--c:#38bdf8"><i></i>Preview a scan</button>
+        <button class="ttab" role="tab" data-t="execute" aria-selected="false" style="--c:#fbbf24"><i></i>Dry-run execute</button>
+        <button class="ttab" role="tab" data-t="settle" aria-selected="false" style="--c:#a78bfa"><i></i>Settle &amp; report</button>
+        <div class="term-right">
+          <div class="seg" role="group" aria-label="Shell">
+            <button type="button" data-sh="bash" aria-pressed="true">bash</button>
+            <button type="button" data-sh="pwsh" aria-pressed="false">pwsh</button>
+          </div>
+          <button class="copy" type="button" id="termCopy"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="8" height="8" rx="1.5"/><path d="M3 11V4a1 1 0 011-1h7"/></svg>copy</button>
+        </div>
+      </div>
+      <div class="term-body">
+        <pre id="termOut" tabindex="0" aria-live="polite"></pre>
+        <aside class="term-aside" id="termAside"></aside>
+      </div>
+    </div>
+
+    <div class="docs">
+      <a class="doc" href="https://github.com/ai-automation-tools/Edge-Radar#readme" target="_blank" rel="noopener"><small>Start</small><b>README</b><span>install, recipes, flags</span></a>
+      <a class="doc" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener"><small>Rules</small><b>Risk gates</b><span>CLAUDE.md § Execution gates</span></a>
+      <a class="doc" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/setup/ARCHITECTURE.md" target="_blank" rel="noopener"><small>Design</small><b>Architecture</b><span>pipeline, Kelly, gating</span></a>
+      <a class="doc" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener"><small>Reference</small><b>Scripts</b><span>every flag, every script</span></a>
+      <a class="doc" href="https://github.com/ai-automation-tools/Edge-Radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener"><small>Evidence</small><b>Changelog</b><span>the why behind each rule</span></a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <span class="mono">edge-radar.ai-automation-tools.dev</span>
+      <div class="right">
+        <a href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://ai-automation-tools.dev">ai-automation-tools.dev</a>
+        <a href="https://ai-automation-tools.dev/cookies.html">Cookies</a>
+        <a href="#" data-ail-consent="manage">Cookie settings</a>
+      </div>
+    </div>
+    <p class="fine">Edge-Radar is a research tool. The sample markets on this page are illustrative and the gate lab uses the repository's code defaults, not a live book. Nothing here is a recommendation to trade.</p>
+  </div>
+</footer>
+
+<!-- Command palette -->
+<div class="pal-bg" id="palBg" role="presentation">
+  <div class="pal" role="dialog" aria-modal="true" aria-label="Jump to">
+    <div class="pal-in">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5L14 14"/></svg>
+      <input id="palIn" type="text" placeholder="Jump to a section, a gate or a document…" autocomplete="off" spellcheck="false">
+      <kbd>esc</kbd>
+    </div>
+    <div class="pal-list" id="palList"></div>
+    <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status"><i></i><span>Copied</span></div>
+
+<script>
+(function () {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const REPO = 'https://github.com/ai-automation-tools/Edge-Radar';
+  const C = { ok: '#34d399', warn: '#fbbf24', bad: '#fb7185', sky: '#38bdf8', violet: '#a78bfa' };
+
+  /* ── Code defaults (CLAUDE.md § Risk Limits). The lab and the radar compute from these. ── */
+  const D = { feeRate: 0.07, maxEdge: 0.50, minPrice: 0.12, maxPrice: 1.0, kelly: 0.25, noFavThreshold: 0.25, noMinEdge: 0.25, noMinEdgeGlobal: 0.08, minConf: 'medium' };
+  const CONF = { low: 0, medium: 1, high: 2 };
+  // Kalshi taker fee: ceil(0.07 · C · P · (1−P)) per order. Per contract, rounded up to the cent.
+  const fee = p => Math.ceil(D.feeRate * p * (1 - p) * 100 + 1e-9) / 100;
+
+  /* Runs the static gates on one candidate. Portfolio gates need a live book and are not modelled. */
+  function judge(o) {
+    const edge = o.fv - o.ask, f = fee(o.ask), floor = o.floor, req = floor + f;
+    const gates = [];
+    gates.push({ id: '3', name: 'edge ≥ floor + fee', pass: edge >= req - 1e-9, na: false });
+    gates.push({ id: '3.05', name: 'edge ≤ 0.50', pass: edge <= D.maxEdge, na: false });
+    gates.push({ id: '3.5', name: 'price ≥ 0.12', pass: o.ask >= D.minPrice, na: false });
+    gates.push({ id: '3.55', name: 'price ≤ 1.00', pass: o.ask <= D.maxPrice, na: false });
+    gates.push({ id: '4.5', name: 'confidence ≥ medium', pass: CONF[o.conf] >= CONF[D.minConf], na: false });
+    const isNo = o.side === 'no';
+    gates.push({ id: '4.6', name: 'cheap NO: 25% edge + high', pass: !isNo || o.ask >= D.noFavThreshold || (edge >= D.noMinEdge && o.conf === 'high'), na: !isNo || o.ask >= D.noFavThreshold });
+    gates.push({ id: '4.6b', name: 'NO edge ≥ max(floor, 8%)', pass: !isNo || edge >= Math.max(floor, D.noMinEdgeGlobal) - 1e-9, na: !isNo });
+    const net = Math.max(0, edge - f);
+    const kelly = o.ask < 1 ? D.kelly * net / (1 - o.ask) : 0;
+    const failed = gates.filter(g => !g.pass);
+    return { edge, fee: f, net: edge - f, req, kelly, score: Math.min(Math.max(edge, 0) / 0.01, 10), gates, failed, ok: failed.length === 0 };
+  }
+
+  /* ── Toast + copy ── */
+  const toast = $('#toast'); let toastT;
+  function say(msg) { toast.querySelector('span').textContent = msg; toast.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => toast.classList.remove('on'), 1600); }
+  function copyText(text) {
+    const done = () => say('Copied to clipboard');
+    const fail = () => { const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); done(); } catch (e) { say('Select the text to copy'); } ta.remove(); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fail); else fail();
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-copy]'); if (b) copyText(b.dataset.copy); });
+
+  /* ── Mobile menu ── */
+  const menuBtn = $('#menuBtn'), mobileNav = $('#mobileNav');
+  menuBtn.addEventListener('click', () => { const o = mobileNav.classList.toggle('open'); menuBtn.setAttribute('aria-expanded', String(o)); });
+  mobileNav.addEventListener('click', e => { if (e.target.tagName === 'A' && e.target.id !== 'palOpenMobile') { mobileNav.classList.remove('open'); menuBtn.setAttribute('aria-expanded', 'false'); } });
+
+  /* ── Scroll-spy with sliding indicator ── */
+  const nav = $('#nav'), ind = $('#ind'), links = $$('a[data-spy]', nav);
+  function setActive(id) {
+    links.forEach(a => a.classList.toggle('active', a.dataset.spy === id));
+    const a = links.find(l => l.dataset.spy === id);
+    if (!a) { ind.style.opacity = 0; return; }
+    const nr = nav.getBoundingClientRect(), r = a.getBoundingClientRect();
+    ind.style.left = (r.left - nr.left + 11) + 'px'; ind.style.width = (r.width - 22) + 'px'; ind.style.opacity = 1;
+  }
+  const spy = new IntersectionObserver(es => { es.forEach(en => { if (en.isIntersecting) setActive(en.target.id); }); }, { rootMargin: '-45% 0px -50% 0px' });
+  ['how', 'gates', 'pipeline', 'coverage', 'start'].forEach(id => spy.observe(document.getElementById(id)));
+  addEventListener('resize', () => { const a = links.find(l => l.classList.contains('active')); if (a) setActive(a.dataset.spy); });
+
+  /* ── Spotlight tracking for every card-like surface ── */
+  document.addEventListener('pointermove', e => {
+    const el = e.target.closest('.gate, .card, .step, .node'); if (!el) return;
+    const r = el.getBoundingClientRect();
+    el.style.setProperty('--mx', (e.clientX - r.left) + 'px'); el.style.setProperty('--my', (e.clientY - r.top) + 'px');
+  });
+
+  /* ── Pipeline progress line, drawn once the stepper scrolls into view ── */
+  const steps = $('#steps');
+  new IntersectionObserver((es, io) => { es.forEach(en => { if (en.isIntersecting) { steps.classList.add('in'); io.disconnect(); } }); }, { threshold: .3 }).observe(steps);
+
+  /* ── Gate lab ── */
+  const lab = { fv: .58, ask: .52, side: 'yes', conf: 'medium', floor: .03 };
+  const fvIn = $('#fv'), askIn = $('#ask'), floorSel = $('#floor');
+  const pct = (x, s = true) => (s && x > 0 ? '+' : '') + (x * 100).toFixed(1) + '%';
+  function paintRange(el) { el.style.setProperty('--p', ((el.value - el.min) / (el.max - el.min) * 100) + '%'); }
+  function renderLab() {
+    const r = judge(lab);
+    $('#fvOut').textContent = lab.fv.toFixed(2); $('#askOut').textContent = lab.ask.toFixed(2);
+    $('#labTitle').textContent = `A ${Math.round(lab.ask * 100)}c ${lab.side.toUpperCase()} against a ${Math.round(lab.fv * 100)}c fair value`;
+    const e = $('#roEdge'); e.textContent = pct(r.edge); e.className = r.edge > 0 ? 'pos' : r.edge < 0 ? 'neg' : 'dim';
+    $('#roFee').textContent = (r.fee * 100).toFixed(0) + 'c';
+    const n = $('#roNet'); n.textContent = pct(r.net); n.className = r.net > 0 ? 'pos' : 'neg';
+    $('#roReq').textContent = lab.floor >= 1 ? 'off' : pct(r.req, false);
+    $('#roKelly').textContent = r.ok ? (r.kelly * 100).toFixed(1) + '%' : '—';
+    $('#roKelly').className = r.ok ? '' : 'dim';
+    $('#roScore').textContent = r.score.toFixed(1);
+    const v = $('#verdict'); v.className = 'verdict ' + (r.ok ? 'ok' : 'bad');
+    if (r.ok) { $('#vTitle').textContent = 'Clears the static gates'; $('#vSub').textContent = '· portfolio gates still apply at execution'; }
+    else { const g = r.failed[0]; $('#vTitle').textContent = `Rejected at Gate ${g.id}`; $('#vSub').textContent = '· ' + g.name + (r.failed.length > 1 ? ` and ${r.failed.length - 1} more` : ''); }
+    $('#gchips').innerHTML = r.gates.map(g => `<span class="gchip ${g.na ? 'na' : ''} ${g.pass ? 'pass' : 'fail'}"><i></i>${g.id} · ${g.name}</span>`).join('');
+  }
+  fvIn.addEventListener('input', () => { lab.fv = fvIn.value / 100; paintRange(fvIn); $('#labSrc').textContent = 'your numbers'; renderLab(); });
+  askIn.addEventListener('input', () => { lab.ask = askIn.value / 100; paintRange(askIn); $('#labSrc').textContent = 'your numbers'; renderLab(); });
+  floorSel.addEventListener('change', () => { lab.floor = parseFloat(floorSel.value); renderLab(); });
+  $$('[data-side]').forEach(b => b.addEventListener('click', () => { lab.side = b.dataset.side; $$('[data-side]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderLab(); }));
+  $$('[data-conf]').forEach(b => b.addEventListener('click', () => { lab.conf = b.dataset.conf; $$('[data-conf]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderLab(); }));
+  function loadLab(b, scroll = true) {
+    lab.fv = b.fv; lab.ask = b.ask; lab.side = b.side; lab.conf = b.conf; lab.floor = b.floor;
+    fvIn.value = Math.round(b.fv * 100); askIn.value = Math.round(b.ask * 100); paintRange(fvIn); paintRange(askIn);
+    floorSel.value = String(b.floor);
+    $$('[data-side]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.side === b.side)));
+    $$('[data-conf]').forEach(x => x.setAttribute('aria-pressed', String(x.dataset.conf === b.conf)));
+    $('#labSrc').textContent = (scroll ? 'from the radar · ' : 'preset · ') + b.label;
+    renderLab();
+    if (scroll) $('#labPanel').scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  }
+  $('#presets').addEventListener('click', e => { const b = e.target.closest('[data-p]'); if (!b) return; const [fv, ask, side, conf, floor] = b.dataset.p.split(','); loadLab({ fv: +fv, ask: +ask, side, conf, floor: +floor, label: b.textContent }, false); });
+  paintRange(fvIn); paintRange(askIn); renderLab();
+
+  /* ── Radar ──
+     Illustrative candidate markets, not live data. Angle is arbitrary; radius is the ask price (centre = 0c, rim = $1),
+     so cheap longshots sit near the hub and favourites near the edge. Colour is what the static gates would say. */
+  const BLIPS = [
+    { label: 'NHL · home ML · YES',        fv: .58, ask: .52, side: 'yes', conf: 'medium', floor: .03, a: 0.35 },
+    { label: 'NBA · away +6.5 · YES',      fv: .57, ask: .55, side: 'yes', conf: 'medium', floor: .04, a: 1.05 },
+    { label: 'MLB · under 8.5 · NO',       fv: .49, ask: .47, side: 'no',  conf: 'medium', floor: .04, a: 1.7 },
+    { label: 'NFL · covers −7.5 · YES',    fv: .34, ask: .27, side: 'yes', conf: 'medium', floor: .06, a: 2.4 },
+    { label: 'MLB · home ML · YES',        fv: .63, ask: .66, side: 'yes', conf: 'low',    floor: .04, a: 3.0 },
+    { label: 'Soccer · draw · YES',        fv: .29, ask: .24, side: 'yes', conf: 'medium', floor: .03, a: 3.6 },
+    { label: 'NCAAF · covers −14.5 · YES', fv: .22, ask: .16, side: 'yes', conf: 'medium', floor: .06, a: 4.2 },
+    { label: 'NBA · over 221.5 · NO',      fv: .55, ask: .51, side: 'no',  conf: 'high',   floor: .04, a: 4.8 },
+    { label: 'NHL · over 6.5 · YES',       fv: .41, ask: .40, side: 'yes', conf: 'medium', floor: .03, a: 5.4 },
+    { label: 'UFC · underdog · YES',       fv: .38, ask: .31, side: 'yes', conf: 'medium', floor: .03, a: 5.9 },
+    { label: 'NFL · title future · YES',   fv: .09, ask: .11, side: 'yes', conf: 'low',    floor: .03, a: 0.8 },
+    { label: 'Tennis · favourite · YES',   fv: .84, ask: .80, side: 'yes', conf: 'medium', floor: .03, a: 2.0 },
+  ].map(b => { const r = judge(b); return { ...b, r, c: r.ok ? C.ok : r.edge > 0 ? C.warn : C.bad, x: 0, y: 0, lit: 0 }; });
+  const cv = $('#radar'), ctx = cv.getContext('2d'), rtip = $('#rtip'), box = cv.parentElement;
+  let W = 0, H = 0, dpr = 1, hover = -1, t0 = performance.now(), lastSweep = 0;
+  function size() { const r = box.getBoundingClientRect(); dpr = Math.min(devicePixelRatio || 1, 2); W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+  function hex(c, a) { const n = parseInt(c.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; }
+  function draw(now) {
+    const t = reduced ? 0 : (now - t0) / 1000;
+    ctx.clearRect(0, 0, W, H);
+    const cx = W / 2, cy = H / 2 + 6, R = Math.min(W, H) * 0.42;
+    // rings + spokes
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75, 1].forEach(k => { ctx.strokeStyle = `rgba(63,63,70,${k === 1 ? .8 : .5})`; ctx.beginPath(); ctx.arc(cx, cy, R * k, 0, Math.PI * 2); ctx.stroke(); });
+    ctx.strokeStyle = 'rgba(63,63,70,.35)'; ctx.setLineDash([2, 5]);
+    for (let i = 0; i < 6; i++) { const a = i * Math.PI / 6; ctx.beginPath(); ctx.moveTo(cx - R * Math.cos(a), cy - R * Math.sin(a)); ctx.lineTo(cx + R * Math.cos(a), cy + R * Math.sin(a)); ctx.stroke(); }
+    ctx.setLineDash([]);
+    // ring labels (price)
+    ctx.fillStyle = 'rgba(113,113,122,.9)'; ctx.font = '10px JetBrains Mono, ui-monospace, monospace'; ctx.textAlign = 'left';
+    [['25c', .25], ['50c', .5], ['75c', .75], ['$1', 1]].forEach(([l, k]) => ctx.fillText(l, cx + 4, cy - R * k + 11));
+    // floor band: the price-dependent fee makes the floor a ring, drawn faintly at the global 3c floor + fee
+    // sweep
+    const sweep = reduced ? -Math.PI / 2 : (t * 0.9) % (Math.PI * 2);
+    if (!reduced) {
+      const g = ctx.createConicGradient(sweep - Math.PI * .5, cx, cy);
+      g.addColorStop(0, 'rgba(52,211,153,0)'); g.addColorStop(.5, 'rgba(52,211,153,.18)'); g.addColorStop(.5, 'rgba(52,211,153,0)'); g.addColorStop(1, 'rgba(52,211,153,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(52,211,153,.9)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + R * Math.cos(sweep), cy + R * Math.sin(sweep)); ctx.stroke();
+    }
+    // hub
+    const hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 34);
+    hg.addColorStop(0, 'rgba(52,211,153,.28)'); hg.addColorStop(1, 'rgba(52,211,153,0)');
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(cx, cy, 34, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#34d399'; ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2); ctx.fill();
+    // blips
+    BLIPS.forEach((b, i) => {
+      const wob = reduced ? 0 : Math.sin(t * .6 + i) * 2;
+      b.x = cx + (R * b.ask) * Math.cos(b.a) + wob; b.y = cy + (R * b.ask) * Math.sin(b.a) + wob * .6;
+      // light when the sweep passes
+      let da = ((b.a - sweep) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2); if (da > Math.PI) da -= Math.PI * 2;
+      if (!reduced && Math.abs(da) < 0.05) b.lit = 1; b.lit = Math.max(0, b.lit - 0.012);
+      const h = hover === i, r = h ? 7 : 5, glow = Math.max(b.lit, h ? .9 : .2);
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r * 3.4);
+      g.addColorStop(0, hex(b.c, .12 + glow * .35)); g.addColorStop(1, hex(b.c, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, r * 3.4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0a0a0c'; ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = hex(b.c, .55 + glow * .45); ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.fillStyle = hex(b.c, .6 + glow * .4); ctx.beginPath(); ctx.arc(b.x, b.y, h ? 3 : 2.2, 0, Math.PI * 2); ctx.fill();
+      if (h) { ctx.fillStyle = '#f4f4f5'; ctx.font = '500 11px Inter, system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText((b.r.edge >= 0 ? '+' : '') + (b.r.edge * 100).toFixed(0) + '%', b.x, b.y - 12); }
+    });
+    if (!reduced) requestAnimationFrame(draw);
+  }
+  function pick(e) { const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top; let best = -1, bd = 18; BLIPS.forEach((b, i) => { const d = Math.hypot(b.x - x, b.y - y); if (d < bd) { bd = d; best = i; } }); return best; }
+  cv.addEventListener('pointermove', e => {
+    const i = pick(e); if (i !== hover) { hover = i; cv.style.cursor = i > -1 ? 'pointer' : 'default'; if (reduced) draw(performance.now()); }
+    if (i > -1) { const b = BLIPS[i]; rtip.innerHTML = `<i style="--c:${b.c}"></i><b>${b.label}</b><small>fair ${b.fv.toFixed(2)} · ask ${b.ask.toFixed(2)} · edge ${(b.r.edge >= 0 ? '+' : '') + (b.r.edge * 100).toFixed(1)}% · fee ${(b.r.fee * 100).toFixed(0)}c · ${b.r.ok ? 'clears the static gates' : 'rejected at Gate ' + b.r.failed[0].id}</small>`; rtip.style.left = b.x + 'px'; rtip.style.top = b.y + 'px'; rtip.classList.add('on'); } else rtip.classList.remove('on');
+  });
+  cv.addEventListener('pointerleave', () => { hover = -1; rtip.classList.remove('on'); if (reduced) draw(performance.now()); });
+  cv.addEventListener('click', e => { const i = pick(e); if (i > -1) loadLab(BLIPS[i]); });
+  size(); addEventListener('resize', () => { size(); if (reduced) draw(performance.now()); }); draw(performance.now());
+
+  /* ── Gates ── CLAUDE.md § Execution gates, one entry per row. type: reject | reject-cap | cap. */
+  const GATES = [
+    { id: '1',    name: 'Daily loss limit',        type: 'reject',     tags: 'portfolio', d: 'No new positions once the day\'s realised loss reaches <code>MAX_DAILY_LOSS</code>.', m: 'Hourly settlement keeps the figure current intraday, so the gate reads today\'s book rather than yesterday\'s.' },
+    { id: '2',    name: 'Open position count',     type: 'reject',     tags: 'portfolio', d: 'Open positions must stay under <code>MAX_OPEN_POSITIONS</code>.', m: 'Counts rows, not dollars. Gate 2b is the one that measures money.' },
+    { id: '2b',   name: 'Open exposure (S4)',      type: 'reject-cap', tags: 'portfolio fails-open', d: 'Total at-risk below <code>MAX_OPEN_EXPOSURE_PCT</code> and per-sport below <code>MAX_SEGMENT_EXPOSURE_PCT</code>, both as fractions of equity.', m: '<b>The only gate that measures a standing total.</b> Rejects when a ceiling is already breached and trims an order to the remaining headroom otherwise. Added after 26 NFL positions reached 31% of bankroll with every other gate passing. Ships off (0); the live book sets 0.50 / 0.33.', fo: true },
+    { id: '3',    name: 'Minimum edge + fee (F1)', type: 'reject',     tags: 'market', d: 'Claimed edge must clear the per-sport floor <b>plus</b> the exchange fee at that price.', m: 'Kalshi\'s taker fee is <code>ceil(0.07 · C · P · (1 − P))</code> per order, about 1c a contract against a 3–4c floor. Until it was modelled, screening passed bets on a quarter to a third less edge than it believed.' },
+    { id: '3.05', name: 'Edge ceiling (B7)',       type: 'reject',     tags: 'market', d: 'Claimed edge above <code>MAX_EDGE</code> (0.50) is a model or matching bug, not an opportunity.', m: 'An 81% edge passed every gate at 44 contracts before this existed.' },
+    { id: '3.5',  name: 'Minimum price (R7)',      type: 'reject',     tags: 'market', d: 'Ask at or above <code>MIN_MARKET_PRICE</code>. The lottery-ticket floor.', m: 'Pure reject, independent of sizing. The live value is an open experiment on the longshot lane.' },
+    { id: '3.55', name: 'Maximum price',           type: 'reject',     tags: 'market', d: 'Ask at or below <code>MAX_MARKET_PRICE</code>: a cost-to-payout ceiling.', m: 'Ships at 1.0 (off). The live book sets 0.75, an operator preference with no settled evidence yet.' },
+    { id: '3.6',  name: 'Liquidity (L2)',          type: 'reject',     tags: 'market fails-open', d: 'Bid/ask spread at most <code>MAX_BID_ASK_SPREAD</code> and 24h volume at least <code>MIN_MARKET_VOLUME_24H</code>.', m: 'The "illiquid (spread > 5%)" hard stop was documented from launch and only became code in August 2026. Before that the executor traded 20c-wide books.', fo: true },
+    { id: '3.7',  name: 'Lead time (S5)',          type: 'reject',     tags: 'market fails-open', d: 'Game markets only: days to the event at most <code>MAX_DAYS_TO_EVENT_FOR_GAME_MARKETS</code>. Futures exempt.', m: 'Caps lead time, not sports. The runaway NFL book was bought 25–112 days out and nothing settled for months while exposure stacked.', fo: true },
+    { id: '4',    name: 'Composite score',         type: 'reject',     tags: 'market', d: 'Composite at or above <code>MIN_COMPOSITE_SCORE</code>.', m: 'Every composite scales edge as <code>min(edge / 0.01, 10)</code>. An earlier <code>edge × 20</code> made the futures gate structurally unreachable.' },
+    { id: '4.5',  name: 'Confidence',              type: 'reject',     tags: 'market', d: 'Confidence tier at or above <code>MIN_CONFIDENCE</code>.', m: 'Bumps are one-way, down only. At equal claimed edge, <code>high</code> underperformed <code>medium</code>, so the composite caps it to the medium weight.' },
+    { id: '4.6',  name: 'Cheap NO (R1)',           type: 'reject',     tags: 'no-side', d: 'A NO priced below <code>NO_SIDE_FAVORITE_THRESHOLD</code> needs edge at least <code>NO_SIDE_MIN_EDGE</code> <b>and</b> high confidence.', m: 'Over 380 settled bets NO ran −7.7% ROI against YES at +22.4%, and YES beat NO within every shared price band.' },
+    { id: '4.6b', name: 'NO floor (R28)',          type: 'reject',     tags: 'no-side', d: 'Every NO bet: effective floor is <code>max(per-sport floor, NO_SIDE_MIN_EDGE_GLOBAL)</code>.', m: 'Damped rather than banned: the 35–50c NO pocket is the one profitable band and is deliberately left alone.' },
+    { id: '4.7',  name: 'Prediction categories (R25)', type: 'reject', tags: 'market', d: 'Crypto, weather, S&amp;P, mentions, companies and politics are off unless <code>ALLOW_PREDICTION_BETS=true</code>.', m: 'The scanners still run; the gate is what stops money.' },
+    { id: '4.8',  name: 'In-progress games (L1 · S23)', type: 'reject', tags: 'market fails-open', d: 'Off unless <code>ALLOW_LIVE_BETS=true</code>. Start time comes from the Odds API, never the ticker.', m: 'The ticker only carries a time on moneyline series, so a ticker-based check saw nothing on spreads or totals and let 10 college football orders through after kickoff. <b>Fails open</b> when nothing can name a start time, which is why the digest also reports post-kickoff orders.', fo: true },
+    { id: '5',    name: 'Already holding',         type: 'reject',     tags: 'portfolio', d: 'Not already holding this market.', m: 'Compares tickers. Gate 6b is the one that compares direction.' },
+    { id: '6',    name: 'Per-event cap',           type: 'reject',     tags: 'portfolio', d: 'At most <code>MAX_PER_EVENT</code> positions per game; futures use <code>MAX_PER_EVENT_FUTURES</code>.', m: 'The event key keeps the series prefix, so this is really a per-series-per-game cap. Futures outcomes partition one event, so they get their own knob.' },
+    { id: '6b',   name: 'Opposing side (S22)',     type: 'reject',     tags: 'portfolio fails-open', d: 'No bet that is arithmetically unable to win alongside something already held <b>or resting</b> on the same game. Futures exempt.', m: 'Found in the book: a moneyline on one team against a +7.5 cover on the other. A moneyline is treated as the margin-0 case of a spread so one comparison covers both. Rejects only the impossible, never the merely correlated.', fo: true },
+    { id: '7',    name: 'Series dedup',            type: 'reject',     tags: 'portfolio', d: 'Same matchup not bet within <code>SERIES_DEDUP_HOURS</code>; MLB and NHL use 72h for series play.', m: 'Per-sport overrides. 0 disables.' },
+    { id: '8',    name: 'Bet size',                type: 'cap',        tags: 'portfolio', d: 'Order cost capped at <code>MAX_BET_SIZE</code>.', m: 'A cap, not a reject: the order shrinks to fit.' },
+    { id: '9',    name: 'Batch ratio',             type: 'cap',        tags: 'portfolio', d: 'A single bet at most <code>MAX_BET_RATIO</code> × the batch median cost.', m: 'Keeps one large Kelly size from dominating a slate.' },
+  ];
+  const TYPE = { 'reject': ['Reject', C.bad], 'reject-cap': ['Reject + Cap', C.warn], 'cap': ['Cap', C.violet] };
+  const gateGrid = $('#gateGrid');
+  gateGrid.innerHTML = GATES.map(g => `<button class="gate" type="button" data-id="${g.id}" data-tags="${g.type.replace('reject-cap', 'reject cap')} ${g.tags}" style="--c:${TYPE[g.type][1]}" aria-expanded="false">
+      <div class="gt"><span class="num">G${g.id}</span><span class="nm">${g.name}</span><span class="ty">${TYPE[g.type][0]}</span></div>
+      <div class="gd">${g.d}</div>
+      ${g.fo ? '<div class="fo"><span class="c">fails open</span></div>' : ''}
+      <div class="more"><div><p>${g.m}</p></div></div>
+    </button>`).join('');
+  gateGrid.addEventListener('click', e => { const g = e.target.closest('.gate'); if (!g) return; const o = g.classList.toggle('open'); g.setAttribute('aria-expanded', String(o)); });
+  const gchips = $$('#gates .chip'), gq = $('#gq'), gateEls = $$('.gate'), gEmpty = $('#gEmpty');
+  let gfilter = 'all';
+  function applyGates() {
+    const term = gq.value.trim().toLowerCase(); let n = 0;
+    gateEls.forEach(el => {
+      const okF = gfilter === 'all' || el.dataset.tags.split(' ').includes(gfilter);
+      const okQ = !term || (el.textContent + ' ' + el.dataset.tags).toLowerCase().includes(term);
+      const show = okF && okQ; el.classList.toggle('hidden-by-filter', !show); if (show) n++;
+    });
+    gEmpty.classList.toggle('on', n === 0);
+  }
+  gchips.forEach(ch => ch.addEventListener('click', () => { gfilter = ch.dataset.f; gchips.forEach(x => x.setAttribute('aria-pressed', String(x === ch))); applyGates(); }));
+  gq.addEventListener('input', applyGates);
+  function jumpGate(id) {
+    gfilter = 'all'; gchips.forEach(x => x.setAttribute('aria-pressed', String(x.dataset.f === 'all'))); gq.value = ''; applyGates();
+    const el = gateEls.find(g => g.dataset.id === id); if (!el) return;
+    el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' }); el.classList.add('open'); el.setAttribute('aria-expanded', 'true');
+  }
+
+  /* ── Terminal ── Commands are the README's Quick Start and CLAUDE.md's Common Commands, nothing guessed. */
+  const SCRIPTS = {
+    install: { title: 'Install', blurb: 'Python 3.11 or later. The venv keeps the pinned dependencies out of your global site-packages; the .env holds your own keys and never leaves the machine.', req: [['Needs', 'python ≥ 3.11, git'], ['Keys', 'Kalshi · Odds API'], ['Default', 'DRY_RUN=true']], c: C.ok,
+      bash: [['cmd', 'git clone https://github.com/ai-automation-tools/Edge-Radar.git'], ['cmd', 'cd Edge-Radar'], ['blank'], ['cmd', 'python -m venv .venv'], ['cmd', 'source .venv/bin/activate'], ['cmd', 'pip install -r requirements.txt'], ['blank'], ['cmt', '# add Kalshi + Odds API keys to .env; DRY_RUN stays true'], ['cmd', 'cp .env.example .env']],
+      pwsh: [['cmd', 'git clone https://github.com/ai-automation-tools/Edge-Radar.git'], ['cmd', 'cd Edge-Radar'], ['blank'], ['cmd', 'python -m venv .venv'], ['cmd', '.venv\\Scripts\\Activate.ps1'], ['cmd', 'pip install -r requirements.txt'], ['blank'], ['cmt', '# add Kalshi + Odds API keys to .env; DRY_RUN stays true'], ['cmd', 'Copy-Item .env.example .env']] },
+    preview: { title: 'Preview a scan', blurb: 'doctor.py validates keys, dependencies and every gate threshold that is actually loaded. A preview scan prices today\'s slate and prints each row\'s gate verdict. No order is placed.', req: [['Risk', 'none'], ['Prints', 'edge · gates · size'], ['Quota', 'Odds API, cached 5 min']], c: C.sky,
+      bash: [['cmt', '# validate the environment'], ['cmd', 'python scripts/doctor.py'], ['blank'], ['cmt', '# price the NBA slate, preview only'], ['cmd', 'python scripts/scan.py sports --filter nba'], ['blank'], ['cmt', '# or several sports, and keep the preview'], ['cmd', 'python scripts/scan.py sports --filter mlb,nhl --date today --save']],
+      pwsh: [['cmt', '# validate the environment'], ['cmd', 'python scripts/doctor.py'], ['blank'], ['cmt', '# price the NBA slate, preview only'], ['cmd', 'python scripts/scan.py sports --filter nba'], ['blank'], ['cmt', '# or several sports, and keep the preview'], ['cmd', 'python scripts/scan.py sports --filter mlb,nhl --date today --save']] },
+    execute: { title: 'Dry-run execute', blurb: 'The same chain, through sizing and the order builder. With DRY_RUN=true the order is logged exactly as a live one would be, so backtests on the log stay valid, and nothing reaches the venue.', req: [['Risk', 'none while DRY_RUN=true'], ['Caps', '--max-bets · --budget'], ['Log', 'data/history/']], c: C.warn,
+      bash: [['cmt', '# dry run: sizes and logs the orders, places nothing'], ['cmd', 'python scripts/scan.py sports --filter nba --execute --unit-size 1 --max-bets 5'], ['blank'], ['cmt', '# budget-capped, today only, skipping markets already held'], ['cmd', 'python scripts/scan.py sports --unit-size 1 --max-bets 5 --budget 10% --date today --exclude-open --execute']],
+      pwsh: [['cmt', '# dry run: sizes and logs the orders, places nothing'], ['cmd', 'python scripts/scan.py sports --filter nba --execute --unit-size 1 --max-bets 5'], ['blank'], ['cmt', '# budget-capped, today only, skipping markets already held'], ['cmd', 'python scripts/scan.py sports --unit-size 1 --max-bets 5 --budget 10% --date today --exclude-open --execute']] },
+    settle: { title: 'Settle & report', blurb: 'Settlement writes the 27-field record per bet, including the measured fee from the fills endpoint. The daily summary is the digest the scheduled task emails each morning.', req: [['Writes', 'settlements log'], ['Reports', 'reports/'], ['Loop', 'Brier → stdevs']], c: C.violet,
+      bash: [['cmt', '# settle resolved markets and print P&L'], ['cmd', 'python scripts/kalshi/kalshi_settler.py report --detail --save'], ['blank'], ['cmt', '# the morning digest: yesterday, open exposure, today pending'], ['cmd', 'python scripts/kalshi/daily_summary.py --save'], ['blank'], ['cmt', '# positions and exposure'], ['cmd', 'python scripts/kalshi/risk_check.py --report positions']],
+      pwsh: [['cmt', '# settle resolved markets and print P&L'], ['cmd', 'python scripts/kalshi/kalshi_settler.py report --detail --save'], ['blank'], ['cmt', '# the morning digest: yesterday, open exposure, today pending'], ['cmd', 'python scripts/kalshi/daily_summary.py --save'], ['blank'], ['cmt', '# positions and exposure'], ['cmd', 'python scripts/kalshi/risk_check.py --report positions']] },
+  };
+  const termOut = $('#termOut'), termAside = $('#termAside'), ttabs = $$('.ttab'), shBtns = $$('#term .seg button');
+  let curT = 'install', curSh = 'bash';
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+  function renderTerm() {
+    const sc = SCRIPTS[curT], lines = sc[curSh];
+    $('#term').style.setProperty('--c', sc.c);
+    termOut.innerHTML = lines.map((l, i) => `<span class="ln ${l[0]}" style="--d:${(i * 0.09).toFixed(2)}s">${l[1] ? esc(l[1]) : ''}</span>`).join('') + `<span class="ln" style="--d:${(lines.length * 0.09).toFixed(2)}s"><span class="cursor"></span></span>`;
+    termAside.innerHTML = `<h4>${sc.title}</h4><p>${sc.blurb}</p><div class="req">${sc.req.map(r => `<span>${r[0]}<b>${r[1]}</b></span>`).join('')}</div><a class="act act-primary" style="--c:${sc.c}" href="${REPO}#readme" target="_blank" rel="noopener">Open the README <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 12L12 4M6 4h6v6"/></svg></a>`;
+  }
+  ttabs.forEach(b => b.addEventListener('click', () => { curT = b.dataset.t; ttabs.forEach(x => x.setAttribute('aria-selected', String(x === b))); renderTerm(); }));
+  shBtns.forEach(b => b.addEventListener('click', () => { curSh = b.dataset.sh; shBtns.forEach(x => x.setAttribute('aria-pressed', String(x === b))); renderTerm(); }));
+  $('#termCopy').addEventListener('click', () => copyText(SCRIPTS[curT][curSh].filter(l => l[0] === 'cmd').map(l => l[1]).join('\n')));
+  renderTerm();
+
+  /* ── Command palette ── */
+  const palBg = $('#palBg'), palIn = $('#palIn'), palList = $('#palList');
+  function open(u) { const a = document.createElement('a'); a.href = u; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
+  function go(h) { document.querySelector(h).scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' }); }
+  const ITEMS = [
+    { g: 'Sections', label: 'How it works', hint: '#how', c: C.ok, go: () => go('#how') },
+    { g: 'Sections', label: 'Gate lab', hint: 'try a bet', c: C.ok, go: () => go('#labPanel') },
+    { g: 'Sections', label: 'Risk gates', hint: '#gates', c: C.bad, go: () => go('#gates') },
+    { g: 'Sections', label: 'Pipeline', hint: '#pipeline', c: C.sky, go: () => go('#pipeline') },
+    { g: 'Sections', label: 'Coverage', hint: '#coverage', c: C.warn, go: () => go('#coverage') },
+    { g: 'Sections', label: 'Quick start', hint: '#start', c: C.violet, go: () => go('#start') },
+    ...GATES.map(g => ({ g: 'Gates', label: `Gate ${g.id} · ${g.name}`, hint: TYPE[g.type][0], c: TYPE[g.type][1], go: () => jumpGate(g.id) })),
+    ...BLIPS.map(b => ({ g: 'Radar samples', label: b.label, hint: `edge ${(b.r.edge >= 0 ? '+' : '') + (b.r.edge * 100).toFixed(0)}%`, c: b.c, go: () => loadLab(b) })),
+    { g: 'Documents', label: 'README', hint: 'github.com', go: () => open(REPO + '#readme') },
+    { g: 'Documents', label: 'CLAUDE.md · rules and gates', hint: 'github.com', go: () => open(REPO + '/blob/master/CLAUDE.md') },
+    { g: 'Documents', label: 'Architecture', hint: 'docs/setup', go: () => open(REPO + '/blob/master/docs/setup/ARCHITECTURE.md') },
+    { g: 'Documents', label: 'Scripts reference', hint: 'docs/scripts', go: () => open(REPO + '/blob/master/docs/scripts/SCRIPTS_REFERENCE.md') },
+    { g: 'Documents', label: 'Changelog', hint: 'docs/CHANGELOG.md', go: () => open(REPO + '/blob/master/docs/CHANGELOG.md') },
+    { g: 'Links', label: 'Source on GitHub', hint: 'ai-automation-tools/Edge-Radar', go: () => open(REPO) },
+    { g: 'Links', label: 'ai-automation-tools.dev', hint: 'the org landing page', go: () => open('https://ai-automation-tools.dev') },
+  ];
+  let sel = 0, shown = [];
+  function renderPal() {
+    const term = palIn.value.trim().toLowerCase();
+    shown = ITEMS.filter(i => !term || (i.label + ' ' + i.hint + ' ' + i.g).toLowerCase().includes(term));
+    sel = Math.min(sel, Math.max(0, shown.length - 1));
+    if (!shown.length) { palList.innerHTML = '<div class="pal-empty">Nothing matches. Try a gate number, a section or a document.</div>'; return; }
+    let html = '', lastG = '';
+    shown.forEach((i, k) => { if (i.g !== lastG) { html += `<div class="pal-grp">${i.g}</div>`; lastG = i.g; } html += `<div class="pal-item ${k === sel ? 'sel' : ''}" data-k="${k}" style="--c:${i.c || '#52525b'}"><i></i><span>${i.label}</span><small>${i.hint}</small></div>`; });
+    palList.innerHTML = html; const s = palList.querySelector('.sel'); if (s) s.scrollIntoView({ block: 'nearest' });
+  }
+  function openPal() { palBg.classList.add('open'); palIn.value = ''; sel = 0; renderPal(); setTimeout(() => palIn.focus(), 10); }
+  function closePal() { palBg.classList.remove('open'); }
+  $('#palOpen').addEventListener('click', openPal);
+  $('#palOpenMobile').addEventListener('click', e => { e.preventDefault(); mobileNav.classList.remove('open'); openPal(); });
+  palBg.addEventListener('click', e => { if (e.target === palBg) closePal(); });
+  palIn.addEventListener('input', () => { sel = 0; renderPal(); });
+  palList.addEventListener('click', e => { const it = e.target.closest('.pal-item'); if (it) { closePal(); shown[+it.dataset.k].go(); } });
+  palList.addEventListener('pointermove', e => { const it = e.target.closest('.pal-item'); if (it && +it.dataset.k !== sel) { sel = +it.dataset.k; renderPal(); } });
+  document.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); palBg.classList.contains('open') ? closePal() : openPal(); return; }
+    if (!palBg.classList.contains('open')) return;
+    if (e.key === 'Escape') closePal();
+    else if (e.key === 'ArrowDown') { e.preventDefault(); sel = (sel + 1) % shown.length; renderPal(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); sel = (sel - 1 + shown.length) % shown.length; renderPal(); }
+    else if (e.key === 'Enter' && shown[sel]) { closePal(); shown[sel].go(); }
+  });
+})();
+</script>
+
+<!-- Shared consent banner, served from the org apex so the banner and the notice it links to have one home. -->
 <script src="https://ai-automation-tools.dev/consent.js" defer></script>
 </body>
 </html>
