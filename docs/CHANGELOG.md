@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-10-05 -- Ops deck: light/dark theme switch
+
+`.claude/html/index.html` (`edge-radar.mikesailab.com`) gets the org's two-button Sun/Moon
+switch at the right end of the topbar, the same control as Cronsole's compact toolbar toggle.
+
+- **Default stays dark.** A visitor who never clicks sees the page exactly as before. The choice
+  is stored in `localStorage` under `edge-radar.theme` and applied as a `light`/`dark` class on
+  `<html>` by a pre-paint script in `<head>`, so there is no flash; `meta theme-color` follows.
+- **The light palette** is a `:root.light` token block plus a short override list for the
+  hard-coded dark surfaces (topbar, next-fire card, code boxes, timeline, palette, toast). The
+  accents step down to their -700 shades for text contrast on `#fafafa`: emerald 5.2:1, sky 5.7,
+  amber 4.8, rose 6.1; the dimmest text tier (`--fg-5` `#6b6b73`) is 5.1:1, 4.8 on `#f4f4f5`.
+- The inline series colours (`--c`, amber-400 and friends, set in the markup and in `SCHED`'s
+  `KIND` map) stay as they are. Every label that mixed them toward white now mixes through
+  `--cm`/`--cm-to`, which are unset in dark (falling back to the old 80-85% toward `#fff`) and
+  50% toward black in light. Timeline markers darken to 65% in light so they clear 3:1.
+- Rules for components the ops deck does not render (radar, gate lab, gate grid, terminal) are
+  shared with `site/` and were not themed. `site/` itself is unchanged.
+
+---
+
 ## 2026-10-05 -- U1 reviewed: the shard is read per market, so Basketball moving to shard 3 needed no code
 
 The 2026-10-05 upstream check (PR #315) queued three Kalshi changelog items against the money

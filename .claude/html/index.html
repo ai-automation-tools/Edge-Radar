@@ -8,6 +8,17 @@
   <meta name="robots" content="noindex" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <meta name="theme-color" content="#060606" />
+  <script>
+    // Apply the stored theme before first paint so a light-theme visitor never sees a dark flash.
+    // Default is dark (the page shipped dark-only); this fallback must match DEFAULT_THEME in the
+    // toggle script at the end of <body>, or the first frame disagrees with the page that follows.
+    (function () {
+      var t = 'dark';
+      try { if (localStorage.getItem('edge-radar.theme') === 'light') t = 'light'; } catch (e) {}
+      document.documentElement.classList.add(t);
+      if (t === 'light') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#fafafa');
+    })();
+  </script>
 
   <!-- No build step. Same tokens and components as the public page in site/; this page adds the schedule, the
        next-fire clock and the operator links. Fonts and the shared consent script are the only external resources. -->
@@ -17,9 +28,11 @@
   <style>
 
     /* Design tokens. Same ground, surfaces and type as ai-automation-tools.dev so the two read as siblings;
-       the page accent is Edge-Radar's emerald, the colour the org page gives this tool. Dark-only by design. */
+       the page accent is Edge-Radar's emerald, the colour the org page gives this tool. Dark is the default;
+       :root.light (end of this sheet) swaps the tokens, and the toggle in the topbar picks between them. */
     :root {
       color-scheme: dark;
+      --muted: #27272a;         /* theme toggle track */
       --bg: #060606;
       --bg-2: #0a0a0c;
       --surface: rgba(24, 24, 27, 0.45);
@@ -195,7 +208,7 @@
     .flow { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 26px; }
     @media (min-width: 900px) { .flow { grid-template-columns: 1fr 44px 1.08fr 44px 1fr; align-items: stretch; } }
     .col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-    .col-h { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 85%, #fff); }
+    .col-h { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) var(--cm, 85%), var(--cm-to, #fff)); }
     .col-h i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
     .col-s { font-size: 12px; color: var(--fg-4); margin: -4px 0 2px; }
     .node { --mx: 50%; --my: 50%; position: relative; border: 1px solid color-mix(in srgb, var(--c) 18%, var(--line)); border-radius: var(--r-md); background: color-mix(in srgb, var(--c) 4%, var(--surface)); padding: 10px 12px; overflow: hidden; transition: border-color .3s, background .3s, transform .3s var(--ease); }
@@ -204,10 +217,10 @@
     .node:hover::after { opacity: 1; }
     .node.key { border-color: color-mix(in srgb, var(--c) 40%, var(--line)); background: color-mix(in srgb, var(--c) 9%, var(--surface)); }
     .node .t { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; font-weight: 600; color: var(--fg); }
-    .node .t .m { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 80%, #fff); }
+    .node .t .m { font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: color-mix(in srgb, var(--c) var(--cm, 80%), var(--cm-to, #fff)); }
     .node .d { font-size: 11.5px; color: var(--fg-4); margin-top: 2px; line-height: 1.5; }
     .node .d.mono { font-size: 10.5px; color: var(--fg-5); }
-    .node .d em { font-style: normal; color: color-mix(in srgb, var(--c) 80%, #fff); font-family: var(--mono); font-size: 10.5px; }
+    .node .d em { font-style: normal; color: color-mix(in srgb, var(--c) var(--cm, 80%), var(--cm-to, #fff)); font-family: var(--mono); font-size: 10.5px; }
     .conn { display: none; align-items: center; justify-content: center; }
     @media (min-width: 900px) { .conn { display: flex; } }
     .conn svg { width: 44px; height: 100%; min-height: 120px; overflow: visible; }
@@ -244,7 +257,7 @@
     .gate .gt { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; }
     .gate .num { font-family: var(--mono); font-size: 11px; color: var(--c); min-width: 34px; }
     .gate .nm { font-size: 14px; font-weight: 600; color: var(--fg); flex: 1; min-width: 0; }
-    .gate .ty { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) 85%, #fff); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
+    .gate .ty { font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; padding: 3px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) var(--cm, 85%), var(--cm-to, #fff)); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
     .gate .gd { position: relative; z-index: 1; font-size: 12.5px; color: var(--fg-3); line-height: 1.5; }
     .gate .gd code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); }
     .gate .more { position: relative; z-index: 1; display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s var(--ease); }
@@ -291,7 +304,7 @@
     .card:hover::before, .card:hover::after { opacity: 1; }
     .card > * { position: relative; z-index: 1; }
     .card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-    .kind { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) 80%, #fff); }
+    .kind { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c) var(--cm, 80%), var(--cm-to, #fff)); }
     .kind i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
     .glyph { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; color: var(--c); background: color-mix(in srgb, var(--c) 10%, transparent); border: 1px solid color-mix(in srgb, var(--c) 22%, transparent); }
     .glyph svg { width: 20px; height: 20px; }
@@ -299,7 +312,7 @@
     .card p { margin: 0; color: var(--fg-3); font-size: 14px; line-height: 1.55; }
     .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
     .tag { font-family: var(--mono); font-size: 11px; padding: 3px 7px; border-radius: 5px; border: 1px solid var(--line); color: var(--fg-4); }
-    .tag.on { color: color-mix(in srgb, var(--c) 85%, #fff); border-color: color-mix(in srgb, var(--c) 30%, transparent); }
+    .tag.on { color: color-mix(in srgb, var(--c) var(--cm, 85%), var(--cm-to, #fff)); border-color: color-mix(in srgb, var(--c) 30%, transparent); }
     .tag.off { color: var(--fg-5); text-decoration: line-through; }
     .card .foot { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--fg-4); }
     .card .foot code { font-family: var(--mono); font-size: 11.5px; color: var(--fg-2); }
@@ -336,7 +349,7 @@
     .req span b { font-weight: 500; color: var(--fg-2); text-align: right; }
     .act { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; height: 32px; padding: 0 11px; border-radius: var(--r-sm); font-size: 13px; font-weight: 500; border: 1px solid transparent; transition: all .2s; }
     .act svg { width: 13px; height: 13px; }
-    .act-primary { background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--c, var(--accent)) 85%, #fff); border-color: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
+    .act-primary { background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent); color: color-mix(in srgb, var(--c, var(--accent)) var(--cm, 85%), var(--cm-to, #fff)); border-color: color-mix(in srgb, var(--c, var(--accent)) 28%, transparent); }
     .act-primary:hover { background: color-mix(in srgb, var(--c, var(--accent)) 24%, transparent); border-color: color-mix(in srgb, var(--c, var(--accent)) 50%, transparent); }
     .term-aside .act { align-self: flex-start; margin-top: auto; }
     .copy { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--line-2); background: transparent; color: var(--fg-3); font: 11px var(--mono); cursor: pointer; letter-spacing: 0; text-transform: none; transition: all .2s; }
@@ -406,7 +419,7 @@
     .clock b small { font-size: 18px; color: var(--fg-4); margin-left: 4px; }
     .clock span { font-size: 13px; color: var(--fg-4); }
     .nf { display: grid; gap: 4px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--c, var(--sky)) 30%, var(--line)); border-radius: var(--r-md); background: color-mix(in srgb, var(--c, var(--sky)) 7%, transparent); }
-    .nf small { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c, var(--sky)) 80%, #fff); display: flex; align-items: center; gap: 8px; }
+    .nf small { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: color-mix(in srgb, var(--c, var(--sky)) var(--cm, 80%), var(--cm-to, #fff)); display: flex; align-items: center; gap: 8px; }
     .nf small i { width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--sky)); }
     .nf > * { min-width: 0; }
     .nf b { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--fg); overflow-wrap: anywhere; }
@@ -455,7 +468,7 @@
     @media (min-width: 560px) { .links { grid-template-columns: repeat(2, 1fr); } }
     @media (min-width: 900px) { .links { grid-template-columns: repeat(4, 1fr); } }
     .links .doc { padding: 16px; }
-    .links .doc small { color: color-mix(in srgb, var(--c, var(--fg-5)) 80%, #fff); }
+    .links .doc small { color: color-mix(in srgb, var(--c, var(--fg-5)) var(--cm, 80%), var(--cm-to, #fff)); }
     .links .doc:hover { border-color: color-mix(in srgb, var(--c, var(--accent)) 35%, var(--line)); }
 
     /* Schedule table */
@@ -473,7 +486,7 @@
     .sched .nm { font-family: var(--mono); font-size: 12.5px; color: var(--fg); white-space: nowrap; }
     .sched .nm i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); margin-right: 8px; vertical-align: 0; }
     .sched .nm .money { margin-left: 8px; font-family: var(--mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); border: 1px solid rgba(251,191,36,.35); border-radius: 4px; padding: 1px 5px; vertical-align: 1px; }
-    .sched .cad span { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) 85%, #fff); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
+    .sched .cad span { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 5px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); color: color-mix(in srgb, var(--c) var(--cm, 85%), var(--cm-to, #fff)); background: color-mix(in srgb, var(--c) 8%, transparent); white-space: nowrap; }
     .sched .tm { font-family: var(--mono); font-size: 12.5px; color: var(--fg-2); white-space: nowrap; }
     .sched .tm small { display: block; font-size: 10.5px; color: var(--fg-5); }
     .sched .what { font-size: 13px; line-height: 1.5; }
@@ -500,6 +513,74 @@
     .halt p { margin: 0 0 10px; font-size: 13px; color: var(--fg-3); }
     .halt code { font-family: var(--mono); font-size: 12px; color: var(--fg-2); }
     .halt pre { margin: 10px 0 0; padding: 10px 12px; border-radius: var(--r-md); background: rgba(6,6,6,.7); border: 1px solid var(--line); font: 12px/1.7 var(--mono); color: var(--fg-2); overflow-x: auto; }
+
+    /* ── Theme toggle (same control as Cronsole's compact toolbar switch) ── */
+    .theme-tg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 12px; background: color-mix(in srgb, var(--muted) 60%, transparent); flex: none; }
+    .theme-tg button { display: grid; place-items: center; width: 28px; height: 24px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--fg-4); cursor: pointer; transition: color .15s, background-color .15s, box-shadow .15s; }
+    .theme-tg button:hover { color: var(--fg); }
+    .theme-tg button[aria-pressed="true"] { background: var(--bg); color: var(--fg); box-shadow: 0 1px 2px rgb(0 0 0 / .05); }
+    .theme-tg button:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 60%, transparent); }
+    .theme-tg svg { width: 13px; height: 13px; }
+
+    /* ── Light theme ─────────────────────────
+       Tokens first. Accents step down to their -700 shades so text clears WCAG AA on the light ground
+       (on #fafafa: emerald 5.2, sky 5.7, amber 4.8, rose 6.1; fg-5 #6b6b73 is 5.1, 4.8 on #f4f4f5).
+       --cm / --cm-to flip every "series colour mixed toward white" label to "mixed 50% toward black", which
+       keeps the inline --c hexes (amber-400 and friends) readable without touching the markup or the script. */
+    :root.light {
+      color-scheme: light;
+      --muted: #e4e4e7;
+      --bg: #fafafa;
+      --bg-2: #f4f4f5;
+      --surface: #ffffff;
+      --surface-2: #f4f4f5;
+      --line: #e4e4e7;
+      --line-2: #d4d4d8;
+      --fg: #18181b;
+      --fg-2: #27272a;
+      --fg-3: #3f3f46;
+      --fg-4: #52525b;
+      --fg-5: #6b6b73;
+      --accent: #047857;
+      --accent-ink: #ffffff;
+      --sky: #0369a1;
+      --amber: #b45309;
+      --violet: #6d28d9;
+      --rose: #be123c;
+      --ok: #059669;
+      --cm: 50%;
+      --cm-to: #000;
+    }
+    .light body { background-image: radial-gradient(rgba(0,0,0,0.07) 1.2px, transparent 0); }
+    .light ::-webkit-scrollbar-thumb { background: #d4d4d8; }
+    .light .topbar { background: rgba(250,250,250,0.78); border-bottom-color: var(--line); }
+    .light .mobile-nav { background: rgba(250,250,250,.97); }
+    .light .mobile-nav a, .light section, .light footer { border-color: var(--line); }
+    .light .kbd-btn, .light .search, .light .btn-ghost { background: var(--surface); }
+    .light kbd { background: var(--bg-2); }
+    .light .gh-btn:hover, .light .btn-ghost:hover, .light .strip a:hover, .light .sched tr.r:hover { background: var(--bg-2); }
+    .light .kbd-btn:hover, .light .gh-btn:hover, .light .btn-ghost:hover, .light .copy:hover, .light .chip:hover { border-color: #a1a1aa; }
+    .light .glow { opacity: .55; }
+    .light h1 em { background-image: linear-gradient(90deg, #047857, #059669 55%, #0369a1); }
+    .light h1 em.sky { background-image: linear-gradient(90deg, #0369a1, #0284c7 55%, #047857); }
+    .light .btn-primary:hover { background: #065f46; box-shadow: 0 0 20px -8px rgba(4,120,87,.5); }
+    .light .strip, .light .tl-wrap { background: var(--surface); }
+    .light .sub code, .light .note code, .light .sched .what code, .light .halt pre { background: var(--bg-2); }
+    .light .loop code { color: var(--accent); }
+    .light .chip[aria-pressed="true"] { color: #fff; }
+    .light .step .n { background: var(--surface); }
+    .light .next, .light .codebox { background: var(--surface); box-shadow: 0 20px 50px -36px rgba(0,0,0,.35); }
+    .light .next .bar, .light .codebox .bar, .light .sched th { background: var(--bg-2); }
+    .light .tl .mk { background: color-mix(in srgb, var(--c) 65%, #000); border-color: var(--surface); }
+    .light .tl .mk.weekly { background: var(--surface); border-color: color-mix(in srgb, var(--c) 65%, #000); }
+    .light .tl .now { box-shadow: none; }
+    .light .tl .done { background: linear-gradient(90deg, rgba(3,105,161,.1), rgba(3,105,161,.5)); }
+    .light .tl .tip, .light .pal, .light .toast { background: var(--surface); box-shadow: 0 10px 30px -12px rgba(0,0,0,.25); }
+    .light .pal-bg { background: rgba(24,24,27,.35); }
+    .light .pal-item.sel { background: rgba(4,120,87,.1); color: var(--fg); }
+    .light .sched .nm .money { border-color: rgba(180,83,9,.4); }
+    .light .halt { border-color: rgba(190,18,60,.3); background: rgba(190,18,60,.04); }
+    .light .halt h3 { color: var(--rose); }
   </style>
 </head>
 <body>
@@ -520,6 +601,14 @@
       <span class="ind" id="ind" aria-hidden="true"></span>
     </nav>
     <div class="topbar-right">
+      <div class="theme-tg" role="group" aria-label="Theme">
+        <button type="button" data-theme-set="light" aria-pressed="false" aria-label="Light theme" title="Light theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        </button>
+        <button type="button" data-theme-set="dark" aria-pressed="true" aria-label="Dark theme" title="Dark theme">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/></svg>
+        </button>
+      </div>
       <button class="kbd-btn" id="palOpen" type="button" aria-label="Open command palette">Jump to… <kbd>⌘K</kbd></button>
       <a class="gh-btn" href="https://github.com/ai-automation-tools/Edge-Radar" target="_blank" rel="noopener noreferrer">
         <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
@@ -781,6 +870,24 @@
   const TZ = 'America/Los_Angeles', FOLDER = '\\AI-Projects\\Edge-Radar-MikesAILab\\';
   const KIND = { orders: ['places orders', '#fbbf24'], report: ['report', '#38bdf8'], maint: ['maintenance', '#a78bfa'], cont: ['continuous', '#71717a'] };
   const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+  /* ── Theme toggle ── */
+  // Must match the pre-paint script in <head>.
+  const DEFAULT_THEME = 'dark', THEME_KEY = 'edge-radar.theme';
+  const themeBtns = $$('[data-theme-set]'), themeMeta = $('meta[name="theme-color"]');
+  function applyTheme(t) {
+    const root = document.documentElement;
+    root.classList.remove('light', 'dark'); root.classList.add(t);
+    themeMeta.setAttribute('content', t === 'light' ? '#fafafa' : '#060606');
+    themeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeSet === t)));
+  }
+  let stored = null;
+  try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+  applyTheme(stored === 'light' || stored === 'dark' ? stored : DEFAULT_THEME);
+  themeBtns.forEach(b => b.addEventListener('click', () => {
+    applyTheme(b.dataset.themeSet);
+    try { localStorage.setItem(THEME_KEY, b.dataset.themeSet); } catch (e) {}
+  }));
 
   /* MAINT: the schedule. One entry per Task Scheduler task, in docs/task-schedules/README.md order. days is 'daily',
      a list of weekday indexes (0 = Sunday), or null for a continuous task; time is 24h PT. The next-fire card, the
