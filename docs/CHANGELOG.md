@@ -2,10 +2,12 @@
 
 ---
 
-## 2026-10-05 -- Ops deck: light/dark theme switch
+## 2026-10-05 -- Both static pages: light/dark theme switch
 
-`.claude/html/index.html` (`edge-radar.mikesailab.com`) gets the org's two-button Sun/Moon
-switch at the right end of the topbar, the same control as Cronsole's compact toolbar toggle.
+`.claude/html/index.html` (`edge-radar.mikesailab.com`) and `site/index.html`
+(`edge-radar.ai-automation-tools.dev`) get the org's two-button Sun/Moon switch at the right end
+of the topbar, the same control as Cronsole's compact toolbar toggle. Both pages read and write
+the same key, so one choice carries across.
 
 - **Default stays dark.** A visitor who never clicks sees the page exactly as before. The choice
   is stored in `localStorage` under `edge-radar.theme` and applied as a `light`/`dark` class on
@@ -18,8 +20,12 @@ switch at the right end of the topbar, the same control as Cronsole's compact to
   `KIND` map) stay as they are. Every label that mixed them toward white now mixes through
   `--cm`/`--cm-to`, which are unset in dark (falling back to the old 80-85% toward `#fff`) and
   50% toward black in light. Timeline markers darken to 65% in light so they clear 3:1.
-- Rules for components the ops deck does not render (radar, gate lab, gate grid, terminal) are
-  shared with `site/` and were not themed. `site/` itself is unchanged.
+- `site/` also themes what only it renders: the org source bar, the gate lab (range tracks,
+  segmented controls, readouts, verdict and gate chips), the gate grid, the terminal, and the
+  radar canvas, which picks a per-theme palette in JS (`RADAR`, `BLIP_LIGHT`) and redraws on a
+  `themechange` event when reduced motion has stopped its animation loop.
+- In the ops deck, the CSS rules for components it does not render (radar, gate lab, gate grid,
+  terminal) were left unthemed; they are live only in `site/`.
 
 ---
 
