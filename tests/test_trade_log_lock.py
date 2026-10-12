@@ -97,22 +97,26 @@ class TestSettlerConcurrencySafety:
                 self._on_network()
                 self._fired = True
             return {
-                "settlements": [{
-                    "ticker": "T-A",
-                    "market_result": "yes",
-                    "revenue": 400,  # cents
-                    "settled_time": "2026-07-20T00:00:00Z",
-                }],
+                "settlements": [
+                    {
+                        "ticker": "T-A",
+                        "market_result": "yes",
+                        "revenue": 400,  # cents
+                        "settled_time": "2026-07-20T00:00:00Z",
+                    }
+                ],
                 "cursor": "",
             }
 
         def get_market(self, ticker):
-            return {"market": {
-                "status": "settled",
-                "result": "yes",
-                "last_price": 55,
-                "close_time": "2026-07-20T00:00:00Z",
-            }}
+            return {
+                "market": {
+                    "status": "settled",
+                    "result": "yes",
+                    "last_price": 55,
+                    "close_time": "2026-07-20T00:00:00Z",
+                }
+            }
 
     def test_concurrent_append_during_fetch_is_not_clobbered(self):
         import kalshi_settler
@@ -127,9 +131,26 @@ class TestSettlerConcurrencySafety:
         result = kalshi_settler.settle_trades(client)
 
         ids = {t["trade_id"] for t in load_trade_log()}
-        assert "A" in ids            # the target trade settled
-        assert "CONCURRENT" in ids   # the trade appended mid-fetch survived
+        assert "A" in ids  # the target trade settled
+        assert "CONCURRENT" in ids  # the trade appended mid-fetch survived
         assert result["settled"] == 1
 
         settled = next(t for t in load_trade_log() if t["trade_id"] == "A")
         assert settled["closed_at"] is not None
+
+
+class TestMarkCancelled:
+    def test_closes_zero_fill_rows_only(self):
+        save_trade_log(
+            [
+                {"order_id": "a", "fill_status": "resting", "filled_contracts": 0},
+                {"order_id": "b", "fill_status": "partial", "filled_contracts": 2},
+                {"order_id": "c", "fill_status": "resting", "filled_contracts": 0},
+            ]
+        )
+        assert trade_log.mark_cancelled({"a", "b"}) == 1
+        a, b, c = load_trade_log()
+        assert a["fill_status"] == "cancelled" and a["closed_at"]
+        assert b["fill_status"] == "partial" and "closed_at" not in b
+        assert c["fill_status"] == "resting"
+        assert trade_log.mark_cancelled({"a"}) == 0  # already closed

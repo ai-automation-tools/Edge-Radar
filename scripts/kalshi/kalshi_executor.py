@@ -33,7 +33,7 @@ from dataclasses import dataclass, asdict  # noqa: F401
 # Shared imports
 import paths  # noqa: F401 -- path constants -- configures sys.path
 from opportunity import Opportunity
-from trade_log import load_trade_log, append_trades, get_today_pnl, for_profile
+from trade_log import load_trade_log, append_trades, get_today_pnl, for_profile, mark_cancelled
 
 from dotenv import load_dotenv
 from rich.console import Console
@@ -2384,6 +2384,7 @@ def execute_pipeline(
     dry_run_for_janitor = get_config().system.dry_run
     if venue == "kalshi" and execute and not dry_run_for_janitor and RESTING_ORDER_MAX_HOURS > 0:
         cancelled = cancel_stale_resting_orders(client)
+        mark_cancelled({c["order_id"] for c in cancelled})
         if cancelled:
             rprint(
                 f"\n[bold yellow]Janitor: cancelled {len(cancelled)} stale resting "
@@ -2399,6 +2400,7 @@ def execute_pipeline(
     # this is a legality question (ALLOW_LIVE_BETS), not housekeeping.
     if venue == "kalshi" and execute and not dry_run_for_janitor and not ALLOW_LIVE_BETS:
         live_cancelled = cancel_live_resting_orders(client, load_trade_log())
+        mark_cancelled({c["order_id"] for c in live_cancelled})
         if live_cancelled:
             rprint("")
             rprint(

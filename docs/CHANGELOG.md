@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-10-12 -- MLS spreads off; janitor-cancelled orders close in the trade log
+
+**MLS spreads OFF** (`MIN_EDGE_THRESHOLD_MLS_SPREAD=1.0` in the live `.env`, operator override).
+Same shape as the MLB-spread shutdown on 10-03, milder:
+
+- **One-sided book:** 39 of 40 lifetime bets are YES on "wins by 2+".
+- **Since July: 3-20, -$4.75.** Hit rate 13% against a 14.2c average price and a 20.2% model
+  probability, so outcomes track the market, not the model. Market Brier 0.104 vs model 0.114
+  since 08-01.
+- **The lifetime +$40 is April-May**, mostly two hits at 6-7c (+$14.80, +$20.59).
+- The open COLMIN-MIN2 position is held, not exited.
+
+**Janitor cancellations now close the trade-log row.** Both janitors (R4 stale, S23c live)
+cancelled at the venue but never wrote back, so a zero-fill row stayed `fill_status: "resting"`
+forever. `trade_log.mark_cancelled()` now runs after each janitor and sets
+`fill_status: "cancelled"`, `closed_at`, `net_pnl: 0`. A row with any fill is left alone,
+because its filled part is real exposure the settler still reconciles. Three stale live rows
+(07-16, 07-31, 08-16) were closed by hand: the venue returns 404 for their orders and holds no
+position on them. Nine dry-run `longshot` rows that are also marked `resting` were left as they
+are, because they never reached the venue.
+
 ## 2026-10-12 -- Task installer stops turning on catch-up
 
 `install_windows_task.py` no longer sets `StartWhenAvailable` on the tasks it creates. Its
