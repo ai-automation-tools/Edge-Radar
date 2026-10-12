@@ -324,15 +324,9 @@ Set-ScheduledTask -TaskPath "<FOLDER>" -TaskName "All-Sports-SameDay-Execution" 
 ```
 
 > [!IMPORTANT]
-> **`schtasks /Create` cannot set `StartWhenAvailable`, and every task needs it.** Without it, a trigger that passes while the machine is off or asleep is **dropped silently** — the task still reads `Ready`, and `LastTaskResult 267011` ("not yet run") looks identical to a task waiting for a future date. Two one-shot reviews were lost this way for ~4 months. Set it after every create (`install_windows_task.py` does this itself):
+> **Leave `StartWhenAvailable` off. No task here catches up.** Since 2026-09-30 this is the rule for every timed task on Mike's machine (only the two backups are exempt): a run whose trigger passes while the machine is off or asleep is skipped, and Mike runs it by hand if it matters. For execute tasks that is the safer default, because a caught-up run fires on wake against whatever slate is live then, not the one it was scheduled for. `install_windows_task.py` no longer sets the flag (it did until 2026-10-12), and the weekly Task Scheduler audit flags any task that has it on.
 >
-> ```powershell
-> $t = Get-ScheduledTask -TaskPath "<FOLDER>" -TaskName "All-Sports-SameDay-Execution"
-> $t.Settings.StartWhenAvailable = $true
-> Set-ScheduledTask -TaskPath "<FOLDER>" -TaskName "All-Sports-SameDay-Execution" -Settings $t.Settings
-> ```
->
-> **On execute tasks this changes behaviour:** a missed run fires on wake, against whatever slate is live then. Bounded by Gate 4.8, Gate 3.7 and the task's own `--budget` / `--max-bets`.
+> The cost is that a missed trigger is silent: the task still reads `Ready`, and `LastTaskResult 267011` ("not yet run") looks the same as a task waiting for a future date. That is how two one-shot reviews were lost for ~4 months (see the retired-tasks table below). After a one-shot's date, check that it actually ran.
 
 | Cadence | `schtasks` flags |
 |:--|:--|
