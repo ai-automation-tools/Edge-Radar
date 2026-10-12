@@ -154,56 +154,6 @@ def _run_schtasks(args: list[str], check: bool = True) -> subprocess.CompletedPr
     return subprocess.run(["schtasks"] + args, capture_output=True, text=True, check=check)
 
 
-def _enable_catch_up(tn: str) -> bool:
-    """Set `StartWhenAvailable` on a task `schtasks /Create` just made.
-
-    `schtasks` cannot set it, and without it a trigger whose time passes while
-    the machine is off or asleep is **dropped and never retried** — silently.
-    The task still reads `Ready`, and `LastTaskResult` stays `267011`
-    ("has not yet run"), which is byte-identical to a task legitimately waiting
-    for a date that has not arrived. There is no state that distinguishes
-    "waiting" from "missed forever", which is why it hides.
-
-    Two dated one-shot reviews on the owner's machine (`R8-Review` 2026-05-29,
-    `U2-Review` 2026-05-14) were lost exactly this way and went unnoticed for
-    ~4 months. One-shot tasks are where it is fatal; for a weekly it costs a
-    full cycle, which for `Calibration` can push the stdev cache past
-    `CALIBRATION_STDEVS_TTL_DAYS`.
-
-    **Non-fatal on failure.** A task without the flag still runs on schedule
-    whenever the machine is up, so a PowerShell that is missing or restricted
-    is a reason to warn, not to fail an otherwise-good install.
-
-    Note this changes *execution* tasks too: a missed run fires when the
-    machine wakes, against whatever slate is live then rather than the one
-    intended for its scheduled time. That is bounded by Gate 4.8
-    (`ALLOW_LIVE_BETS=false`), Gate 3.7, and each task's own `--budget` /
-    `--max-bets` — but it is a real behaviour change, so it is stated here
-    rather than left to be discovered.
-    """
-    folder, _, leaf = tn.rpartition("\\")
-    path = f"{folder}\\" if folder else "\\"
-    ps = (
-        f"$t = Get-ScheduledTask -TaskName '{leaf}' -TaskPath '{path}' "
-        f"-ErrorAction Stop; "
-        f"$t.Settings.StartWhenAvailable = $true; "
-        f"Set-ScheduledTask -TaskName '{leaf}' -TaskPath '{path}' "
-        f"-Settings $t.Settings | Out-Null"
-    )
-    for exe in ("pwsh", "powershell"):
-        try:
-            result = subprocess.run(
-                [exe, "-NoProfile", "-NonInteractive", "-Command", ps],
-                capture_output=True,
-                text=True,
-            )
-        except (OSError, FileNotFoundError):
-            continue
-        if result.returncode == 0:
-            return True
-    return False
-
-
 def task_name(profile_name: str) -> str:
     """Full `Folder\\Leaf` path this profile installs to."""
     return f"{TASK_FOLDER}\\{TASK_PROFILES[profile_name]['leaf']}"
@@ -313,11 +263,6 @@ def install(profile_name: str, force: bool = False):
         print(f"       Task:   {tn}")
         print(f"       Time:   {cadence}")
         print(f"       Script: {script}")
-        if not _enable_catch_up(tn):
-            print(
-                "       [WARN] could not set StartWhenAvailable — a run missed "
-                "while this machine is off will be skipped, not retried"
-            )
     else:
         print(f"  [FAIL] {profile_name}: {result.stderr.strip()}")
         return False

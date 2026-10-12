@@ -2,6 +2,20 @@
 
 ---
 
+## 2026-10-12 -- Task installer stops turning on catch-up
+
+`install_windows_task.py` no longer sets `StartWhenAvailable` on the tasks it creates. Its
+`_enable_catch_up` step and `tests/test_install_windows_task.py`, which only covered that step,
+are gone. Since 2026-09-30 no timed task on Mike's machine catches up (only the two backups are
+exempt), and missed runs are re-run by hand. This repo's docs still told every task to turn the
+flag on, and the 2026-10-12 task audit found `Integration-Drift-Check` running with it on.
+
+- **Execute tasks:** a missed run is now skipped instead of firing on wake against whatever
+  slate is live then.
+- **One-shot tasks:** a missed date is silent again (`267011`, see `docs/task-schedules/README.md`),
+  so check that a dated review actually ran.
+- The "every task needs it" warning in `docs/task-schedules/README.md` is rewritten to match.
+
 ## 2026-10-05 -- Both static pages: light/dark theme switch
 
 `.claude/html/index.html` (`edge-radar.mikesailab.com`) and `site/index.html`
