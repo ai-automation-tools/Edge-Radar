@@ -77,7 +77,9 @@ def trade_log_lock(timeout: float = _LOCK_TIMEOUT_SECONDS):
     except _FileLockTimeout:
         log.warning(
             "trade_log_lock: timed out after %ss waiting for %s; proceeding "
-            "without the lock (atomic write only).", timeout, lock_path,
+            "without the lock (atomic write only).",
+            timeout,
+            lock_path,
         )
         yield
         return
@@ -101,9 +103,7 @@ def _atomic_write_json(path: Path, data) -> None:
     handled by ``trade_log_lock`` (M2) — hold that lock and re-read inside it.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
-    )
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, indent=2, default=str)
@@ -153,6 +153,33 @@ def append_trades(records: list[dict]) -> list[dict]:
         return trades
 
 
+def mark_cancelled(order_ids: set[str], now: datetime | None = None) -> int:
+    """Close zero-fill rows whose venue order was cancelled; return how many.
+
+    The janitors cancel at the venue but never wrote back, so a cancelled order
+    sat in the log as ``fill_status: "resting"`` forever (2026-10-12: 6 rows back
+    to 09-22). A row with any fill is left alone -- the filled part is real
+    exposure the settler reconciles; only its unfilled remainder was cancelled.
+    """
+    if not order_ids:
+        return 0
+    stamp = (now or datetime.now(timezone.utc)).isoformat()
+    n = 0
+    with trade_log_lock():
+        trades = load_trade_log()
+        for t in trades:
+            if (
+                t.get("order_id") in order_ids
+                and not t.get("closed_at")
+                and not (t.get("filled_contracts") or t.get("fill_count"))
+            ):
+                t.update(fill_status="cancelled", closed_at=stamp, net_pnl=0)
+                n += 1
+        if n:
+            save_trade_log(trades)
+    return n
+
+
 def load_settlement_log() -> list[dict]:
     """Load the settlement log from disk."""
     if SETTLEMENT_LOG_PATH.exists():
@@ -191,6 +218,7 @@ def for_profile(trades: list[dict], profile: str | None = None) -> list[dict]:
     """
     if profile is None:
         from app.config import get_config
+
         profile = get_config().system.profile
     return [t for t in trades if t.get("profile", "main") == profile]
 
@@ -200,10 +228,7 @@ def get_today_pnl(trades: list[dict] | None = None) -> float:
     if trades is None:
         trades = load_trade_log()
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return sum(
-        t.get("net_pnl", 0) for t in trades
-        if (t.get("closed_at") or "").startswith(today)
-    )
+    return sum(t.get("net_pnl", 0) for t in trades if (t.get("closed_at") or "").startswith(today))
 
 
 def get_filled_contracts(trade: dict) -> float:
