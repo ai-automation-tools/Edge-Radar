@@ -59,9 +59,11 @@ REQUIRED_FIELDS = (
     "rules_primary",
 )
 SCORED_CATEGORIES = ("game", "spread", "total")
-# League/format filler that should never end up inside a team name.
+# League/format filler that should never end up inside a team name. Not
+# "college": it is part of real names (Boston College); "College Football"
+# filler still trips on "football".
 SUSPECT_WORDS = re.compile(
-    r"\b(pro|professional|football|basketball|baseball|hockey|soccer|game|match|college)\b",
+    r"\b(pro|professional|football|basketball|baseball|hockey|soccer|game|match)\b",
     re.IGNORECASE,
 )
 MIN_SAMPLE = 5

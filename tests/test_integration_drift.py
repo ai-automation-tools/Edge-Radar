@@ -123,3 +123,10 @@ def test_autofix_allowlist():
         "scripts/schedulers/maintenance/drift_check.bat",
     ):
         assert not ALLOWED.match(bad)
+
+
+def test_college_in_a_real_team_name_is_not_filler():
+    from integration_drift import SUSPECT_WORDS
+
+    assert not SUSPECT_WORDS.search("Boston College")
+    assert SUSPECT_WORDS.search("Boston College Football")
