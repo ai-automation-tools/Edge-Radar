@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-10-13 -- Both static pages: phone layout pass
+
+`site/index.html` and `.claude/html/index.html` get one `@media (max-width: 600px)` block each;
+nothing outside it changes, so desktop renders identically (computed style and geometry of every
+element diffed at 1400x900 before and after).
+
+- **Ops deck schedule:** at 390px the table showed only `#` and the task name; Time and "What it
+  does" sat off-screen behind a sideways scroll. Each row now stacks as a card: number, task and
+  time on top, the description below.
+- **Gate lab:** Side and Confidence sat side by side and clipped the `high` segment; they stack.
+- **Touch targets:** chips, segments, presets, terminal tabs, copy buttons, the theme toggle, the
+  menu and GitHub buttons, footer links and slider thumbs grow to 36-40px; timeline dots get a
+  larger tap area without moving.
+- **Inputs:** search fields, the edge-floor select and the command palette go to 16px so iOS
+  Safari stops zooming in on focus.
+
 ## 2026-10-12 -- MLS spreads off; janitor-cancelled orders close in the trade log
 
 **MLS spreads OFF** (`MIN_EDGE_THRESHOLD_MLS_SPREAD=1.0` in the live `.env`, operator override).
