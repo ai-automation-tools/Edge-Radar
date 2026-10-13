@@ -2,6 +2,22 @@
 
 ---
 
+## 2026-10-13 -- Tests: 8 passed only with the live `.env`
+
+The phone-layout PR (#333) reported 8 failures "on unmodified master in this environment". They
+were real, and only showed in a checkout with no `.env`: three test files silently depended on the
+operator's live values instead of setting their own.
+
+- `MIN_MARKET_PRICE`: live 0.10, code default 0.12. `test_exposure_gate`'s trim tests (10c) and
+  `test_opposing_side_gate`'s real SF leg (11c) were rejected by Gate 3.5 before reaching the gate
+  under test. `test_without_the_held_position_it_passes_6b` was passing vacuously for the same reason.
+- `KELLY_FRACTION`: live 0.5, code default 0.25. At 0.25 `test_no_side_ceiling`'s orders sit on the
+  flat floor on both sides, so the damping cannot show (2 vs 2).
+- Each test now pins the value it needs, the same opt-in pattern as `test_limit_price.py` and the
+  conftest neutralisers. Suite: 1232 passed with `.env`, 1229 passed + 3 skipped without.
+
+---
+
 ## 2026-10-13 -- Both static pages: phone layout pass
 
 `site/index.html` and `.claude/html/index.html` get one `@media (max-width: 600px)` block each;

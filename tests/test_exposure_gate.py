@@ -27,9 +27,17 @@ from kalshi_executor import (
 
 def _opp(ticker="KXMLBGAME-99AUG271900NYYBOS-NYY", category="game", price=0.50):
     return Opportunity(
-        ticker=ticker, title="", category=category, side="yes",
-        market_price=price, fair_value=price + 0.12, edge=0.12, edge_source="test",
-        confidence="high", liquidity_score=9.0, composite_score=9.9,
+        ticker=ticker,
+        title="",
+        category=category,
+        side="yes",
+        market_price=price,
+        fair_value=price + 0.12,
+        edge=0.12,
+        edge_source="test",
+        confidence="high",
+        liquidity_score=9.0,
+        composite_score=9.9,
         details={"bid_ask_spread": 0.01},
     )
 
@@ -39,24 +47,31 @@ def caps(monkeypatch):
     """The live `.env` pair: 50% total, 33% per sport."""
     monkeypatch.setattr(ke, "MAX_OPEN_EXPOSURE_PCT", 0.50)
     monkeypatch.setattr(ke, "MAX_SEGMENT_EXPOSURE_PCT", 0.33)
+    # The trim tests price at 10c; the code-default R7 floor (0.12) would
+    # reject them before Gate 2b runs. Don't inherit the live `.env` 0.10.
+    monkeypatch.setattr(ke, "MIN_MARKET_PRICE", 0.0)
 
 
 class TestReadingPositions:
     """`market_exposure_dollars` arrives as a STRING from the v2 API."""
 
     def test_sums_string_dollars(self):
-        total, by_seg = exposure_from_positions([
-            {"ticker": "KXNFLSPREAD-26SEP13MIALV-MIA7", "market_exposure_dollars": "0.960000"},
-            {"ticker": "KXNFLSPREAD-26SEP14DENKC-KC4", "market_exposure_dollars": "0.860000"},
-        ])
+        total, by_seg = exposure_from_positions(
+            [
+                {"ticker": "KXNFLSPREAD-26SEP13MIALV-MIA7", "market_exposure_dollars": "0.960000"},
+                {"ticker": "KXNFLSPREAD-26SEP14DENKC-KC4", "market_exposure_dollars": "0.860000"},
+            ]
+        )
         assert total == pytest.approx(1.82)
         assert by_seg == {"nfl": pytest.approx(1.82)}
 
     def test_splits_by_sport(self):
-        total, by_seg = exposure_from_positions([
-            {"ticker": "KXNFLSPREAD-26SEP13MIALV-MIA7", "market_exposure_dollars": "10.00"},
-            {"ticker": "KXMLBGAME-99AUG271900NYYBOS-NYY", "market_exposure_dollars": "4.00"},
-        ])
+        total, by_seg = exposure_from_positions(
+            [
+                {"ticker": "KXNFLSPREAD-26SEP13MIALV-MIA7", "market_exposure_dollars": "10.00"},
+                {"ticker": "KXMLBGAME-99AUG271900NYYBOS-NYY", "market_exposure_dollars": "4.00"},
+            ]
+        )
         assert total == pytest.approx(14.0)
         assert by_seg["nfl"] == pytest.approx(10.0)
         assert by_seg["mlb"] == pytest.approx(4.0)
@@ -65,10 +80,12 @@ class TestReadingPositions:
     def test_unparseable_exposure_is_skipped_not_zeroed(self, bad):
         """A silent `float("")` would raise; a silent 0 for the whole book would
         open every ceiling. Skip the row, keep the rest."""
-        total, _ = exposure_from_positions([
-            {"ticker": "KXNFLGAME-26SEP13MIALV-MIA", "market_exposure_dollars": bad},
-            {"ticker": "KXMLBGAME-99AUG271900NYYBOS-NYY", "market_exposure_dollars": "4.00"},
-        ])
+        total, _ = exposure_from_positions(
+            [
+                {"ticker": "KXNFLGAME-26SEP13MIALV-MIA", "market_exposure_dollars": bad},
+                {"ticker": "KXMLBGAME-99AUG271900NYYBOS-NYY", "market_exposure_dollars": "4.00"},
+            ]
+        )
         assert total == pytest.approx(4.0)
 
     def test_empty_book_is_zero_not_an_error(self):
@@ -131,26 +148,41 @@ class TestTheRealBook:
     def test_current_book_passes_at_50_33(self, caps):
         """The operator chose 50/33 over the review's 20/10 knowing this: the
         gate binds on the NEXT pileup, not the one that prompted it."""
-        assert _exposure_rejection(
-            _opp("KXNFLGAME-26SEP13MIALV-MIA"),
-            self.TOTAL_AT_RISK, self.NFL_AT_RISK, self.LIVE_EQUITY,
-        ) is None
+        assert (
+            _exposure_rejection(
+                _opp("KXNFLGAME-26SEP13MIALV-MIA"),
+                self.TOTAL_AT_RISK,
+                self.NFL_AT_RISK,
+                self.LIVE_EQUITY,
+            )
+            is None
+        )
 
     def test_same_book_would_have_been_blocked_at_the_reviews_20_10(self, monkeypatch):
         monkeypatch.setattr(ke, "MAX_OPEN_EXPOSURE_PCT", 0.20)
         monkeypatch.setattr(ke, "MAX_SEGMENT_EXPOSURE_PCT", 0.10)
-        assert _exposure_rejection(
-            _opp("KXNFLGAME-26SEP13MIALV-MIA"),
-            self.TOTAL_AT_RISK, self.NFL_AT_RISK, self.LIVE_EQUITY,
-        ) is not None
+        assert (
+            _exposure_rejection(
+                _opp("KXNFLGAME-26SEP13MIALV-MIA"),
+                self.TOTAL_AT_RISK,
+                self.NFL_AT_RISK,
+                self.LIVE_EQUITY,
+            )
+            is not None
+        )
 
     def test_other_sports_still_have_headroom(self, caps):
         """MLB carries $5.21 of the book, so a frozen NFL pile must not stop
         new betting elsewhere -- the reason the segment cap exists at all."""
-        assert _exposure_rejection(
-            _opp("KXMLBGAME-99AUG271900NYYBOS-NYY"),
-            self.TOTAL_AT_RISK, 5.21, self.LIVE_EQUITY,
-        ) is None
+        assert (
+            _exposure_rejection(
+                _opp("KXMLBGAME-99AUG271900NYYBOS-NYY"),
+                self.TOTAL_AT_RISK,
+                5.21,
+                self.LIVE_EQUITY,
+            )
+            is None
+        )
 
 
 class TestSizingHalf:
@@ -159,42 +191,75 @@ class TestSizingHalf:
 
     def test_order_is_trimmed_to_remaining_headroom(self, caps, no_fees):
         # 49% deployed of $100 equity -> $1 of total headroom left.
-        r = size_order(_opp(price=0.10), bankroll=100.0, open_positions=0,
-                       daily_pnl=0.0, unit_size=50.0,
-                       open_exposure=49.0, segment_exposure=0.0, equity=100.0)
+        r = size_order(
+            _opp(price=0.10),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            unit_size=50.0,
+            open_exposure=49.0,
+            segment_exposure=0.0,
+            equity=100.0,
+        )
         assert r.risk_approval == "APPROVED_CAPPED_EXPOSURE"
         assert r.cost_dollars <= 1.0
 
     def test_the_tighter_of_the_two_headrooms_wins(self, caps, no_fees):
         # total headroom $10, segment headroom $3 -> $3 binds.
-        r = size_order(_opp(price=0.10), bankroll=100.0, open_positions=0,
-                       daily_pnl=0.0, unit_size=50.0,
-                       open_exposure=40.0, segment_exposure=30.0, equity=100.0)
+        r = size_order(
+            _opp(price=0.10),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            unit_size=50.0,
+            open_exposure=40.0,
+            segment_exposure=30.0,
+            equity=100.0,
+        )
         assert r.risk_approval == "APPROVED_CAPPED_EXPOSURE"
         assert r.cost_dollars <= 3.0
 
     def test_a_trimmed_order_is_never_zero_contracts(self, caps, no_fees):
         """A cap that can emit an unfillable 0-contract order is worse than a
         cent of overshoot -- same `max(1, ...)` rule as the MAX_BET_SIZE cap."""
-        r = size_order(_opp(price=0.99), bankroll=100.0, open_positions=0,
-                       daily_pnl=0.0, open_exposure=49.99,
-                       segment_exposure=0.0, equity=100.0)
+        r = size_order(
+            _opp(price=0.99),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            open_exposure=49.99,
+            segment_exposure=0.0,
+            equity=100.0,
+        )
         assert r.contracts >= 1
 
     def test_an_order_that_fits_is_left_alone(self, caps, no_fees):
         """(It may still be capped by MAX_BET_SIZE -- that is a different cap,
         and this asserts only that the exposure trim kept its hands off.)"""
-        r = size_order(_opp(price=0.50), bankroll=100.0, open_positions=0,
-                       daily_pnl=0.0, open_exposure=1.0,
-                       segment_exposure=1.0, equity=100.0)
+        r = size_order(
+            _opp(price=0.50),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            open_exposure=1.0,
+            segment_exposure=1.0,
+            equity=100.0,
+        )
         assert r.risk_approval.startswith("APPROVED")
         assert "EXPOSURE" not in r.risk_approval
 
 
 class TestWiring:
     def test_size_order_rejects_and_names_the_gate(self, caps):
-        r = size_order(_opp(), bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                       open_exposure=60.0, segment_exposure=0.0, equity=100.0)
+        r = size_order(
+            _opp(),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            open_exposure=60.0,
+            segment_exposure=0.0,
+            equity=100.0,
+        )
         assert r.risk_approval.startswith("REJECTED")
         assert "max_open_exposure" in r.risk_approval
         assert r.contracts == 0
@@ -202,8 +267,14 @@ class TestWiring:
     def test_equity_defaults_to_bankroll_when_not_passed(self, caps):
         """Callers that don't track equity still get a coherent ratio rather
         than a divide-by-nothing."""
-        r = size_order(_opp(), bankroll=100.0, open_positions=0, daily_pnl=0.0,
-                       open_exposure=60.0, segment_exposure=0.0)
+        r = size_order(
+            _opp(),
+            bankroll=100.0,
+            open_positions=0,
+            daily_pnl=0.0,
+            open_exposure=60.0,
+            segment_exposure=0.0,
+        )
         assert "max_open_exposure" in r.risk_approval
 
     def test_default_callers_are_unaffected(self, caps):
@@ -229,6 +300,7 @@ class TestWiring:
         """`MAX_OPEN_EXPOSURE_PCT=50` would otherwise read as 5000% -- a cap
         silently switched off, which is the same class of bug as D1's 0.0."""
         from app.config import get_config, reset_config
+
         monkeypatch.setenv("MAX_OPEN_EXPOSURE_PCT", "50")
         reset_config()
         try:
@@ -246,16 +318,28 @@ class TestPerEventCapFutures:
 
     def test_futures_uses_the_futures_cap(self):
         opp = _opp(ticker="KXSB-26-KC", category="futures")
-        r = size_order(opp, bankroll=100.0, open_positions=2, daily_pnl=0.0,
-                        event_counts={"KXSB-26": 2},
-                        max_per_event=2, max_per_event_futures=3)
+        r = size_order(
+            opp,
+            bankroll=100.0,
+            open_positions=2,
+            daily_pnl=0.0,
+            event_counts={"KXSB-26": 2},
+            max_per_event=2,
+            max_per_event_futures=3,
+        )
         assert r.risk_approval.startswith("APPROVED")
 
     def test_futures_still_rejects_past_its_own_cap(self):
         opp = _opp(ticker="KXSB-26-KC", category="futures")
-        r = size_order(opp, bankroll=100.0, open_positions=3, daily_pnl=0.0,
-                        event_counts={"KXSB-26": 3},
-                        max_per_event=2, max_per_event_futures=3)
+        r = size_order(
+            opp,
+            bankroll=100.0,
+            open_positions=3,
+            daily_pnl=0.0,
+            event_counts={"KXSB-26": 3},
+            max_per_event=2,
+            max_per_event_futures=3,
+        )
         assert r.risk_approval.startswith("REJECTED")
         assert "per_event_cap (3/3" in r.risk_approval
 
@@ -263,8 +347,14 @@ class TestPerEventCapFutures:
         """A game held at the (lower) game cap must not slip through just
         because the futures cap is wider."""
         opp = _opp(ticker="KXMLBGAME-99AUG271900NYYBOS-NYY", category="game")
-        r = size_order(opp, bankroll=100.0, open_positions=2, daily_pnl=0.0,
-                        event_counts={"KXMLBGAME-99AUG271900NYYBOS": 2},
-                        max_per_event=2, max_per_event_futures=3)
+        r = size_order(
+            opp,
+            bankroll=100.0,
+            open_positions=2,
+            daily_pnl=0.0,
+            event_counts={"KXMLBGAME-99AUG271900NYYBOS": 2},
+            max_per_event=2,
+            max_per_event_futures=3,
+        )
         assert r.risk_approval.startswith("REJECTED")
         assert "per_event_cap (2/2" in r.risk_approval
