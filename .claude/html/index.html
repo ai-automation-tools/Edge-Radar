@@ -581,6 +581,34 @@
     .light .sched .nm .money { border-color: rgba(180,83,9,.4); }
     .light .halt { border-color: rgba(190,18,60,.3); background: rgba(190,18,60,.04); }
     .light .halt h3 { color: var(--rose); }
+
+    /* ── Phones (<=600px): touch targets, form zoom, stacked schedule. Scoped so desktop computes identically. ── */
+    @media (max-width: 600px) {
+      html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+      /* iOS Safari zooms the page into any focused field whose font is under 16px */
+      .search input, select, .pal-in input { font-size: 16px; }
+      .search, select { height: 40px; }
+      .theme-tg button { width: 36px; height: 32px; }
+      .gh-btn { height: 40px; }
+      .menu-btn { width: 40px; height: 40px; }
+      .chip, .seg button, .presets button, .ttab, .strip a, .strip span.pill { height: 36px; }
+      .copy, .act { height: 36px; }
+      footer .row a { display: inline-block; padding-block: 9px; }
+      .later a { min-height: 40px; }
+      /* 12px timeline dots: widen the tap area without moving them */
+      .tl .mk::before { content: ""; position: absolute; inset: -10px; }
+      /* The 4-column table pushed Time and "What it does" off-screen behind a sideways scroll (nowrap
+         task names); on phones each row becomes a card: # | task | time, then the description below. */
+      .sched thead { display: none; }
+      .sched table, .sched tbody { display: block; }
+      .sched tr.r { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 4px 8px; padding: 11px 14px; border-top: 1px solid var(--line); }
+      .sched tr.r:first-child { border-top: 0; }
+      .sched tr.r td { padding: 0; border: 0; }
+      .sched tr.r.next { background: rgba(56,189,248,.05); }
+      .sched .nm { white-space: normal; overflow-wrap: anywhere; }
+      .sched .tm { text-align: right; }
+      .sched .what { grid-column: 2 / -1; }
+    }
   </style>
 </head>
 <body>
