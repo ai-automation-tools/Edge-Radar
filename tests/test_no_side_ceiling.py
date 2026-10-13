@@ -21,17 +21,25 @@ from kalshi_executor import size_order
 
 def _opp(side: str, price: float, edge: float = 0.12) -> Opportunity:
     return Opportunity(
-        ticker="KXMLBTOTAL-26APR14LAAANYY-9", title="", category="total",
-        side=side, market_price=price, fair_value=min(0.99, price + edge),
-        edge=edge, edge_source="test", confidence="high",
-        liquidity_score=9.0, composite_score=9.9,
+        ticker="KXMLBTOTAL-26APR14LAAANYY-9",
+        title="",
+        category="total",
+        side=side,
+        market_price=price,
+        fair_value=min(0.99, price + edge),
+        edge=edge,
+        edge_source="test",
+        confidence="high",
+        liquidity_score=9.0,
+        composite_score=9.9,
         details={"bid_ask_spread": 0.01},
     )
 
 
 def _size(side: str, price: float, **kw) -> int:
-    return size_order(_opp(side, price), bankroll=92.0, open_positions=0,
-                      daily_pnl=0.0, batch_size=5, **kw).contracts
+    return size_order(
+        _opp(side, price), bankroll=92.0, open_positions=0, daily_pnl=0.0, batch_size=5, **kw
+    ).contracts
 
 
 @pytest.fixture
@@ -42,6 +50,9 @@ def ceiling_at_50(monkeypatch):
     monkeypatch.setattr(ke, "NO_SIDE_KELLY_PRICE_FLOOR", 0.35)
     monkeypatch.setattr(ke, "NO_SIDE_FAVORITE_THRESHOLD", 0.10)  # not under test
     monkeypatch.setattr(ke, "MIN_COMPOSITE_SCORE", 0.0)
+    # At the code-default 0.25, Kelly at these prices sits on the flat floor
+    # on both sides, so damping can't show. Pin the live value, not inherit it.
+    monkeypatch.setattr(ke, "KELLY_FRACTION", 0.5)
 
 
 @pytest.fixture
@@ -52,6 +63,9 @@ def ceiling_off(monkeypatch):
     monkeypatch.setattr(ke, "NO_SIDE_KELLY_PRICE_FLOOR", 0.35)
     monkeypatch.setattr(ke, "NO_SIDE_FAVORITE_THRESHOLD", 0.10)
     monkeypatch.setattr(ke, "MIN_COMPOSITE_SCORE", 0.0)
+    # At the code-default 0.25, Kelly at these prices sits on the flat floor
+    # on both sides, so damping can't show. Pin the live value, not inherit it.
+    monkeypatch.setattr(ke, "KELLY_FRACTION", 0.5)
 
 
 class TestExpensiveNoIsDamped:
@@ -60,8 +74,7 @@ class TestExpensiveNoIsDamped:
         assert _size("no", price) < _size("yes", price)
 
     @pytest.mark.parametrize("price", [0.60, 0.75, 0.85])
-    def test_damped_relative_to_the_ceiling_being_off(self, price, ceiling_at_50,
-                                                      monkeypatch):
+    def test_damped_relative_to_the_ceiling_being_off(self, price, ceiling_at_50, monkeypatch):
         damped = _size("no", price)
         monkeypatch.setattr(ke, "NO_SIDE_KELLY_PRICE_CEILING", 0.0)
         assert damped < _size("no", price)
@@ -88,6 +101,7 @@ class TestDefaultIsOff:
 
     def test_shipped_code_default_is_zero(self):
         from app.config import KellyConfig
+
         assert KellyConfig().no_side_kelly_price_ceiling == 0.0
 
 
@@ -114,6 +128,7 @@ class TestInteractionWithTheExistingFloorRule:
 class TestReloadPicksItUp:
     def test_config_layer_reads_the_env_var(self, monkeypatch):
         from app.config import KellyConfig
+
         monkeypatch.setenv("NO_SIDE_KELLY_PRICE_CEILING", "0.42")
         assert KellyConfig.from_env().no_side_kelly_price_ceiling == 0.42
 
@@ -127,6 +142,7 @@ class TestReloadPicksItUp:
         the developer's own .env says, making the test non-hermetic.
         """
         from app.config import reset_config
+
         # reload_risk_config rebinds a module global, so restore it explicitly --
         # monkeypatch cannot undo an assignment made inside the call.
         saved = ke.NO_SIDE_KELLY_PRICE_CEILING

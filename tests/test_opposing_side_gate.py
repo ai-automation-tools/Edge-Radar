@@ -32,9 +32,17 @@ SF_SPREAD = "KXNFLSPREAD-26SEP10SFLAR-SF8"
 
 def _opp(ticker, side="yes", category="game", price=0.30):
     return Opportunity(
-        ticker=ticker, title="", category=category, side=side,
-        market_price=price, fair_value=price + 0.12, edge=0.12, edge_source="test",
-        confidence="high", liquidity_score=9.0, composite_score=9.9,
+        ticker=ticker,
+        title="",
+        category=category,
+        side=side,
+        market_price=price,
+        fair_value=price + 0.12,
+        edge=0.12,
+        edge_source="test",
+        confidence="high",
+        liquidity_score=9.0,
+        composite_score=9.9,
         details={"bid_ask_spread": 0.01},
     )
 
@@ -49,10 +57,17 @@ class TestDirectionalClaim:
     def test_spread_splits_team_from_points(self):
         assert directional_claim(SF_SPREAD, "yes") == ("26SEP10SFLAR", "SF", "yes", 8)
 
-    @pytest.mark.parametrize("strike,team,pts", [
-        ("ATL11", "ATL", 11), ("NO5", "NO", 5), ("UCLA7", "UCLA", 7),
-        ("TB11", "TB", 11), ("KC4", "KC", 4), ("LAC28", "LAC", 28),
-    ])
+    @pytest.mark.parametrize(
+        "strike,team,pts",
+        [
+            ("ATL11", "ATL", 11),
+            ("NO5", "NO", 5),
+            ("UCLA7", "UCLA", 7),
+            ("TB11", "TB", 11),
+            ("KC4", "KC", 4),
+            ("LAC28", "LAC", 28),
+        ],
+    )
     def test_real_strikes_from_the_book(self, strike, team, pts):
         got = directional_claim(f"KXNFLSPREAD-26SEP13XXYY-{strike}", "yes")
         assert got == ("26SEP13XXYY", team, "yes", pts)
@@ -60,12 +75,15 @@ class TestDirectionalClaim:
     def test_totals_say_nothing_about_the_winner(self):
         assert directional_claim("KXNFLTOTAL-26SEP13ATLPIT-63", "no") is None
 
-    @pytest.mark.parametrize("ticker", [
-        "KXMLB-26-LAD",                      # futures: no game segment
-        "KXBTCD-26SEP13-B120000",            # prediction market
-        "MALFORMED",
-        "KXNFLSPREAD-26SEP13XXYY-NODIGITS",  # strike carries no margin
-    ])
+    @pytest.mark.parametrize(
+        "ticker",
+        [
+            "KXMLB-26-LAD",  # futures: no game segment
+            "KXBTCD-26SEP13-B120000",  # prediction market
+            "MALFORMED",
+            "KXNFLSPREAD-26SEP13XXYY-NODIGITS",  # strike carries no margin
+        ],
+    )
     def test_unreadable_tickers_are_not_claims(self, ticker):
         assert directional_claim(ticker, "yes") is None
 
@@ -87,6 +105,12 @@ class TestDirectionalClaim:
 class TestTheRealPair:
     """The regression that motivated the gate."""
 
+    @pytest.fixture(autouse=True)
+    def _no_price_floor(self, monkeypatch):
+        # The real SF leg is 11c, under the code-default R7 floor (0.12), which
+        # would reject it before Gate 6b -- and make the "passes 6b" test vacuous.
+        monkeypatch.setattr(ke, "MIN_MARKET_PRICE", 0.0)
+
     def test_sf_spread_is_blocked_while_lar_moneyline_is_held(self):
         assert opposing_position(SF_SPREAD, "yes", {LAR_ML: "yes"}) == LAR_ML
 
@@ -96,7 +120,9 @@ class TestTheRealPair:
     def test_gate_6b_rejects_it_end_to_end(self):
         sized = size_order(
             _opp(SF_SPREAD, category="spread", price=0.11),
-            bankroll=100.0, open_positions=1, daily_pnl=0.0,
+            bankroll=100.0,
+            open_positions=1,
+            daily_pnl=0.0,
             open_sides={LAR_ML: "yes"},
         )
         assert sized.contracts == 0
@@ -106,7 +132,10 @@ class TestTheRealPair:
     def test_without_the_held_position_it_passes_6b(self):
         sized = size_order(
             _opp(SF_SPREAD, category="spread", price=0.11),
-            bankroll=100.0, open_positions=1, daily_pnl=0.0, open_sides={},
+            bankroll=100.0,
+            open_positions=1,
+            daily_pnl=0.0,
+            open_sides={},
         )
         assert "opposing_side" not in sized.risk_approval
 
@@ -130,7 +159,7 @@ class TestContradictionRules:
         assert opposing_position("KXNFLSPREAD-26SEP13ATLPIT-ATL4", "no", held)
 
     def test_moneyline_yes_against_held_no_on_a_cover(self):
-        """"ATL wins" (margin > 0) does NOT imply "ATL wins by > 4"."""
+        """ "ATL wins" (margin > 0) does NOT imply "ATL wins by > 4"."""
         held = {"KXNFLSPREAD-26SEP13ATLPIT-ATL4": "no"}
         assert opposing_position("KXNFLGAME-26SEP13ATLPIT-ATL", "yes", held) is None
 
@@ -174,7 +203,10 @@ class TestWhatMustStayAllowed:
         held = {"KXNFLGAME-26SEP10SFLAR-LAR": "yes"}
         sized = size_order(
             _opp(SF_SPREAD, category="futures", price=0.11),
-            bankroll=100.0, open_positions=1, daily_pnl=0.0, open_sides=held,
+            bankroll=100.0,
+            open_positions=1,
+            daily_pnl=0.0,
+            open_sides=held,
         )
         assert "opposing_side" not in sized.risk_approval
 
@@ -192,7 +224,9 @@ class TestFailureModes:
         """Callers that never pass `open_sides` behave exactly as before."""
         sized = size_order(
             _opp(SF_SPREAD, category="spread", price=0.11),
-            bankroll=100.0, open_positions=1, daily_pnl=0.0,
+            bankroll=100.0,
+            open_positions=1,
+            daily_pnl=0.0,
         )
         assert "opposing_side" not in sized.risk_approval
 
@@ -200,9 +234,15 @@ class TestFailureModes:
 class TestPositionSideDecoding:
     """Kalshi signs `position_fp` and ships it as a string: + is long YES."""
 
-    @pytest.mark.parametrize("fp,expected", [
-        ("2.00", "yes"), ("-1.00", "no"), ("0.01", "yes"), ("-0.01", "no"),
-    ])
+    @pytest.mark.parametrize(
+        "fp,expected",
+        [
+            ("2.00", "yes"),
+            ("-1.00", "no"),
+            ("0.01", "yes"),
+            ("-0.01", "no"),
+        ],
+    )
     def test_sign_maps_to_side(self, fp, expected):
         qty = float(fp)
         assert ("yes" if qty > 0 else "no") == expected
@@ -236,43 +276,67 @@ class TestRestingOrdersAreVisible:
 
     def test_side_is_read_from_the_log_not_the_venue(self):
         """v2 reports a NO buy as an `ask`; trusting that inverts the side."""
-        client = self._Client([
-            {"ticker": "KXNFLSPREAD-26SEP13ATLPIT-ATL4",
-             "order_id": "abc", "remaining_count_fp": "3", "side": "ask"},
-        ])
+        client = self._Client(
+            [
+                {
+                    "ticker": "KXNFLSPREAD-26SEP13ATLPIT-ATL4",
+                    "order_id": "abc",
+                    "remaining_count_fp": "3",
+                    "side": "ask",
+                },
+            ]
+        )
         log_rows = [{"order_id": "abc", "side": "no"}]
-        assert ke.resting_sides(client, log_rows) == {
-            "KXNFLSPREAD-26SEP13ATLPIT-ATL4": "no"
-        }
+        assert ke.resting_sides(client, log_rows) == {"KXNFLSPREAD-26SEP13ATLPIT-ATL4": "no"}
 
     def test_filled_orders_are_not_resting(self):
-        client = self._Client([
-            {"ticker": "KXNFLGAME-26SEP13TBCIN-TB",
-             "order_id": "abc", "remaining_count_fp": "0", "side": "bid"},
-        ])
+        client = self._Client(
+            [
+                {
+                    "ticker": "KXNFLGAME-26SEP13TBCIN-TB",
+                    "order_id": "abc",
+                    "remaining_count_fp": "0",
+                    "side": "bid",
+                },
+            ]
+        )
         assert ke.resting_sides(client, [{"order_id": "abc", "side": "yes"}]) == {}
 
     def test_unidentifiable_order_fails_open(self):
         """No log row -> omitted, not guessed. Over-blocking on a guessed side
         would reject coherent bets."""
-        client = self._Client([
-            {"ticker": "KXNFLGAME-26SEP13TBCIN-TB",
-             "order_id": "nosuch", "remaining_count_fp": "2", "side": "bid"},
-        ])
+        client = self._Client(
+            [
+                {
+                    "ticker": "KXNFLGAME-26SEP13TBCIN-TB",
+                    "order_id": "nosuch",
+                    "remaining_count_fp": "2",
+                    "side": "bid",
+                },
+            ]
+        )
         assert ke.resting_sides(client, []) == {}
 
     def test_api_failure_never_blocks_a_batch(self):
         class Boom:
             def get_orders(self, **kw):
                 raise RuntimeError("503")
+
         assert ke.resting_sides(Boom(), []) == {}
 
     def test_the_world_cup_pair_is_caught(self):
-        client = self._Client([
-            {"ticker": "KXWCSPREAD-26JUN26EGYIRI-EGY2",
-             "order_id": "egy", "remaining_count_fp": "5", "side": "bid"},
-        ])
+        client = self._Client(
+            [
+                {
+                    "ticker": "KXWCSPREAD-26JUN26EGYIRI-EGY2",
+                    "order_id": "egy",
+                    "remaining_count_fp": "5",
+                    "side": "bid",
+                },
+            ]
+        )
         held = ke.resting_sides(client, [{"order_id": "egy", "side": "yes"}])
-        assert opposing_position(
-            "KXWCSPREAD-26JUN26EGYIRI-IRI2", "yes", held
-        ) == "KXWCSPREAD-26JUN26EGYIRI-EGY2"
+        assert (
+            opposing_position("KXWCSPREAD-26JUN26EGYIRI-IRI2", "yes", held)
+            == "KXWCSPREAD-26JUN26EGYIRI-EGY2"
+        )
