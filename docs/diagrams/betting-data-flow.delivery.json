@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "8c0d9da0-c9db-412b-8ca3-501c6982a685",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "D:\\AI_Agents\\Projects\\Mikes_AI_Lab\\Repos\\AI-Automation-Tools\\Live_Apps\\Edge-Radar\\docs\\diagrams\\betting-data-flow.json",
+  "output": "D:\\AI_Agents\\Projects\\Mikes_AI_Lab\\Repos\\AI-Automation-Tools\\Live_Apps\\Edge-Radar\\docs\\diagrams\\betting-data-flow.html",
+  "specification": {
+    "sha256": "ff0dee96352ce08266fec823e8a33e7e89fd9a0b2f2ffeb2ea37ac1d93edd191",
+    "bytes": 11147
+  },
+  "artifact": {
+    "sha256": "7424b4f52b9909669d1dee9969922f4c89f2dd53ec6759f1c7d63506d745a006",
+    "bytes": 842054
+  }
+}

@@ -51,8 +51,10 @@
 ## 🎯 Edge Detection Pipeline
 
 <p align="center">
-  <img src=".claude/images/diagrams/data_flow/high_level_data_flow/high_level_pipeline_horizontal.png" alt="Edge-Radar pipeline: data sources → edge detection engine → risk gates → execution" width="784">
+  <a href="docs/diagrams/README.md"><img src="docs/diagrams/betting-data-flow.png" alt="Edge-Radar betting logic data flow: Kalshi markets, The Odds API, ESPN stats and weather feed the market filter, odds cache and context signals; fair probability and edge become an Opportunity; risk gates reject or approve; Kelly sizing, order placement, trade log, settler and settlements, with settlements feeding calibration back" width="784"></a>
 </p>
+
+<p align="center"><sub>Every box links to the code it describes. <a href="docs/diagrams/README.md">How to open the interactive version and keep it current →</a></sub></p>
 
 Fair value is a sport-specific normal-CDF model over a weighted-median consensus of 12 sportsbooks (sharp books like Pinnacle/Circa weighted 3×, recreational 0.7×), then adjusted by team-stats win%, sharp-money line movement, weather, pitcher matchups, rest/back-to-back fatigue, and book-disagreement signals. **[Sports Guide →](docs/kalshi/kalshi-sports-betting/SPORTS_GUIDE.md)** breaks down each signal and the de-vig math.
 

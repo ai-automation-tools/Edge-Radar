@@ -101,3 +101,6 @@ scripts/schedulers/automation/__pycache__/
 /repos/
 # aX Platform CLI config (contains token)
 .ax/
+
+# Archify build receipts and screenshots (scripts/diagrams/build_betting_diagram.py)
+docs/diagrams/.build/

@@ -20,6 +20,7 @@ Only `README.md` and `CHANGELOG.md` live at the root of `docs/`. Everything else
 *   [ARCHITECTURE.md](./setup/ARCHITECTURE.md) — In-depth overview of the pipeline, Kelly sizing equations, and risk gating conditions.
 *   [AUTOMATION_GUIDE.md](./setup/AUTOMATION_GUIDE.md) — Setting up the automated scanners and schedulers.
 *   [mcp-servers.md](./setup/mcp-servers.md) — MCP Server setup for Edge-Radar.
+*   **[diagrams/](./diagrams/README.md) — the betting logic data-flow diagram the root README shows** (interactive, every box linked to its code). Generated from one JSON; a pre-commit hook and `--check` flag it when cited code changes.
 *   [pipeline-diagram.md](./setup/pipeline-diagram.md) — End-to-end pipeline & data-flow diagram (scan → edge models → risk gating → execution → calibration feedback).
 
 ### ⏰ Automation Schedule — [`task-schedules/`](./task-schedules/)
