@@ -1,0 +1,2 @@
+# Diagram files are hashed byte-for-byte by their build receipts; never convert line endings.
+docs/diagrams/betting-data-flow.* -text

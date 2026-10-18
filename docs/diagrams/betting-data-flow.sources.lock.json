@@ -1,0 +1,12 @@
+{
+  "revision": "8daeb154963e7b49cfb56185fc39c4f7d0ee4000",
+  "files": {
+    "scripts/kalshi/edge_detector.py": "fce2c542791a56d909df2c9d94df02885ed683fa",
+    "scripts/kalshi/kalshi_client.py": "91721b96e8395cac37996ef766ab640a3b3928fb",
+    "scripts/kalshi/kalshi_executor.py": "c00f5f03a81ff38abcb4e0b30179cd83159aa25e",
+    "scripts/kalshi/kalshi_settler.py": "5c7dd932c1a41e84ce93a868bc4217b6a3318924",
+    "scripts/shared/odds_cache.py": "db80197939fa697221903ed2c970a4418d5d8d5b",
+    "scripts/shared/opportunity.py": "6fb415893f55e2797aac73629456891509da42cf",
+    "scripts/shared/paths.py": "cfc9f8a04409f1346cac80de56c22737745d690a"
+  }
+}

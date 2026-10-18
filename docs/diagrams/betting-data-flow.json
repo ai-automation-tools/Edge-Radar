@@ -1,0 +1,503 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Edge-Radar Betting Logic Data Flow",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "output": "docs/diagrams/betting-data-flow.html",
+    "repository": {
+      "url": "https://github.com/ai-automation-tools/Edge-Radar.git",
+      "revision": "8daeb154963e7b49cfb56185fc39c4f7d0ee4000"
+    }
+  },
+  "stages": [
+    {
+      "label": "Sources"
+    },
+    {
+      "label": "Ingest"
+    },
+    {
+      "label": "Model + state"
+    },
+    {
+      "label": "Gate + size"
+    },
+    {
+      "label": "Execute + settle"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "kalshi_mkts",
+      "type": "external",
+      "label": "Kalshi markets",
+      "sublabel": "open markets, asks",
+      "stage": 0,
+      "row": 0,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 2477,
+          "end_line": 2514
+        }
+      ]
+    },
+    {
+      "id": "odds_api",
+      "type": "external",
+      "label": "The Odds API",
+      "sublabel": "h2h, spreads, totals",
+      "stage": 0,
+      "row": 1,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 221,
+          "end_line": 309
+        }
+      ]
+    },
+    {
+      "id": "stats",
+      "type": "external",
+      "label": "ESPN + league stats",
+      "sublabel": "line moves, pitchers, rest",
+      "stage": 0,
+      "row": 2,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 2577,
+          "end_line": 2638
+        }
+      ]
+    },
+    {
+      "id": "weather",
+      "type": "external",
+      "label": "Weather",
+      "sublabel": "NFL, NCAAF, MLB only",
+      "stage": 0,
+      "row": 3,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 2651,
+          "end_line": 2667
+        }
+      ]
+    },
+    {
+      "id": "market_filter",
+      "type": "backend",
+      "label": "Market filter",
+      "sublabel": "expiry, date, bet type",
+      "stage": 1,
+      "row": 0,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 2520,
+          "end_line": 2552
+        }
+      ]
+    },
+    {
+      "id": "odds_cache",
+      "type": "database",
+      "label": "Odds cache",
+      "sublabel": "300s pre-game, 45s live",
+      "stage": 1,
+      "row": 1,
+      "sources": [
+        {
+          "path": "scripts/shared/odds_cache.py",
+          "line": 34,
+          "end_line": 93
+        }
+      ]
+    },
+    {
+      "id": "signals",
+      "type": "backend",
+      "label": "Context signals",
+      "sublabel": "stdev + confidence inputs",
+      "stage": 1,
+      "row": 2,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 2083,
+          "end_line": 2141
+        },
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 1437,
+          "end_line": 1456
+        }
+      ]
+    },
+    {
+      "id": "calib_file",
+      "type": "database",
+      "label": "Calibration stdevs",
+      "sublabel": "calibration_stdevs.json",
+      "stage": 1,
+      "row": 3,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 794,
+          "end_line": 866
+        }
+      ]
+    },
+    {
+      "id": "edge",
+      "type": "backend",
+      "label": "Edge + Opportunity",
+      "sublabel": "fair - ask, composite score",
+      "tag": "gross edge",
+      "stage": 2,
+      "row": 0,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 1559,
+          "end_line": 1676
+        },
+        {
+          "path": "scripts/shared/opportunity.py",
+          "line": 14,
+          "end_line": 28
+        }
+      ]
+    },
+    {
+      "id": "fair",
+      "type": "backend",
+      "label": "Fair probability",
+      "sublabel": "de-vig, weighted median",
+      "tag": "sharp books x3",
+      "stage": 2,
+      "row": 1,
+      "sources": [
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 545,
+          "end_line": 704
+        },
+        {
+          "path": "scripts/kalshi/edge_detector.py",
+          "line": 962,
+          "end_line": 984
+        }
+      ]
+    },
+    {
+      "id": "portfolio",
+      "type": "backend",
+      "label": "Portfolio state",
+      "sublabel": "balance, exposure, daily P&L",
+      "stage": 2,
+      "row": 2,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 2432,
+          "end_line": 2532
+        }
+      ]
+    },
+    {
+      "id": "gates",
+      "type": "security",
+      "label": "Risk gates",
+      "sublabel": "first failing gate wins",
+      "tag": "fee-aware floor",
+      "stage": 3,
+      "row": 0,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 1361,
+          "end_line": 1535
+        },
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 600,
+          "end_line": 651
+        }
+      ]
+    },
+    {
+      "id": "sizing",
+      "type": "backend",
+      "label": "Kelly sizing",
+      "sublabel": "net edge, caps, 10% max",
+      "stage": 3,
+      "row": 1,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 1556,
+          "end_line": 1689
+        }
+      ]
+    },
+    {
+      "id": "rejected",
+      "type": "security",
+      "label": "Rejected",
+      "sublabel": "0-contract SizedOrder",
+      "stage": 4,
+      "row": 0,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 1527,
+          "end_line": 1535
+        }
+      ]
+    },
+    {
+      "id": "executor",
+      "type": "backend",
+      "label": "Place order",
+      "sublabel": "GTC limit; DRY_RUN blocks",
+      "tag": "venue check",
+      "stage": 4,
+      "row": 1,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 1942,
+          "end_line": 2113
+        },
+        {
+          "path": "scripts/kalshi/kalshi_client.py",
+          "line": 389,
+          "end_line": 391
+        }
+      ]
+    },
+    {
+      "id": "trade_log",
+      "type": "database",
+      "label": "Trade log",
+      "sublabel": "kalshi_trades.json",
+      "stage": 4,
+      "row": 2,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_executor.py",
+          "line": 1784,
+          "end_line": 1897
+        },
+        {
+          "path": "scripts/shared/paths.py",
+          "line": 31,
+          "end_line": 32
+        }
+      ]
+    },
+    {
+      "id": "settler",
+      "type": "backend",
+      "label": "Settler",
+      "sublabel": "P&L, CLV back to row",
+      "stage": 4,
+      "row": 3,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_settler.py",
+          "line": 355,
+          "end_line": 506
+        }
+      ]
+    },
+    {
+      "id": "settlements",
+      "type": "database",
+      "label": "Settlements",
+      "sublabel": "kalshi_settlements.json",
+      "stage": 4,
+      "row": 4,
+      "sources": [
+        {
+          "path": "scripts/kalshi/kalshi_settler.py",
+          "line": 210,
+          "end_line": 270
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "id": "f_mkts",
+      "from": "kalshi_mkts",
+      "to": "market_filter",
+      "label": "markets",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_odds",
+      "from": "odds_api",
+      "to": "odds_cache",
+      "label": "book odds",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_stats",
+      "from": "stats",
+      "to": "signals",
+      "label": "team context"
+    },
+    {
+      "id": "f_weather",
+      "from": "weather",
+      "to": "signals",
+      "label": "forecast"
+    },
+    {
+      "id": "f_asks",
+      "from": "market_filter",
+      "to": "edge",
+      "label": "yes/no asks",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_cached",
+      "from": "odds_cache",
+      "to": "fair",
+      "label": "cached odds",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_signals",
+      "from": "signals",
+      "to": "fair",
+      "label": "adjustments"
+    },
+    {
+      "id": "f_calib",
+      "from": "calib_file",
+      "to": "fair",
+      "label": "stdevs"
+    },
+    {
+      "id": "f_fair",
+      "from": "fair",
+      "to": "edge",
+      "label": "fair value",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_opp",
+      "from": "edge",
+      "to": "gates",
+      "label": "Opportunity",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_state",
+      "from": "portfolio",
+      "to": "gates",
+      "label": "limits state"
+    },
+    {
+      "id": "f_bankroll",
+      "from": "portfolio",
+      "to": "sizing",
+      "label": "cash bankroll"
+    },
+    {
+      "id": "f_approved",
+      "from": "gates",
+      "to": "sizing",
+      "label": "approved",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_reject",
+      "from": "gates",
+      "to": "rejected",
+      "label": "REJECTED",
+      "variant": "security"
+    },
+    {
+      "id": "f_order",
+      "from": "sizing",
+      "to": "executor",
+      "label": "SizedOrder",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_row",
+      "from": "executor",
+      "to": "trade_log",
+      "label": "trade row",
+      "variant": "emphasis"
+    },
+    {
+      "id": "f_pnl",
+      "from": "trade_log",
+      "to": "portfolio",
+      "label": "daily P&L"
+    },
+    {
+      "id": "f_open",
+      "from": "trade_log",
+      "to": "settler",
+      "label": "open rows"
+    },
+    {
+      "id": "f_settle",
+      "from": "settler",
+      "to": "settlements",
+      "label": "settled record"
+    },
+    {
+      "id": "f_recal",
+      "from": "settlements",
+      "to": "calib_file",
+      "label": "recalibrate",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "title": "How edge becomes a bet",
+      "dot": "emerald",
+      "items": [
+        "Scan keeps opportunities with gross edge >= MIN_EDGE, max 2 per game",
+        "The fee (rate x P x (1-P)) is added only at the risk gate and in sizing",
+        "Kelly = KELLY_FRACTION / batch size x trusted net edge, capped by MAX_BET_SIZE and exposure",
+        "Futures and prediction scanners feed the same execute_pipeline"
+      ]
+    },
+    {
+      "title": "Risk gates, in order",
+      "dot": "rose",
+      "items": [
+        "Daily loss, open positions, total and per-sport exposure",
+        "Fee-aware edge floor, too-good edge, price floor/ceiling, spread and volume",
+        "Days to event, composite score, confidence, NO on heavy favorite",
+        "Already started, already held, per-event cap, opposite side, recent matchup",
+        "Venue eligibility runs last and is skipped under DRY_RUN"
+      ]
+    },
+    {
+      "title": "Knobs that change behaviour",
+      "dot": "cyan",
+      "items": [
+        "DRY_RUN: real order vs dry_run_blocked row",
+        "MIN_EDGE_THRESHOLD (+ per-sport overrides)",
+        "KELLY_FRACTION, KELLY_EDGE_CAP",
+        "KALSHI_FEE_RATE, MAX_BET_SIZE, MAX_DAILY_LOSS"
+      ]
+    }
+  ]
+}

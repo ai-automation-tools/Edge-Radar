@@ -2,6 +2,27 @@
 
 ---
 
+## 2026-10-18 -- README diagram: code-pinned Archify data flow
+
+The README's pipeline image (`.claude/images/diagrams/data_flow/high_level_data_flow/`, a
+hand-drawn Mermaid render) still showed the Polymarket node removed on 2026-09-29, and nothing
+told anyone when it went stale. It is replaced by `docs/diagrams/betting-data-flow.*`.
+
+- **Source of truth is one JSON.** 18 nodes and 20 flows from Kalshi markets to settlement and
+  recalibration, each citing the code it describes by line range at a pinned commit (`8daeb154`).
+  Archify renders it to an interactive HTML (each box links to its lines on GitHub) and the PNG
+  the README shows.
+- **Drift is detected, not remembered.** A build records the git blob of every cited file in
+  `betting-data-flow.sources.lock.json`. `scripts/diagrams/build_betting_diagram.py --check`
+  exits 1 when any of them changed; the `betting-diagram-drift` pre-commit hook prints the same
+  warning on commits touching `scripts/` or `app/` without blocking. CLAUDE.md now says to update
+  the diagram in the same PR. Steps in `docs/diagrams/README.md`.
+- Generated files are excluded from the whitespace and secrets hooks, since their receipts pin
+  exact bytes. The old `high_level_data_flow/` folder is deleted; the other diagrams under
+  `.claude/images/diagrams/` are unchanged.
+
+---
+
 ## 2026-10-13 -- Tests: 8 passed only with the live `.env`
 
 The phone-layout PR (#333) reported 8 failures "on unmodified master in this environment". They
