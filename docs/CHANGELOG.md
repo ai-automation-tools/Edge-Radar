@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-10-19 -- Data-flow diagram moves from the README to the homepage
+
+- The README no longer shows the betting data-flow diagram; the [homepage](https://edge-radar.ai-automation-tools.dev/#pipeline) does, under
+  *Pipeline*, linking to the interactive version. `docs/diagrams/` is still its source.
+- `scripts/diagrams/build_betting_diagram.py` copies the HTML and PNG into `site/diagram/` (Vercel
+  deploys only `site/`), and `--check` flags a copy that differs from the build.
+
 ## 2026-10-19 -- Upstream check: K1 queued
 
 - **Roadmap** K1 added: Kalshi gave `GET /portfolio/balance` its own 1 req/s bucket (changelog 2026-10-15). Money path, so queued, not fixed.

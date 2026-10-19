@@ -11,7 +11,7 @@
 - **This file holds the rules. `docs/CHANGELOG.md` holds the reasoning and evidence behind each one**, under its dated entry (cited below as e.g. *CHANGELOG 2026-07-27*). When a rule changes, update both.
 - Working branch: **`mike_desktop`** (deploy/default: `master`). `mike_win-desktop` is retired — do not commit to it.
 - The Risk Limits block lists **code defaults**; the live `.env` overrides several. `python scripts/doctor.py` is the source of truth for what is actually running.
-- **The README's data-flow diagram is generated and pinned to code.** `docs/diagrams/betting-data-flow.json` cites line ranges in `edge_detector.py`, `kalshi_executor.py`, `kalshi_settler.py`, `odds_cache.py` and friends. When a change touches the betting path (sources, filter, fair value, edge, gates, sizing, order, trade log, settlement, calibration), or `python scripts/diagrams/build_betting_diagram.py --check` reports drift, update the diagram in the same PR: commit the code, re-read the changed ranges, fix the JSON (line ranges, labels, flows, cards), then `--pin-head`. Never hand-edit the `.html`/`.png`. Steps: `docs/diagrams/README.md`.
+- **The homepage's data-flow diagram is generated and pinned to code.** `docs/diagrams/betting-data-flow.json` cites line ranges in `edge_detector.py`, `kalshi_executor.py`, `kalshi_settler.py`, `odds_cache.py` and friends. When a change touches the betting path (sources, filter, fair value, edge, gates, sizing, order, trade log, settlement, calibration), or `python scripts/diagrams/build_betting_diagram.py --check` reports drift, update the diagram in the same PR: commit the code, re-read the changed ranges, fix the JSON (line ranges, labels, flows, cards), then `--pin-head`. Never hand-edit the `.html`/`.png`. Steps: `docs/diagrams/README.md`.
 
 ---
 
@@ -111,7 +111,7 @@ Edge-Radar/
 │   ├── prediction/            # Crypto, weather, S&P
 │   ├── shared/                # Stats, weather, logging, odds cache
 │   ├── backtest/              # backtester.py, correlation_check.py
-│   ├── diagrams/              # build_betting_diagram.py — rebuild/--check the README diagram
+│   ├── diagrams/              # build_betting_diagram.py — rebuild/--check the homepage diagram
 │   ├── schedulers/            # Automation + Windows Task Scheduler installer
 │   └── setup/link_skills.ps1  # Recreate .claude/skills junctions after clone
 ├── tests/                     # pytest suite (make test); test_site.py pins both static pages
