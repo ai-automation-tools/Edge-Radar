@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-10-19 -- Upstream check: K1 queued
+
+- **Roadmap** K1 added: Kalshi gave `GET /portfolio/balance` its own 1 req/s bucket (changelog 2026-10-15). Money path, so queued, not fixed.
+- **Docs** `docs/UPSTREAMS.md` last-checked dates moved to 2026-10-19 for every row read this run. The Odds API now marks bookmaker-level `last_update` deprecated; `_bookmaker_last_update` already falls back to market level (S19), so no code change.
+
+---
+
 ## 2026-10-19 -- Roadmap on the lab's roadmap standard
 
 - **Docs** `docs/ROADMAP.md` reshaped to the lab roadmap standard: centred header and badges, a
