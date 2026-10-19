@@ -15,7 +15,7 @@ probability and edge, the risk gates, Kelly sizing, the order, and settlement fe
 back. Below the map, three cards cover how edge becomes a bet, the risk gates in order, and the
 knobs that change behaviour.
 
-**Open the interactive version:** [`betting-data-flow.html`](betting-data-flow.html) in a browser
+**See it on the [homepage](https://edge-radar.ai-automation-tools.dev/#pipeline)**, or open the interactive version: [`betting-data-flow.html`](betting-data-flow.html) in a browser
 from a clone, or [render it from GitHub](https://raw.githack.com/ai-automation-tools/Edge-Radar/master/docs/diagrams/betting-data-flow.html).
 Each box links to the exact lines it describes, at the pinned commit. It also has route tracing,
 search, light/dark, and SVG/PNG export.
@@ -29,7 +29,8 @@ search, light/dark, and SVG/PNG export.
 | File | What it is | Edit it? |
 |:---|:---|:---|
 | [`betting-data-flow.json`](betting-data-flow.json) | The source: every node, flow, card, and the code each node cites | **Yes, this is the only file you edit** |
-| `betting-data-flow.html` · `.png` | Generated: the interactive diagram, and the image the root README shows | Never; rebuild |
+| `betting-data-flow.html` · `.png` | Generated: the interactive diagram, and the image the homepage shows | Never; rebuild |
+| `site/diagram/betting-data-flow.html` · `.png` | Copies the build writes for the homepage, which deploys only `site/`. `--check` flags a copy that differs | Never; rebuild |
 | `betting-data-flow.delivery.json` · `.sources.lock.json` | Build receipt, and the git blob of every cited file at the pinned commit | Never; rebuild |
 | [`scripts/diagrams/build_betting_diagram.py`](../../scripts/diagrams/build_betting_diagram.py) | Builds the diagram and checks it for drift | Only to change how it builds or checks |
 
@@ -57,7 +58,7 @@ To bring it up to date:
    python scripts/diagrams/build_betting_diagram.py --pin-head
    ```
 
-4. Commit the JSON and the generated files together, and add a line to `docs/CHANGELOG.md`.
+4. Commit the JSON, the generated files and the `site/diagram/` copies together, and add a line to `docs/CHANGELOG.md`.
 
 Building needs Node 18+, Chrome, and the [Archify](https://github.com/tt-a1i/archify) skill
 (default path `~/.claude/skills/archify/bin/archify.mjs`; pass `--archify <path>` to point elsewhere).
