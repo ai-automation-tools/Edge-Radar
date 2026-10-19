@@ -29,7 +29,7 @@ search, light/dark, and SVG/PNG export.
 | File | What it is | Edit it? |
 |:---|:---|:---|
 | [`betting-data-flow.json`](betting-data-flow.json) | The source: every node, flow, card, and the code each node cites | **Yes, this is the only file you edit** |
-| `betting-data-flow.html` · `.png` | Generated: the interactive diagram, and the image the homepage shows | Never; rebuild |
+| `betting-data-flow.html` · `.png` | Generated: the interactive diagram, which the homepage embeds live, and a static PNG snapshot | Never; rebuild |
 | `site/diagram/betting-data-flow.html` · `.png` | Copies the build writes for the homepage, which deploys only `site/`. `--check` flags a copy that differs | Never; rebuild |
 | `betting-data-flow.delivery.json` · `.sources.lock.json` | Build receipt, and the git blob of every cited file at the pinned commit | Never; rebuild |
 | [`scripts/diagrams/build_betting_diagram.py`](../../scripts/diagrams/build_betting_diagram.py) | Builds the diagram and checks it for drift | Only to change how it builds or checks |

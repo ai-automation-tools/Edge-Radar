@@ -299,7 +299,7 @@
     .steps.in::after { width: 92%; }
     @media (min-width: 980px) { .steps::before, .steps::after { display: block; } }
     .diagram { margin: 26px 0 0; border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
-    .diagram img { display: block; width: 100%; height: auto; }
+    .diagram iframe { display: block; width: 100%; height: clamp(420px, 62vw, 860px); border: 0; background: var(--bg); }
     .diagram figcaption { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px; color: var(--fg-4); }
     .diagram figcaption a { color: var(--accent); }
     .step { --mx: 50%; --my: 50%; position: relative; z-index: 1; display: flex; flex-direction: column; gap: 4px; padding: 14px 14px 14px; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); overflow: hidden; transition: transform .3s var(--ease), border-color .3s, background .3s; }
@@ -796,8 +796,8 @@
     </div>
     <!-- Copies scripts/diagrams/build_betting_diagram.py writes from docs/diagrams/ (the source). -->
     <figure class="diagram">
-      <a href="diagram/betting-data-flow.html"><img src="diagram/betting-data-flow.png" width="2048" height="1320" loading="lazy" alt="Edge-Radar betting logic data flow: Kalshi markets, The Odds API, ESPN stats and weather feed the market filter, odds cache and context signals; fair probability and edge become an Opportunity; risk gates reject or approve; Kelly sizing, order placement, trade log, settler and settlements, with settlements feeding calibration back"></a>
-      <figcaption>The betting path as data flow. Every box links to the code it describes. <a href="diagram/betting-data-flow.html">Open the interactive diagram</a></figcaption>
+      <iframe id="diagram-frame" src="diagram/betting-data-flow.html" loading="lazy" title="Edge-Radar betting logic data flow, interactive: Kalshi markets, The Odds API, ESPN stats and weather feed the market filter, odds cache and context signals; fair probability and edge become an Opportunity; risk gates reject or approve; Kelly sizing, order placement, trade log, settler and settlements, with settlements feeding calibration back"></iframe>
+      <figcaption>The betting path as data flow. Every box links to the code it describes; Route and Lens trace paths. <a href="diagram/betting-data-flow.html">Open full screen ↗</a></figcaption>
     </figure>
   </section>
 
@@ -1251,6 +1251,17 @@
 </script>
 
 <!-- Shared consent banner, served from the org apex so the banner and the notice it links to have one home. -->
+<script>
+  // The Archify diagram (same origin) starts Still unless localStorage says 'live'; the homepage
+  // shows it Live. Reduced-motion readers still get Still. Its theme follows this page's switch.
+  (function () {
+    try { localStorage.setItem('archify-motion', 'live') } catch (_) {}
+    const frame = document.getElementById('diagram-frame')
+    const sync = () => { try { frame.contentDocument.documentElement.setAttribute('data-theme', document.documentElement.classList.contains('light') ? 'light' : 'dark') } catch (_) {} }
+    frame.addEventListener('load', sync)
+    new MutationObserver(sync).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  })()
+</script>
 <script src="https://ai-automation-tools.dev/consent.js" defer></script>
 </body>
 </html>
