@@ -2,6 +2,18 @@
 
 ---
 
+## 2026-10-19 -- Roadmap on the lab's roadmap standard
+
+- **Docs** `docs/ROADMAP.md` reshaped to the lab roadmap standard: centred header and badges, a
+  collapsed Phase 0, a ticked `🚦 Public release` gate list (org transfer 2026-09-10, dollar
+  figures off the public site 2026-09-07, public page 2026-10-04), and every open item as a
+  checkbox line under `## After public release`, in the old section order with IDs and effort
+  kept. B7 is marked `- [!]` (blocked on the operator quota decision it already named). No items
+  added or dropped. `/repo-review` and `/sync-docs` now point at `docs/ROADMAP.md` and describe
+  the checkbox shape.
+
+---
+
 ## 2026-10-18 -- README diagram: code-pinned Archify data flow
 
 The README's pipeline image (`.claude/images/diagrams/data_flow/high_level_data_flow/`, a

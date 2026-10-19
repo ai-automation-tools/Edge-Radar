@@ -12,7 +12,7 @@ Conduct a thorough top-to-bottom review of the Edge-Radar repo. Read enough to f
 - `app/` — config, domain dataclasses
 - `docs/` — every subdirectory; check for staleness, contradictions, broken links
 - `tests/` — coverage gaps, skipped tests, flaky patterns, fixtures
-- Top-level files — `CLAUDE.md`, `ROADMAP.md`, `README.md`, `Makefile`, `.env.example`, `.pre-commit-config.yaml`, `requirements.txt`
+- Top-level files — `CLAUDE.md`, `docs/ROADMAP.md`, `README.md`, `Makefile`, `.env.example`, `.pre-commit-config.yaml`, `requirements.txt`
 
 If $ARGUMENTS specifies a focus area (e.g., `schedulers`, `risk gates`, `tests`), emphasize that area but still note critical issues anywhere else.
 
@@ -26,7 +26,7 @@ If $ARGUMENTS specifies a focus area (e.g., `schedulers`, `risk gates`, `tests`)
 
 **Workflow:**
 
-- Start by reading `CLAUDE.md`, `ROADMAP.md`, `README.md`, and `docs/CHANGELOG.md` to ground yourself in current project state.
+- Start by reading `CLAUDE.md`, `docs/ROADMAP.md`, `README.md`, and `docs/CHANGELOG.md` to ground yourself in current project state.
 - Use parallel `Glob`/`Grep`/`Read` calls to cover ground efficiently.
 - Spot-check claims by reading the actual source — don't trust docs alone.
 - Cross-reference: env vars in `.env.example` vs. `os.getenv` calls vs. `app/config.py` vs. `CLAUDE.md` risk-limits table.
