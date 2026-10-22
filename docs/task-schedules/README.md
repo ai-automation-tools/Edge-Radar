@@ -433,7 +433,7 @@ None of these are registered any more. Reasons and evidence are in [`CHANGELOG.m
 
 ## References
 
-- [`../../CLAUDE.md`](../../CLAUDE.md) — risk gates and limits
+- [`../../AGENTS.md`](../../AGENTS.md) — risk gates and limits
 - [`../setup/AUTOMATION_GUIDE.md`](../setup/AUTOMATION_GUIDE.md) — one-command installer for the core tasks
 - [`../../skills/edge-radar/SKILL.md`](../../skills/edge-radar/SKILL.md) — scanner reference
 - [`../../.env.example`](../../.env.example) — every tunable, incl. `NOTIFY_EMAIL` / `RESEND_FROM`
@@ -442,5 +442,5 @@ None of these are registered any more. Reasons and evidence are in [`CHANGELOG.m
 ---
 
 <p align="center">
-  <a href="../README.md">Docs index</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="../setup/AUTOMATION_GUIDE.md">Automation Guide</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="../../CLAUDE.md">Risk gates</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#-edge-radar-scheduled-tasks">Back to top</a>
+  <a href="../README.md">Docs index</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="../setup/AUTOMATION_GUIDE.md">Automation Guide</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="../../AGENTS.md">Risk gates</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="#-edge-radar-scheduled-tasks">Back to top</a>
 </p>

@@ -12,24 +12,24 @@ Conduct a thorough top-to-bottom review of the Edge-Radar repo. Read enough to f
 - `app/` — config, domain dataclasses
 - `docs/` — every subdirectory; check for staleness, contradictions, broken links
 - `tests/` — coverage gaps, skipped tests, flaky patterns, fixtures
-- Top-level files — `CLAUDE.md`, `docs/ROADMAP.md`, `README.md`, `Makefile`, `.env.example`, `.pre-commit-config.yaml`, `requirements.txt`
+- Top-level files — `AGENTS.md`, `docs/ROADMAP.md`, `README.md`, `Makefile`, `.env.example`, `.pre-commit-config.yaml`, `requirements.txt`
 
 If $ARGUMENTS specifies a focus area (e.g., `schedulers`, `risk gates`, `tests`), emphasize that area but still note critical issues anywhere else.
 
 **What to look for:**
 
 1. **Issues** — bugs, security risks (hardcoded secrets, missing `.env` loads, log leakage), broken imports, dead code paths, missing error handling at system boundaries, race conditions, risk-gate bypasses.
-2. **Inconsistencies** — env vars referenced in code but not in `.env.example` (or vice versa); docs that contradict code (e.g., `CLAUDE.md` risk-gate numbers vs. actual `risk_check.py` behavior); duplicate logic across `scripts/` modules; agent definitions that don't match current workflow.
+2. **Inconsistencies** — env vars referenced in code but not in `.env.example` (or vice versa); docs that contradict code (e.g., `AGENTS.md` risk-gate numbers vs. actual `risk_check.py` behavior); duplicate logic across `scripts/` modules; agent definitions that don't match current workflow.
 3. **Recommended updates** — outdated docs, stale memory references, deprecated patterns, missing test coverage on recent changes (check `git log` for recent commits without corresponding test edits).
 4. **Enhancements** — concrete suggestions only (with rough effort estimate: small/medium/large). No vague "consider adding observability" — say what, where, and why.
 5. **Removable cruft** — orphaned scripts, dead files, gitignored directories that should be deleted from disk, unused dependencies in `requirements.txt`, agent definitions or skills that no longer reflect reality, obsolete docs in `docs/my-documents/temp/` or `docs/enhancements/`.
 
 **Workflow:**
 
-- Start by reading `CLAUDE.md`, `docs/ROADMAP.md`, `README.md`, and `docs/CHANGELOG.md` to ground yourself in current project state.
+- Start by reading `AGENTS.md`, `docs/ROADMAP.md`, `README.md`, and `docs/CHANGELOG.md` to ground yourself in current project state.
 - Use parallel `Glob`/`Grep`/`Read` calls to cover ground efficiently.
 - Spot-check claims by reading the actual source — don't trust docs alone.
-- Cross-reference: env vars in `.env.example` vs. `os.getenv` calls vs. `app/config.py` vs. `CLAUDE.md` risk-limits table.
+- Cross-reference: env vars in `.env.example` vs. `os.getenv` calls vs. `app/config.py` vs. `AGENTS.md` risk-limits table.
 - For each finding, cite specific files with `path:line` references so the user can jump to the source.
 
 **Output:**

@@ -17,7 +17,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC = ROOT / "site" / "index.html"
 OPS = ROOT / ".claude" / "html" / "index.html"
-CLAUDE_MD = ROOT / "CLAUDE.md"
+AGENTS_MD = ROOT / "AGENTS.md"
 README = ROOT / "README.md"
 SCHEDULES = ROOT / "docs" / "task-schedules" / "README.md"
 
@@ -76,7 +76,7 @@ def test_ops_deck_has_no_source_bar(ops: str) -> None:
 
 
 def _gate_rows() -> list[str]:
-    text = CLAUDE_MD.read_text(encoding="utf-8")
+    text = AGENTS_MD.read_text(encoding="utf-8")
     block = text[text.index("### Execution gates") : text.index("### Sizing rules")]
     return re.findall(r"^\| ([0-9][0-9.b]*) \|", block, re.M)
 
@@ -88,7 +88,7 @@ def test_public_gate_grid_matches_claude_md(public: str) -> None:
         public.index("const GATES = [") : public.index("];", public.index("const GATES = ["))
     ]
     ids = re.findall(r"\{ id: '([0-9][0-9.b]*)'", script)
-    assert ids == expected, "GATES in site/index.html must list CLAUDE.md's gates, in order"
+    assert ids == expected, "GATES in site/index.html must list AGENTS.md's gates, in order"
     assert f"{len(expected)} risk gates" in public
 
 
@@ -100,7 +100,7 @@ def test_pipeline_has_seven_steps(page: Path) -> None:
 
 
 def test_gate_lab_defaults_match_risk_limits(public: str) -> None:
-    text = CLAUDE_MD.read_text(encoding="utf-8")
+    text = AGENTS_MD.read_text(encoding="utf-8")
     defaults = {
         "feeRate": re.search(r"^KALSHI_FEE_RATE=([0-9.]+)", text, re.M).group(1),
         "maxEdge": re.search(r"^MAX_EDGE=([0-9.]+)", text, re.M).group(1),
@@ -116,14 +116,14 @@ def test_gate_lab_defaults_match_risk_limits(public: str) -> None:
         assert found, key
         assert float(found.group(1)) == float(
             value
-        ), f"{key}: lab {found.group(1)} vs CLAUDE.md {value}"
+        ), f"{key}: lab {found.group(1)} vs AGENTS.md {value}"
 
 
-# ── Quick start: every command the terminal shows is one the README or CLAUDE.md documents ──
+# ── Quick start: every command the terminal shows is one the README or AGENTS.md documents ──
 
 
 def test_quick_start_commands_come_from_the_docs(public: str) -> None:
-    docs = README.read_text(encoding="utf-8") + CLAUDE_MD.read_text(encoding="utf-8")
+    docs = README.read_text(encoding="utf-8") + AGENTS_MD.read_text(encoding="utf-8")
     script = public[public.index("const SCRIPTS = {") : public.index("const termOut")]
     cmds = {c for c in re.findall(r"\['cmd', '([^']+)'\]", script)}
     assert cmds, "terminal has commands"
@@ -131,7 +131,7 @@ def test_quick_start_commands_come_from_the_docs(public: str) -> None:
     for cmd in cmds:
         if cmd in allowed_pwsh:
             continue
-        assert cmd.replace("\\\\", "\\") in docs, f"not in README/CLAUDE.md: {cmd}"
+        assert cmd.replace("\\\\", "\\") in docs, f"not in README/AGENTS.md: {cmd}"
 
 
 # ── Ops deck: the schedule mirrors docs/task-schedules/README.md ─────────────

@@ -183,7 +183,7 @@ Thousands of benign warnings hide the real ones. Report the ratio.
 
 ### B8 — Documented rules with no code
 
-For each **Hard Stop** and each **Gate** in `CLAUDE.md`, grep for its enforcement.
+For each **Hard Stop** and each **Gate** in `AGENTS.md`, grep for its enforcement.
 Two have historically been documentation-only (`spread > 5%`, fixed in L2 2026-08-18;
 `single position > 10% of bankroll`, still open). Confirm each one actually has a
 branch that can reject, and that the gate's *coverage* matches its description —
@@ -203,7 +203,7 @@ than skimming all of them.
 | `kalshi_executor.py` `log_trade` | fields read from the API response that the response may no longer contain |
 | `kalshi_settler.py` `calculate_pnl` | revenue derived per-trade not per-position; fees actually populated |
 | `futures_edge.py` `devig_nway` | proportional vs power/Shin devig on N-way books; incomplete outcome lists |
-| `app/config.py` vs `.env.example` vs `CLAUDE.md` | three-way drift in limits and defaults |
+| `app/config.py` vs `.env.example` vs `AGENTS.md` | three-way drift in limits and defaults |
 
 ## Known-good — do not re-report
 

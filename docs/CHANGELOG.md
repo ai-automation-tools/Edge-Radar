@@ -2,6 +2,21 @@
 
 ---
 
+## 2026-10-22 -- Org folder layout: AGENTS.md and lowercase evidence folders
+
+- **Docs** `CLAUDE.md` is now `AGENTS.md`, the file every coding agent reads; the rules, gates and
+  limits moved with it unchanged. The new `CLAUDE.md` imports it with `@AGENTS.md` and keeps only the
+  Claude Code notes: the `.claude/memory/` index and the `.claude/skills/` junctions.
+- **Docs** Live pointers follow it: `tests/test_site.py` now reads the gates, limits and commands
+  from `AGENTS.md`; the GitHub links on `site/index.html` and `.claude/html/index.html` (same
+  `#execution-gates` / `#dry-run` anchors); the docs, prompts, skills and `/repo-review` /
+  `/sync-docs` references. Code comments on the money path and historical docs still say
+  `CLAUDE.md`, which imports `AGENTS.md`.
+- **Docs** `docs/longshot/fork-evidence-window/Futures/` and `Sports/` → `futures/` and `sports/`
+  (org layout standard: lowercase folders; GitHub paths are case-sensitive).
+
+---
+
 ## 2026-10-19 -- Data-flow diagram moves from the README to the homepage
 
 - The README no longer shows the betting data-flow diagram; the [homepage](https://edge-radar.ai-automation-tools.dev/#pipeline) does, under

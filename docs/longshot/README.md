@@ -10,7 +10,7 @@ The longshot/futures strategy, run as a **profile** of this repo since
 2026-09-10 (P1): `--profile longshot` overlays `.env.longshot` on the base
 `.env` and routes every Kalshi call to **subaccount 1** (~$40, `DRY_RUN=true`).
 
-Rules and usage: **[CLAUDE.md → Strategy Profiles](../../CLAUDE.md)**.
+Rules and usage: **[AGENTS.md → Strategy Profiles](../../AGENTS.md)**.
 Full reasoning for the merge: **[CHANGELOG 2026-09-10 (P1)](../CHANGELOG.md)**.
 
 | | |
