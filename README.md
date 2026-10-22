@@ -1,7 +1,7 @@
 <a id="readme-top"></a>
 
 <p align="center">
-  <a href="https://github.com/ai-automation-tools/Edge-Radar">
+  <a href="https://github.com/ai-automation-tools/edge-radar">
     <img src="images/Edge-Radar-Images/logos/dark/landscape-01-market-sweep.svg" alt="Edge-Radar — automated edge detection & execution for prediction markets" width="720">
   </a>
 </p>
@@ -17,9 +17,9 @@
 <p align="center">
   <a href="#-markets">View Markets</a>
   ·
-  <a href="https://github.com/ai-automation-tools/Edge-Radar/issues">Report Bug</a>
+  <a href="https://github.com/ai-automation-tools/edge-radar/issues">Report Bug</a>
   ·
-  <a href="https://github.com/ai-automation-tools/Edge-Radar/issues">Request Feature</a>
+  <a href="https://github.com/ai-automation-tools/edge-radar/issues">Request Feature</a>
 </p>
 
 <p align="center">
@@ -101,7 +101,7 @@ Result is capped by max bet ($100), the bet-ratio cap, and available bankroll. <
 
 ```bash
 # 0. Clone repo and enter project
-git clone https://github.com/ai-automation-tools/Edge-Radar.git
+git clone https://github.com/ai-automation-tools/edge-radar.git
 cd Edge-Radar
 
 # 1. Create + activate virtual environment

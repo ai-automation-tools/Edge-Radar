@@ -7,7 +7,7 @@
     "quality_profile": "showcase",
     "output": "docs/diagrams/betting-data-flow.html",
     "repository": {
-      "url": "https://github.com/ai-automation-tools/Edge-Radar.git",
+      "url": "https://github.com/ai-automation-tools/edge-radar.git",
       "revision": "8daeb154963e7b49cfb56185fc39c4f7d0ee4000"
     }
   },
