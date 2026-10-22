@@ -11,8 +11,8 @@ From 2026-09-10 the longshot profile writes its reports into the main repo's
 
 | | |
 |:--|:--|
-| `Futures/` | 5 championship-futures scans (09-04, 09-07, 09-08, 09-09, 09-10) |
-| `Sports/` | 5 individual-game longshot scans, same dates |
+| `futures/` | 5 championship-futures scans (09-04, 09-07, 09-08, 09-09, 09-10) |
+| `sports/` | 5 individual-game longshot scans, same dates |
 
 Both legs were preview-only until 2026-09-08, when the fork switched to
 `--execute` under `DRY_RUN=true` — a preview writes a candidate list, not a bet,

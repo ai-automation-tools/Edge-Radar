@@ -616,7 +616,7 @@
   <!-- ── Fact strip ── -->
   <div class="strip" role="list" aria-label="Defaults">
     <span class="lbl">Defaults</span>
-    <a role="listitem" href="https://github.com/ai-automation-tools/edge-radar/blob/master/CLAUDE.md#dry-run" target="_blank" rel="noopener" style="--c:#34d399"><i class="dot"></i>DRY_RUN=true</a>
+    <a role="listitem" href="https://github.com/ai-automation-tools/edge-radar/blob/master/AGENTS.md#dry-run" target="_blank" rel="noopener" style="--c:#34d399"><i class="dot"></i>DRY_RUN=true</a>
     <a role="listitem" href="#gates" style="--c:#fb7185"><i class="dot"></i>21 risk gates</a>
     <a role="listitem" href="#pipeline" style="--c:#38bdf8"><i class="dot"></i>7 pipeline stages</a>
     <a role="listitem" href="#coverage" style="--c:#fbbf24"><i class="dot"></i>30 sport filters</a>
@@ -640,7 +640,7 @@
       <b class="edge">edge</b> − <b class="fee">fee(price)</b> ≥ <b>floor</b> <small>and every gate passes → bet</small>
     </div>
 
-    <!-- Gate lab: the static gates, computed live from CLAUDE.md's code defaults. -->
+    <!-- Gate lab: the static gates, computed live from AGENTS.md's code defaults. -->
     <div class="lab">
       <div class="panel" id="labPanel">
         <div class="hd"><div><p class="eyebrow">Gate lab</p><h3>Move the price. Watch the gates.</h3></div><span class="eyebrow" id="labSrc">illustrative</span></div>
@@ -705,7 +705,7 @@
         </div>
         <div class="verdict ok" id="verdict"><i></i><div><b id="vTitle">Clears the static gates</b> <span id="vSub">· portfolio gates still apply at execution</span></div></div>
         <div class="gchips" id="gchips" aria-label="Gate results"></div>
-        <p class="note">Code defaults from <code>CLAUDE.md</code>: floor + fee (3), edge ≤ 0.50 (3.05), price ≥ 0.12 (3.5), confidence ≥ medium (4.5), NO below 25c needs 25% edge and high confidence (4.6), every NO needs ≥ 8% (4.6b). Gates that need a live book (daily loss, exposure, dedup, opposing side) are not modelled here.</p>
+        <p class="note">Code defaults from <code>AGENTS.md</code>: floor + fee (3), edge ≤ 0.50 (3.05), price ≥ 0.12 (3.5), confidence ≥ medium (4.5), NO below 25c needs 25% edge and high confidence (4.6), every NO needs ≥ 8% (4.6b). Gates that need a live book (daily loss, exposure, dedup, opposing side) are not modelled here.</p>
       </div>
     </div>
 
@@ -744,7 +744,7 @@
     </div>
     <div class="loop">
       <span class="l"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M2 8a6 6 0 0 1 10.5-4M14 8a6 6 0 0 1-10.5 4" stroke-linecap="round"/><path d="M11 1.5L12.5 4L10 4.5M5 14.5L3.5 12L6 11.5" stroke-linecap="round" stroke-linejoin="round"/></svg>Outcomes loop back: settled results re-fit the stdevs and re-judge the thresholds.</span>
-      <span><code>DRY_RUN=true</code> is the default · <a href="https://github.com/ai-automation-tools/edge-radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener">gate spec ↗</a></span>
+      <span><code>DRY_RUN=true</code> is the default · <a href="https://github.com/ai-automation-tools/edge-radar/blob/master/AGENTS.md#execution-gates" target="_blank" rel="noopener">gate spec ↗</a></span>
     </div>
   </section>
 
@@ -867,7 +867,7 @@
 
     <div class="docs">
       <a class="doc" href="https://github.com/ai-automation-tools/edge-radar#readme" target="_blank" rel="noopener"><small>Start</small><b>README</b><span>install, recipes, flags</span></a>
-      <a class="doc" href="https://github.com/ai-automation-tools/edge-radar/blob/master/CLAUDE.md#execution-gates" target="_blank" rel="noopener"><small>Rules</small><b>Risk gates</b><span>CLAUDE.md § Execution gates</span></a>
+      <a class="doc" href="https://github.com/ai-automation-tools/edge-radar/blob/master/AGENTS.md#execution-gates" target="_blank" rel="noopener"><small>Rules</small><b>Risk gates</b><span>AGENTS.md § Execution gates</span></a>
       <a class="doc" href="https://github.com/ai-automation-tools/edge-radar/blob/master/docs/setup/ARCHITECTURE.md" target="_blank" rel="noopener"><small>Design</small><b>Architecture</b><span>pipeline, Kelly, gating</span></a>
       <a class="doc" href="https://github.com/ai-automation-tools/edge-radar/blob/master/docs/scripts/SCRIPTS_REFERENCE.md" target="_blank" rel="noopener"><small>Reference</small><b>Scripts</b><span>every flag, every script</span></a>
       <a class="doc" href="https://github.com/ai-automation-tools/edge-radar/blob/master/docs/CHANGELOG.md" target="_blank" rel="noopener"><small>Evidence</small><b>Changelog</b><span>the why behind each rule</span></a>
@@ -933,7 +933,7 @@
     try { localStorage.setItem(THEME_KEY, b.dataset.themeSet); } catch (e) {}
   }));
 
-  /* ── Code defaults (CLAUDE.md § Risk Limits). The lab and the radar compute from these. ── */
+  /* ── Code defaults (AGENTS.md § Risk Limits). The lab and the radar compute from these. ── */
   const D = { feeRate: 0.07, maxEdge: 0.50, minPrice: 0.12, maxPrice: 1.0, kelly: 0.25, noFavThreshold: 0.25, noMinEdge: 0.25, noMinEdgeGlobal: 0.08, minConf: 'medium' };
   const CONF = { low: 0, medium: 1, high: 2 };
   // Kalshi taker fee: ceil(0.07 · C · P · (1−P)) per order. Per contract, rounded up to the cent.
@@ -1119,7 +1119,7 @@
   size(); addEventListener('resize', () => { size(); if (reduced) draw(performance.now()); }); draw(performance.now());
   document.addEventListener('themechange', () => { if (reduced) draw(performance.now()); });
 
-  /* ── Gates ── CLAUDE.md § Execution gates, one entry per row. type: reject | reject-cap | cap. */
+  /* ── Gates ── AGENTS.md § Execution gates, one entry per row. type: reject | reject-cap | cap. */
   const GATES = [
     { id: '1',    name: 'Daily loss limit',        type: 'reject',     tags: 'portfolio', d: 'No new positions once the day\'s realised loss reaches <code>MAX_DAILY_LOSS</code>.', m: 'Hourly settlement keeps the figure current intraday, so the gate reads today\'s book rather than yesterday\'s.' },
     { id: '2',    name: 'Open position count',     type: 'reject',     tags: 'portfolio', d: 'Open positions must stay under <code>MAX_OPEN_POSITIONS</code>.', m: 'Counts rows, not dollars. Gate 2b is the one that measures money.' },
@@ -1171,7 +1171,7 @@
     el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' }); el.classList.add('open'); el.setAttribute('aria-expanded', 'true');
   }
 
-  /* ── Terminal ── Commands are the README's Quick Start and CLAUDE.md's Common Commands, nothing guessed. */
+  /* ── Terminal ── Commands are the README's Quick Start and AGENTS.md's Common Commands, nothing guessed. */
   const SCRIPTS = {
     install: { title: 'Install', blurb: 'Python 3.11 or later. The venv keeps the pinned dependencies out of your global site-packages; the .env holds your own keys and never leaves the machine.', req: [['Needs', 'python ≥ 3.11, git'], ['Keys', 'Kalshi · Odds API'], ['Default', 'DRY_RUN=true']], c: C.ok,
       bash: [['cmd', 'git clone https://github.com/ai-automation-tools/edge-radar.git'], ['cmd', 'cd Edge-Radar'], ['blank'], ['cmd', 'python -m venv .venv'], ['cmd', 'source .venv/bin/activate'], ['cmd', 'pip install -r requirements.txt'], ['blank'], ['cmt', '# add Kalshi + Odds API keys to .env; DRY_RUN stays true'], ['cmd', 'cp .env.example .env']],
@@ -1214,7 +1214,7 @@
     ...GATES.map(g => ({ g: 'Gates', label: `Gate ${g.id} · ${g.name}`, hint: TYPE[g.type][0], c: TYPE[g.type][1], go: () => jumpGate(g.id) })),
     ...BLIPS.map(b => ({ g: 'Radar samples', label: b.label, hint: `edge ${(b.r.edge >= 0 ? '+' : '') + (b.r.edge * 100).toFixed(0)}%`, c: b.c, go: () => loadLab(b) })),
     { g: 'Documents', label: 'README', hint: 'github.com', go: () => open(REPO + '#readme') },
-    { g: 'Documents', label: 'CLAUDE.md · rules and gates', hint: 'github.com', go: () => open(REPO + '/blob/master/CLAUDE.md') },
+    { g: 'Documents', label: 'AGENTS.md · rules and gates', hint: 'github.com', go: () => open(REPO + '/blob/master/AGENTS.md') },
     { g: 'Documents', label: 'Architecture', hint: 'docs/setup', go: () => open(REPO + '/blob/master/docs/setup/ARCHITECTURE.md') },
     { g: 'Documents', label: 'Scripts reference', hint: 'docs/scripts', go: () => open(REPO + '/blob/master/docs/scripts/SCRIPTS_REFERENCE.md') },
     { g: 'Documents', label: 'Changelog', hint: 'docs/CHANGELOG.md', go: () => open(REPO + '/blob/master/docs/CHANGELOG.md') },

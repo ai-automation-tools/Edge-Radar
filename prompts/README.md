@@ -2,7 +2,7 @@
 
 Ready-to-use natural-language prompts for driving Edge-Radar through Claude Code. Each file is a self-contained prompt: a short brief, the exact CLI commands to run, and what to surface in the response. Paste one into a session, or just describe what you want and Claude will pick the right scan/execute flow.
 
-**Research-first, execute-second.** Most prompts preview (scan) by default. Anything that places real bets uses `--execute`, requires `DRY_RUN=false`, and passes every risk gate in `CLAUDE.md`.
+**Research-first, execute-second.** Most prompts preview (scan) by default. Anything that places real bets uses `--execute`, requires `DRY_RUN=false`, and passes every risk gate in `AGENTS.md`.
 
 > **Related, but not here:** the `/edge-radar` skill is the unified scan/bet/status/settle/risk command center, and `/edge-radar-analysis` produces performance reports. These prompts are lightweight, copy-pasteable recipes; the skills are richer interactive tools.
 
@@ -97,4 +97,4 @@ Outright/futures markets priced via N-way de-vigging. Edges are small (0.5–2% 
 - **Opt-in gates:** prediction execution needs `ALLOW_PREDICTION_BETS=true`; in-progress games need `ALLOW_LIVE_BETS=true`.
 - **Config changes need a restart** of any long-running host process — gate thresholds snapshot at import time. The CLI always re-reads `.env`.
 
-See `CLAUDE.md` for the full gate list, risk limits, and `.env` reference.
+See `AGENTS.md` for the full gate list, risk limits, and `.env` reference.
