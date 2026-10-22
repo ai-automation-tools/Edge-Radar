@@ -2,6 +2,12 @@
 
 ---
 
+## 2026-10-22 -- `betting-logic-review` frontmatter parses as YAML
+
+- **Fix** `skills/betting-logic-review/SKILL.md`: the `argument-hint` value is now quoted. Unquoted, a value
+  starting with `[` is read as a YAML list, and the text after `]` made the whole frontmatter invalid, so
+  strict parsers (js-yaml, PyYAML) rejected the skill. Promptbook's My Library refresh failed on it.
+
 ## 2026-10-22 -- Org folder layout: AGENTS.md and lowercase evidence folders
 
 - **Docs** `CLAUDE.md` is now `AGENTS.md`, the file every coding agent reads; the rules, gates and
