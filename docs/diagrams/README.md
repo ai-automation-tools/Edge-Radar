@@ -16,7 +16,7 @@ back. Below the map, three cards cover how edge becomes a bet, the risk gates in
 knobs that change behaviour.
 
 **See it on the [homepage](https://edge-radar.ai-automation-tools.dev/#pipeline)**, or open the interactive version: [`betting-data-flow.html`](betting-data-flow.html) in a browser
-from a clone, or [render it from GitHub](https://raw.githack.com/ai-automation-tools/Edge-Radar/master/docs/diagrams/betting-data-flow.html).
+from a clone, or [render it from GitHub](https://raw.githack.com/ai-automation-tools/edge-radar/master/docs/diagrams/betting-data-flow.html).
 Each box links to the exact lines it describes, at the pinned commit. It also has route tracing,
 search, light/dark, and SVG/PNG export.
 

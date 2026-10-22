@@ -59,7 +59,7 @@ def test_public_page_carries_the_org_source_bar(public: str) -> None:
     bar = re.search(r'<div class="src-bar">(.*?)</div>', public, re.S)
     assert bar, "source bar markup"
     assert "View source" in bar.group(1)
-    assert 'href="https://github.com/ai-automation-tools/Edge-Radar"' in bar.group(1)
+    assert 'href="https://github.com/ai-automation-tools/edge-radar"' in bar.group(1)
     # The bar sits above every other piece of chrome.
     assert public.index('<div class="src-bar">') < public.index('<header class="topbar">')
     # Edge-Radar also carries the optional hero repo button
